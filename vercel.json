@@ -1,0 +1,12 @@
+{
+  "buildCommand": "cp prisma/schema.postgres.prisma prisma/schema.prisma && bun run db:generate && bun run build",
+  "installCommand": "bun install",
+  "framework": "nextjs",
+  "regions": ["iad1"],
+  "crons": [
+    {
+      "path": "/api/cron/auto-delete",
+      "schedule": "0 * * * *"
+    }
+  ]
+}

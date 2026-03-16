@@ -1,0 +1,121 @@
+// PostgreSQL Schema for Production Deployment
+// استخدم هذا الملف عند النشر على Vercel/Railway/Render
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         String      @id @default(cuid())
+  identifier String      @unique
+  name       String
+  otp        String?
+  otpExpires DateTime?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  inquiries  Inquiry[]
+  payments   Payment[]
+}
+
+model Apartment {
+  id              String      @id @default(cuid())
+  title           String
+  price           Int
+  area            String
+  bedrooms        Int
+  bathrooms       Int
+  description     String
+  ownerPhone      String
+  mapLink         String
+  imageUrl        String?
+  images          String?     // JSON array of image URLs
+  videoUrl        String?     // Video URL (YouTube, etc)
+  amenities       String?     // JSON array of amenities
+  featured        Boolean     @default(false)
+  type            String      // 'rent' or 'sale'
+  status          String      @default("available") // available, preview, reserved, unavailable, sold, rented
+  views           Int         @default(0) // Track views
+  paymentRef      String?
+  agreementStatus String?     // 'Agreement Reached' or 'Contract Signed'
+  createdBy       String?     // User ID who created this apartment
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  inquiries       Inquiry[]
+}
+
+model Inquiry {
+  id               String    @id @default(cuid())
+  apartmentId      String
+  userId           String?
+  name             String
+  email            String
+  phone            String
+  message          String
+  lifecycleStatus  String    @default("New") // New, Contacted, Converted, Lost
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  apartment        Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user             User?     @relation(fields: [userId], references: [id])
+  payment          Payment?
+}
+
+model Payment {
+  id             String    @id @default(cuid())
+  inquiryId      String    @unique
+  method         String    // Visa, Mastercard, InstaPay, Cash, Manual
+  status         String    @default("Pending") // Paid, Pending, Failed
+  inquiryStatus  String    @default("Contacted") // Contacted, Follow-up, Offer Accepted, Closed, Under Review, Agreement Reached, Contract Signed
+  amount         Int
+  transactionRef String?
+  paymentLink    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  inquiry        Inquiry   @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  user           User?     @relation(fields: [userId], references: [id])
+  userId         String?
+}
+
+model OtpCode {
+  id        String   @id @default(cuid())
+  code      String
+  email     String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
+
+model OperationLog {
+  id          String   @id @default(cuid())
+  action      String   // view, inquiry, payment, status_change, delete, etc.
+  entityType  String   // apartment, inquiry, payment
+  entityId    String?
+  userId      String?
+  details     String?  // JSON details
+  createdAt   DateTime @default(now())
+}
+
+model Settings {
+  id                    String   @id @default(cuid())
+  // رسوم عرض بيانات التواصل
+  contactFee           Int      @default(50)
+  featuredFee          Int      @default(100)
+  premiumFee           Int      @default(200)
+  
+  // رسوم منفصلة للعرض حسب النوع
+  saleDisplayFee       Int      @default(100) // رسوم عرض عقارات للبيع
+  rentDisplayFee       Int      @default(75) // رسوم عرض عقارات الإيجار
+  otherServicesFee     Int      @default(50) // رسوم خدمات أخرى
+  
+  // رسوم إضافية
+  highlightFee         Int      @default(150) // رسوم التمييز الخاص
+  priorityListingFee   Int      @default(200) // رسوم الإدراج المميز
+  verifiedListingFee   Int      @default(250) // رسوم التحقق من العقار
+  
+  currency             String   @default("ج.م")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
