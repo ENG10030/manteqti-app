@@ -33,29 +33,29 @@ model Apartment {
   bedrooms        Int
   bathrooms       Int
   description     String
-  ownerPhone      String
-  mapLink         String
-  imageUrl        String?
-  images          String?
-  videoUrl        String?
-  videos          String?
-  amenities       String?
-  featured        Boolean     @default(false)
-  type            String
-  status          String      @default("pending")
-  statusChangedAt DateTime?
-  views           Int         @default(0)
-  paymentRef      String?
-  agreementStatus String?
-  createdBy       String?
-  approvedBy      String?
-  approvedAt      DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  ownerPhone      String      @map("ownerPhone")
+  mapLink         String      @map("mapLink")
+  imageUrl        String?     @map("imageUrl")
+  images          String?     @map("images")
+  videoUrl        String?     @map("videoUrl")
+  videos          String?     @map("videos")
+  amenities       String?     @map("amenities")
+  featured        Boolean     @default(false) @map("featured")
+  type            String      @map("type")
+  status          String      @default("pending") @map("status")
+  statusChangedAt DateTime?   @map("statusChangedAt")
+  views           Int         @default(0) @map("views")
+  paymentRef      String?     @map("paymentRef")
+  agreementStatus String?     @map("agreementStatus")
+  createdBy       String?     @map("createdBy")
+  approvedBy      String?     @map("approvedBy")
+  approvedAt      DateTime?   @map("approvedAt")
+  createdAt       DateTime    @default(now()) @map("createdAt")
+  updatedAt       DateTime    @updatedAt @map("updatedAt")
   inquiries       Inquiry[]
-@@map("apartments") 
+  
+  @@map("apartments")
 }
-
 model Inquiry {
   id               String    @id @default(cuid())
   apartmentId      String
