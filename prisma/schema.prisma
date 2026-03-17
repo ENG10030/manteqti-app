@@ -53,6 +53,7 @@ model Apartment {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   inquiries       Inquiry[]
+@@map("apartments") 
 }
 
 model Inquiry {
