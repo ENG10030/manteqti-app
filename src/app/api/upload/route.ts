@@ -11,26 +11,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'لم يتم إرسال ملف' }, { status: 400 });
     }
 
-    // التحقق من حجم الملف
     if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: 'حجم الملف يتجاوز الحد المسموح (50MB)' }, { status: 400 });
+      return NextResponse.json({ error: 'حجم الملف يتجاوز الحد المسموح' }, { status: 400 });
     }
 
-    // التحقق من نوع الملف
     const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
     const isVideo = ALLOWED_VIDEO_TYPES.includes(file.type);
 
     if (!isImage && !isVideo) {
-      return NextResponse.json({ 
-        error: 'نوع الملف غير مدعوم. الأنواع المدعومة: JPEG, PNG, WebP, GIF, MP4, WebM' 
-      }, { status: 400 });
+      return NextResponse.json({ error: 'نوع الملف غير مدعوم' }, { status: 400 });
     }
 
-    // تحويل الملف إلى Buffer
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // رفع الملف
     let result;
     if (type === 'video' || isVideo) {
       result = await uploadVideo(buffer);
@@ -46,14 +40,10 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Upload error:', error);
-    return NextResponse.json({ 
-      error: 'حدث خطأ أثناء رفع الملف',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+    return NextResponse.json({ error: 'حدث خطأ أثناء رفع الملف' }, { status: 500 });
   }
 }
 
-// رفع عدة ملفات
 export async function PUT(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -64,21 +54,15 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'لم يتم إرسال ملفات' }, { status: 400 });
     }
 
-    const results = [];
+    const results: { url: string; publicId: string }[] = [];
 
     for (const file of files) {
-      // التحقق من حجم الملف
-      if (file.size > MAX_FILE_SIZE) {
-        continue; // تخطي الملفات الكبيرة
-      }
+      if (file.size > MAX_FILE_SIZE) continue;
 
-      // التحقق من نوع الملف
       const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
       const isVideo = ALLOWED_VIDEO_TYPES.includes(file.type);
 
-      if (!isImage && !isVideo) {
-        continue;
-      }
+      if (!isImage && !isVideo) continue;
 
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
@@ -104,8 +88,6 @@ export async function PUT(request: NextRequest) {
 
   } catch (error) {
     console.error('Batch upload error:', error);
-    return NextResponse.json({ 
-      error: 'حدث خطأ أثناء رفع الملفات' 
-    }, { status: 500 });
+    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }
