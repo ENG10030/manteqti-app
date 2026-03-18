@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, MapPin, Bed, Bath, Phone, ExternalLink, X,
@@ -13,7 +13,8 @@ import {
   BarChart3, DollarSign, BookOpen, Settings, LogOut,
   Menu, AlertTriangle, CheckCircle2, XCircle, Image as ImageIcon, Video,
   ChevronLeft, ChevronRight, Play, Hourglass, Plus, Upload, Link,
-  Users, Activity, Wallet, PieChart, Layers, Key, ArrowUp, Download, RefreshCw as RefreshCwIcon
+  Users, Activity, Wallet, PieChart, Layers, Key, ArrowUp, Download, RefreshCw as RefreshCwIcon,
+  Crown, Diamond
 } from 'lucide-react';
 
 // Developer credentials
@@ -659,7 +660,6 @@ export default function App() {
 
   // Handle update status (developer only)
   const handleUpdateStatus = async (id: string, newStatus: string, confirmed: boolean = false) => {
-    // Final statuses that trigger auto-delete after 48 hours
     const finalStatuses = ['sold', 'unavailable', 'rented'];
     
     if (!confirmed) {
@@ -668,7 +668,6 @@ export default function App() {
         'unavailable': 'غير متاح', 'sold': 'تم البيع', 'rented': 'تم التأجير'
       };
       
-      // Add warning for final statuses
       const isFinalStatus = finalStatuses.includes(newStatus);
       const warningMessage = isFinalStatus 
         ? `هل تريد تغيير الحالة إلى "${statusLabels[newStatus]}"؟\n\n⚠️ تنبيه: سيتم حذف العقار تلقائياً بعد 48 ساعة من هذا التغيير!`
@@ -692,14 +691,74 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
       });
+      
+      const data = await res.json();
+      
       if (res.ok) {
         await fetchApartments();
         const isFinalStatus = finalStatuses.includes(newStatus);
         addToast(isFinalStatus ? 'تم تغيير الحالة - سيُحذف العقار بعد 48 ساعة' : 'تم تغيير حالة العقار', 'success');
+      } else {
+        addToast(data.error || 'فشل في تغيير الحالة', 'error');
       }
+    } catch (error) {
+      addToast('حدث خطأ في الاتصال', 'error');
     } finally {
       setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
     }
+  };
+
+  // Handle toggle featured/VIP (developer only)
+  const handleToggleFeatured = async (id: string, featured: boolean) => {
+    try {
+      const res = await fetch(`/api/apartments/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ featured: !featured })
+      });
+      
+      if (res.ok) {
+        await fetchApartments();
+        addToast(featured ? 'تم إلغاء تمييز العقار' : 'تم تمييز العقار كـ VIP', 'success');
+      } else {
+        const data = await res.json();
+        addToast(data.error || 'فشل في العملية', 'error');
+      }
+    } catch (error) {
+      addToast('حدث خطأ في الاتصال', 'error');
+    }
+  };
+
+  // Handle file upload
+  const handleFileUpload = async (files: FileList | null, type: 'image' | 'video'): Promise<string[]> => {
+    if (!files || files.length === 0) return [];
+    
+    const uploadedUrls: string[] = [];
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('type', type);
+      
+      try {
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+        
+        const data = await res.json();
+        if (res.ok && data.url) {
+          uploadedUrls.push(data.url);
+        } else {
+          addToast(data.error || `فشل في رفع ${file.name}`, 'error');
+        }
+      } catch (error) {
+        addToast(`فشل في رفع ${file.name}`, 'error');
+      }
+    }
+    
+    return uploadedUrls;
   };
 
   // Handle add inquiry

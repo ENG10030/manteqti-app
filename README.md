@@ -1,70 +1,76 @@
-# إصلاح أخطاء Vercel - Manteqti
+# إصلاحات Manteqti v2 - النسخة الكاملة
 
-## 🚨 المشاكل التي تم إصلاحها:
+## 🚀 الميزات الجديدة:
 
-1. ❌ خطأ `ts.slice is not a function` - قاعدة البيانات فارغة
-2. ❌ حذف العقارات لا يعمل - مشكلة في Foreign Key
-3. ❌ خطأ 500 في `/api/logs`
+### 1️⃣ إصلاح تغيير حالة العقار ✅
+- تم إصلاح API لتغيير الحالة بشكل صحيح
+- يعمل الآن بدون مشاكل
+
+### 2️⃣ نظام VIP / مميز ✅
+- العقارات المميزة تظهر في أعلى الصفحة
+- شارة ذهبية "VIP" على العقارات المميزة
+- يمكن للمطور تفعيل/إلغاء التمييز
+
+### 3️⃣ رفع الصور والفيديوهات من الجهاز ✅
+- رفع مباشر من الجهاز (ليس روابط)
+- دعم صور: JPEG, PNG, WebP, GIF (حتى 10MB)
+- دعم فيديوهات: MP4, WebM (حتى 50MB)
+- معاينة قبل الرفع
 
 ---
 
-## 📁 الملفات (10 ملفات):
+## 📁 الملفات:
 
 ```
-src/lib/auth-middleware.ts
-src/lib/security.ts
-src/app/api/auth/me/route.ts
-src/app/api/auth/request-otp/route.ts
-src/app/api/init-db/route.ts
-src/app/api/logs/route.ts
-src/app/api/apartments/[id]/route.ts   ← محدث! (إصلاح الحذف)
-next.config.ts
-prisma/schema.prisma
-tsconfig.json
+src/app/api/apartments/[id]/route.ts  ← إصلاح تغيير الحالة + VIP
+src/app/api/upload/route.ts            ← رفع الملفات الجديد
+src/app/page.tsx                       ← الواجهة المحدثة (مهم!)
 ```
 
 ---
 
 ## 📝 خطوات التثبيت:
 
-### الخطوة 1: انسخ الملفات إلى مشروعك
+### الخطوة 1: انسخ الملفات
+```
+src/app/api/apartments/[id]/route.ts  →  مشروعك
+src/app/api/upload/route.ts           →  مشروعك
+src/app/page.tsx                      →  مشروعك
+```
 
-### الخطوة 2: Commit & Push
+### الخطوة 2: إنشاء مجلد الرفع
+```bash
+mkdir -p public/uploads/images
+mkdir -p public/uploads/videos
+```
+
+### الخطوة 3: Commit & Push
 ```bash
 git add .
-git commit -m "Fix delete apartment and database errors"
+git commit -m "Add VIP system, file upload, and fix status change"
 git push
 ```
 
-### الخطوة 3: ⭐ مهم جداً! تهيئة قاعدة البيانات
-بعد نجاح النشر، افتح:
+### الخطوة 4: تهيئة قاعدة البيانات
+افتح بعد النشر:
 ```
 https://manteqti-app.vercel.app/api/init-db
 ```
 
-### الخطوة 4: تحقق من الموقع
-```
-https://manteqti-app.vercel.app
-```
-
 ---
 
-## ✅ إصلاح الحذف:
+## 🎨 كيفية الاستخدام:
 
-المشكلة: عند حذف عقار، كانت هناك علاقات مع جداول أخرى (inquiries, payments).
+### تفعيل VIP / مميز:
+1. ادخل لوحة المطور
+2. اضغط على العقار
+3. اضغط "جعله مميزاً"
 
-الحل: نقوم أولاً بحذف المدفوعات ثم الاستفسارات ثم العقار:
-
-```typescript
-// 1. حذف المدفوعات
-await db.payment.deleteMany({ where: { inquiry: { apartmentId: id } } });
-
-// 2. حذف الاستفسارات  
-await db.inquiry.deleteMany({ where: { apartmentId: id } });
-
-// 3. حذف العقار
-await db.apartment.delete({ where: { id } });
-```
+### رفع الصور والفيديوهات:
+1. عند إضافة أو تعديل عقار
+2. اضغط "رفع صورة" أو "رفع فيديو"
+3. اختر الملف من جهازك
+4. سيتم رفعه تلقائياً
 
 ---
 
