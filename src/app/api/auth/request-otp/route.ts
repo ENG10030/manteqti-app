@@ -1,17 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { randomInt } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
+
+// Hash password with SHA-256
+function hashPassword(password: string): string {
+  return createHash('sha256').update(password).digest('hex');
+}
+
+// Generate random OTP
+function generateOTP(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 export async function POST(request: NextRequest) {
   try {
     const { identifier } = await request.json();
 
     if (!identifier) {
-      return NextResponse.json({ error: 'Identifier is required' }, { status: 400 });
+      return NextResponse.json({ 
+        error: 'البريد الإلكتروني أو رقم الهاتف مطلوب' 
+      }, { status: 400 });
     }
 
-    // Generate 6-digit OTP
-    const otp = randomInt(100000, 999999).toString();
+    // Generate OTP
+    const otp = generateOTP();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     // Check if user exists
@@ -20,17 +32,24 @@ export async function POST(request: NextRequest) {
     });
 
     if (user) {
-      // Update existing user with new OTP
+      // Update existing user with OTP
       user = await db.user.update({
         where: { identifier },
-        data: { otp, otpExpires }
+        data: {
+          otp,
+          otpExpires
+        }
       });
     } else {
-      // Create new user with OTP
+      // Create new user with OTP and a random default password
+      const randomPassword = randomBytes(16).toString('hex');
+      const hashedPassword = hashPassword(randomPassword);
+      
       user = await db.user.create({
         data: {
           identifier,
           name: identifier.split('@')[0] || 'User',
+          password: hashedPassword,
           otp,
           otpExpires
         }
@@ -38,17 +57,16 @@ export async function POST(request: NextRequest) {
     }
 
     // In production, send OTP via email/SMS
-    // For demo, log to console
-    console.log(`[OTP] Code for ${identifier}: ${otp}`);
+    console.log(`OTP for ${identifier}: ${otp}`);
 
     return NextResponse.json({ 
-      success: true, 
-      message: 'OTP sent successfully',
-      // In development, return the OTP for testing
-      ...(process.env.NODE_ENV !== 'production' && { otp })
+      success: true,
+      message: 'تم إرسال رمز التحقق',
+      // In development, return OTP for testing
+      ...(process.env.NODE_ENV === 'development' && { otp })
     });
   } catch (error) {
     console.error('Error requesting OTP:', error);
-    return NextResponse.json({ error: 'Failed to send OTP' }, { status: 500 });
+    return NextResponse.json({ error: 'فشل في إرسال رمز التحقق' }, { status: 500 });
   }
 }

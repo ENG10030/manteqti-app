@@ -1,21 +1,24 @@
 # إصلاح أخطاء Vercel - Manteqti
 
-## الملفات المحدثة (5 ملفات):
+## الملفات المحدثة (6 ملفات):
 
 ### 1. src/lib/auth-middleware.ts (جديد)
 ملف جديد يحتوي على دوال التحقق من المعرفات وأرقام الهواتف.
 
-### 2. src/app/api/auth/me/route.ts (محدث - مهم!)
+### 2. src/app/api/auth/me/route.ts (محدث)
 تم إصلاح خطأ TypeScript بتغيير طريقة جلب المستخدم.
 
-### 3. next.config.ts (محدث)
-تم إزالة `ignoreBuildErrors` الذي كان يخفي أخطاء TypeScript.
+### 3. src/app/api/auth/request-otp/route.ts (جديد - مهم!)
+ملف جديد لإرسال رمز التحقق مع إضافة كلمة مرور افتراضية.
 
-### 4. prisma/schema.prisma (محدث)
+### 4. next.config.ts (محدث)
+تم إزالة `ignoreBuildErrors`.
+
+### 5. prisma/schema.prisma (محدث)
 تم إضافة العلاقات المفقودة بين Session و User.
 
-### 5. tsconfig.json (محدث - مهم!)
-تم استبعاد المجلدات التي تسبب أخطاء: examples/, skills/, download/
+### 6. tsconfig.json (محدث)
+تم استبعاد المجلدات: examples/, skills/, download/
 
 ---
 
@@ -25,11 +28,12 @@
 انسخ الملفات إلى مشروعك:
 
 ```
-src/lib/auth-middleware.ts      →  src/lib/auth-middleware.ts
-src/app/api/auth/me/route.ts    →  src/app/api/auth/me/route.ts
-next.config.ts                   →  next.config.ts
-prisma/schema.prisma             →  prisma/schema.prisma
-tsconfig.json                    →  tsconfig.json
+src/lib/auth-middleware.ts          →  src/lib/auth-middleware.ts
+src/app/api/auth/me/route.ts        →  src/app/api/auth/me/route.ts
+src/app/api/auth/request-otp/route.ts  →  src/app/api/auth/request-otp/route.ts
+next.config.ts                       →  next.config.ts
+prisma/schema.prisma                 →  prisma/schema.prisma
+tsconfig.json                        →  tsconfig.json
 ```
 
 ### الخطوة 2: رفع التغييرات
@@ -47,9 +51,10 @@ git push
 ## الأخطاء التي تم إصلاحها:
 
 1. ✅ Cannot find module '@/lib/auth-middleware'
-2. ✅ Type 'never' error in auth/me/route.ts (تم تغيير طريقة جلب المستخدم)
-3. ✅ Cannot find module 'socket.io-client' (تم استبعاد examples/)
-4. ✅ إزالة ignoreBuildErrors
+2. ✅ Type 'never' error in auth/me/route.ts
+3. ✅ Property 'password' is missing in request-otp/route.ts
+4. ✅ Cannot find module 'socket.io-client' (تم استبعاد examples/)
+5. ✅ إزالة ignoreBuildErrors
 
 ---
 
