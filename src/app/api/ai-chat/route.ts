@@ -1,57 +1,84 @@
 import { NextRequest, NextResponse } from 'next/server';
-import ZAI from 'z-ai-web-dev-sdk';
+
+// ردود ذكية مبرمجة للمساعد
+const smartResponses: { keywords: string[]; reply: string }[] = [
+  {
+    keywords: ['مرحبا', 'اهلا', 'السلام', 'صباح', 'مساء'],
+    reply: 'أهلاً بك! 👋 أنا مساعدك الذكي للعقارات. كيف يمكنني مساعدتك اليوم؟'
+  },
+  {
+    keywords: ['شقة', 'شقق'],
+    reply: '🏠 لدينا شقق متنوعة للإيجار والبيع!\n\nيمكنني مساعدتك في:\n• البحث حسب المنطقة\n• تحديد الميزانية\n• عدد الغرف المطلوب\n\nما هي احتياجاتك؟'
+  },
+  {
+    keywords: ['إيجار', 'ايجار', 'للإيجار'],
+    reply: '🏠 شقق للإيجار متاحة!\n\nالمناطق المتاحة:\n• مدينة نصر\n• التجمع الخامس\n• المعادي\n• وسط البلد\n\nما هي المنطقة المفضلة لك؟'
+  },
+  {
+    keywords: ['بيع', 'للبيع', 'شراء'],
+    reply: '💰 عقارات ممتازة للبيع!\n\nأسعارنا تبدأ من:\n• شقق: 500,000 ج.م\n• فيلات: 3,000,000 ج.م\n\nما هو ميزانيتك؟'
+  },
+  {
+    keywords: ['سعر', 'أسعار', 'كم', 'بكام'],
+    reply: '💵 أسعارنا متنوعة:\n\n📋 للإيجار:\n• استوديو: 2,500 - 5,000 ج.م/شهر\n• شقتين: 4,000 - 8,000 ج.م/شهر\n• ثلاث غرف: 6,000 - 15,000 ج.م/شهر\n\n📋 للبيع:\n• شقق: 500,000 - 3,000,000 ج.م\n• فيلات: 3,000,000 - 10,000,000 ج.م'
+  },
+  {
+    keywords: ['مدينة نصر', 'مدينه نصر'],
+    reply: '📍 مدينة نصر - منطقة ممتازة!\n\n🏗️ العقارات المتاحة:\n• شقق للإيجار: 3,500 - 12,000 ج.م\n• شقق للبيع: 800,000 - 2,500,000 ج.م\n\n📞 للتواصل: اتصل بنا لترتيب معاينة!'
+  },
+  {
+    keywords: ['تجمع', 'التجمع'],
+    reply: '📍 التجمع الخامس - أرقى المناطق!\n\n🏗️ العقارات المتاحة:\n• شقق للإيجار: 5,000 - 20,000 ج.م\n• شقق للبيع: 1,200,000 - 5,000,000 ج.م\n• فيلات: 4,000,000 - 15,000,000 ج.م'
+  },
+  {
+    keywords: ['غرفة', 'غرف', 'سرير'],
+    reply: '🛏️ شقق حسب عدد الغرف:\n\n• 1 غرفة (استوديو): مثالية للأفراد\n• 2 غرفة: مناسبة للأزواج\n• 3 غرف: مثالية للعائلات الصغيرة\n• 4+ غرف: للعائلات الكبيرة\n\nكم غرفة تحتاج؟'
+  },
+  {
+    keywords: ['شكرا', 'شكراً', 'مشكور'],
+    reply: 'العفو! 😊 سعيد بمساعدتك.\n\nإذا احتجت أي شيء آخر، أنا هنا دائماً! 🏠'
+  }
+];
+
+const defaultReply = `🏠 أهلاً بك في منطقتي!
+
+يمكنني مساعدتك في:
+• البحث عن شقق للإيجار أو البيع
+• معرفة الأسعار والمناطق
+• الإجابة على استفساراتك
+
+🔍 جرب أن تسألني عن:
+• "شقق للإيجار"
+• "أسعار في مدينة نصر"
+• "فيلا للبيع"
+
+كيف يمكنني مساعدتك؟`;
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const message = body.message || body.text || '';
+    const message = (body.message || body.text || '').toLowerCase().trim();
 
-    if (!message || message.trim() === '') {
-      return NextResponse.json({ 
-        reply: 'يرجى كتابة رسالة.'
-      });
+    if (!message) {
+      return NextResponse.json({ reply: defaultReply });
     }
 
-    // إنشاء SDK
-    const zai = await ZAI.create();
+    let reply = defaultReply;
 
-    // إرسال الطلب
-    const completion = await zai.chat.completions.create({
-      messages: [
-        {
-          role: 'assistant',
-          content: `أنت مساعد ذكي لموقع "منطقتي" للعقارات في مصر.
-          تساعد المستخدمين في البحث عن شقق وعقارات.
-          أجب بالعربية فقط وبإجابات مختصرة ومفيدة.
-          يمكنك المساعدة في:
-          - البحث عن شقق للإيجار أو البيع
-          - تصفية النتائج حسب السعر والمنطقة وعدد الغرف
-          - تقديم نصائح للبحث عن العقارات المناسبة
-          - الرد على استفسارات العملاء بشكل ودود`
-        },
-        {
-          role: 'user',
-          content: message
-        }
-      ],
-      thinking: { type: 'disabled' }
-    });
-
-    const reply = completion.choices[0]?.message?.content || 'عذراً، لم أفهم سؤالك.';
+    for (const item of smartResponses) {
+      if (item.keywords.some(keyword => message.includes(keyword))) {
+        reply = item.reply;
+        break;
+      }
+    }
 
     return NextResponse.json({ reply });
 
   } catch (error) {
-    console.error('AI Chat error:', error);
-    return NextResponse.json({ 
-      reply: 'عذراً، حدث خطأ. يرجى المحاولة مرة أخرى.'
-    });
+    return NextResponse.json({ reply: 'عذراً، حدث خطأ.' });
   }
 }
 
 export async function GET() {
-  return NextResponse.json({ 
-    status: 'ok',
-    message: 'AI Chat API يعمل بشكل صحيح'
-  });
+  return NextResponse.json({ status: 'ok' });
 }
