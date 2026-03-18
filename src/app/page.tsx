@@ -49,6 +49,7 @@ interface Apartment {
   imageUrl?: string;
   images?: string[];
   videoUrl?: string;
+  videos?: string[];
   amenities?: string[];
   featured?: boolean;
   type: 'rent' | 'sale';
@@ -197,6 +198,12 @@ export default function App() {
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
   const [newImageUrl, setNewImageUrl] = useState('');
   const [newVideoUrl, setNewVideoUrl] = useState('');
+  
+  // Edit image and video management
+  const [editImageUrls, setEditImageUrls] = useState<string[]>([]);
+  const [editVideoUrls, setEditVideoUrls] = useState<string[]>([]);
+  const [newEditImageUrl, setNewEditImageUrl] = useState('');
+  const [newEditVideoUrl, setNewEditVideoUrl] = useState('');
 
   // Other states
   const [inquiryForm, setInquiryForm] = useState({ name: '', email: '', phone: '', message: '' });
@@ -634,12 +641,15 @@ export default function App() {
           mapLink: editApartment.mapLink,
           type: editApartment.type,
           images: editApartment.images,
-          videoUrl: editApartment.videoUrl
+          videoUrl: editApartment.videoUrl,
+          videos: editApartment.videos
         })
       });
       if (res.ok) {
         await fetchApartments();
         setEditApartment(null);
+        setNewEditImageUrl('');
+        setNewEditVideoUrl('');
         addToast('تم تحديث الشقة بنجاح', 'success');
       }
     } finally {
@@ -1707,6 +1717,129 @@ export default function App() {
                     <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رابط الخريطة</label>
                     <input type="url" value={editApartment.mapLink || ''} onChange={(e) => setEditApartment({ ...editApartment, mapLink: e.target.value })}
                       className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-violet-500`} />
+                  </div>
+                  
+                  {/* Images Section for Edit */}
+                  <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50'}`}>
+                    <label className={`block text-sm font-medium mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      <ImageIcon className="h-4 w-4 inline ml-1" />
+                      صور الشقة
+                    </label>
+                    
+                    {/* Add Image Input */}
+                    <div className="flex gap-2 mb-3">
+                      <input type="url" value={newEditImageUrl} onChange={(e) => setNewEditImageUrl(e.target.value)}
+                        className={`flex-1 px-4 py-2 rounded-xl border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-500'} focus:outline-none focus:ring-2 focus:ring-violet-500`}
+                        placeholder="الصق رابط الصورة هنا..."
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter' && newEditImageUrl.trim()) {
+                            e.preventDefault();
+                            const newImages = [...(editApartment.images || []), newEditImageUrl.trim()];
+                            setEditApartment({ ...editApartment, images: newImages });
+                            setNewEditImageUrl('');
+                          }
+                        }} />
+                      <button type="button" onClick={() => {
+                        if (newEditImageUrl.trim()) {
+                          const newImages = [...(editApartment.images || []), newEditImageUrl.trim()];
+                          setEditApartment({ ...editApartment, images: newImages });
+                          setNewEditImageUrl('');
+                        }
+                      }}
+                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium hover:from-violet-700 hover:to-purple-800 transition-all flex items-center gap-2">
+                        <Plus className="h-4 w-4" />
+                        إضافة
+                      </button>
+                    </div>
+                    
+                    {/* Image Preview Grid */}
+                    {editApartment.images && editApartment.images.length > 0 && (
+                      <div className="grid grid-cols-3 gap-2 mb-3">
+                        {editApartment.images.map((url, index) => (
+                          <div key={index} className="relative group">
+                            <img src={url} alt={`صورة ${index + 1}`}
+                              className="w-full h-24 object-cover rounded-lg border-2 border-transparent group-hover:border-violet-500 transition-all"
+                              onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=خطأ'; }} />
+                            <button type="button" onClick={() => {
+                              const newImages = editApartment.images?.filter((_, i) => i !== index) || [];
+                              setEditApartment({ ...editApartment, images: newImages });
+                            }}
+                              className="absolute -top-2 -left-2 p-1 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+                              <X className="h-3 w-3" />
+                            </button>
+                            <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/60 text-white text-xs">
+                              {index + 1}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                      {editApartment.images?.length || 0} صورة مضافة
+                    </p>
+                  </div>
+                  
+                  {/* Videos Section for Edit */}
+                  <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50'}`}>
+                    <label className={`block text-sm font-medium mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      <Video className="h-4 w-4 inline ml-1" />
+                      فيديوهات الشقة
+                    </label>
+                    
+                    {/* Add Video Input */}
+                    <div className="flex gap-2 mb-3">
+                      <input type="url" value={newEditVideoUrl} onChange={(e) => setNewEditVideoUrl(e.target.value)}
+                        className={`flex-1 px-4 py-2 rounded-xl border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-500'} focus:outline-none focus:ring-2 focus:ring-violet-500`}
+                        placeholder="الصق رابط الفيديو (YouTube, Vimeo...)"
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter' && newEditVideoUrl.trim()) {
+                            e.preventDefault();
+                            const currentVideos = editApartment.videoUrl ? [editApartment.videoUrl] : [];
+                            const newVideos = editApartment.videos || currentVideos;
+                            setEditApartment({ ...editApartment, videos: [...newVideos, newEditVideoUrl.trim()], videoUrl: newEditVideoUrl.trim() });
+                            setNewEditVideoUrl('');
+                          }
+                        }} />
+                      <button type="button" onClick={() => {
+                        if (newEditVideoUrl.trim()) {
+                          const currentVideos = editApartment.videoUrl ? [editApartment.videoUrl] : [];
+                          const newVideos = editApartment.videos || currentVideos;
+                          setEditApartment({ ...editApartment, videos: [...newVideos, newEditVideoUrl.trim()], videoUrl: newEditVideoUrl.trim() });
+                          setNewEditVideoUrl('');
+                        }
+                      }}
+                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 text-white font-medium hover:from-rose-600 hover:to-pink-700 transition-all flex items-center gap-2">
+                        <Plus className="h-4 w-4" />
+                        إضافة
+                      </button>
+                    </div>
+                    
+                    {/* Video List */}
+                    {editApartment.videos && editApartment.videos.length > 0 && (
+                      <div className="space-y-2 mb-3">
+                        {editApartment.videos.map((url, index) => (
+                          <div key={index} className={`flex items-center gap-2 p-2 rounded-lg ${darkMode ? 'bg-slate-600' : 'bg-white'} border ${darkMode ? 'border-slate-500' : 'border-slate-200'}`}>
+                            <Play className="h-4 w-4 text-rose-500 flex-shrink-0" />
+                            <a href={url} target="_blank" rel="noopener noreferrer" 
+                              className={`flex-1 text-sm truncate hover:underline ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                              {url.length > 50 ? url.substring(0, 50) + '...' : url}
+                            </a>
+                            <button type="button" onClick={() => {
+                              const newVideos = editApartment.videos?.filter((_, i) => i !== index) || [];
+                              setEditApartment({ ...editApartment, videos: newVideos, videoUrl: newVideos[0] || undefined });
+                            }}
+                              className="p-1 rounded hover:bg-red-500/10 text-red-500">
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                      {editApartment.videos?.length || 0} فيديو مضاف
+                    </p>
                   </div>
                 </div>
 
