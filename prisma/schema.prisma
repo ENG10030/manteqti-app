@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl  = env("DIRECT_DATABASE_URL")
 }
 
 model User {
@@ -55,7 +56,7 @@ model Apartment {
   updatedAt       DateTime    @updatedAt
   inquiries       Inquiry[]
   
-  // حقول VIP والمميز - تم نقلها للمكان الصحيح
+  // حقول VIP والمميز
   isFeatured      Boolean     @default(false)
   isVip           Boolean     @default(false)
   featuredUntil   DateTime?
