@@ -81,17 +81,13 @@ export function FileUpload({
 
   return (
     <div className="space-y-4">
-      {/* منطقة الرفع */}
       <div
         className={cn(
           'border-2 border-dashed rounded-lg p-8 text-center transition-colors',
           dragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/25',
           uploading && 'opacity-50 pointer-events-none'
         )}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
       >
@@ -104,10 +100,7 @@ export function FileUpload({
           id={`file-upload-${type}`}
           disabled={uploading || value.length >= maxFiles}
         />
-        <label
-          htmlFor={`file-upload-${type}`}
-          className="cursor-pointer flex flex-col items-center gap-2"
-        >
+        <label htmlFor={`file-upload-${type}`} className="cursor-pointer flex flex-col items-center gap-2">
           {uploading ? (
             <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
           ) : type === 'image' ? (
@@ -116,9 +109,7 @@ export function FileUpload({
             <Video className="h-10 w-10 text-muted-foreground" />
           )}
           <div className="text-sm text-muted-foreground">
-            {uploading ? (
-              'جاري الرفع...'
-            ) : (
+            {uploading ? 'جاري الرفع...' : (
               <>
                 <span className="font-medium text-primary">اضغط للاختيار</span>
                 {' '}أو اسحب الملفات هنا
@@ -126,28 +117,19 @@ export function FileUpload({
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            {type === 'image' ? 'JPEG, PNG, WebP, GIF' : 'MP4, WebM'} - حد أقصى {maxFiles} ملفات
+            {type === 'image' ? 'JPEG, PNG, WebP' : 'MP4, WebM'} - حد أقصى {maxFiles} ملفات
           </p>
         </label>
       </div>
 
-      {/* معاينة الملفات */}
       {value.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
           {value.map((url, index) => (
             <div key={url} className="relative group">
               {type === 'image' ? (
-                <img
-                  src={url}
-                  alt={`صورة ${index + 1}`}
-                  className="w-full aspect-square object-cover rounded-lg"
-                />
+                <img src={url} alt="" className="w-full aspect-square object-cover rounded-lg" />
               ) : (
-                <video
-                  src={url}
-                  className="w-full aspect-square object-cover rounded-lg"
-                  muted
-                />
+                <video src={url} className="w-full aspect-square object-cover rounded-lg" muted />
               )}
               <button
                 type="button"
@@ -156,11 +138,6 @@ export function FileUpload({
               >
                 <X className="h-4 w-4" />
               </button>
-              {type === 'video' && (
-                <div className="absolute bottom-1 left-1 bg-black/50 text-white text-xs px-1 rounded">
-                  <Video className="h-3 w-3 inline" />
-                </div>
-              )}
             </div>
           ))}
         </div>
