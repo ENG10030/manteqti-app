@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
-// Get operation logs
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -13,7 +12,6 @@ export async function GET(request: NextRequest) {
     if (action) where.action = action;
     if (entityType) where.entityType = entityType;
     
-    // Check if OperationLog table exists
     let logs: any[] = [];
     try {
       logs = await db.operationLog.findMany({
@@ -22,26 +20,29 @@ export async function GET(request: NextRequest) {
         take: limit
       });
     } catch (tableError) {
-      // Table might not exist yet, return empty array
       console.log('OperationLog table might not exist yet');
       return NextResponse.json([]);
     }
     
-    // Transform dates to strings
     const transformedLogs = logs.map(log => ({
-      ...log,
-      createdAt: log.createdAt instanceof Date ? log.createdAt.toISOString() : log.createdAt
+      id: log.id,
+      action: log.action,
+      entityType: log.entityType,
+      entityId: log.entityId,
+      userId: log.userId,
+      details: log.details,
+      ipAddress: log.ipAddress,
+      userAgent: log.userAgent,
+      createdAt: log.createdAt instanceof Date ? log.createdAt.toISOString() : String(log.createdAt)
     }));
     
     return NextResponse.json(transformedLogs);
   } catch (error) {
     console.error('Error fetching logs:', error);
-    // Return empty array instead of error to prevent UI crash
     return NextResponse.json([]);
   }
 }
 
-// Create operation log
 export async function POST(request: NextRequest) {
   try {
     const data = await request.json();
@@ -54,15 +55,19 @@ export async function POST(request: NextRequest) {
           entityType: data.entityType,
           entityId: data.entityId,
           userId: data.userId,
-          details: data.details
+          details: data.details,
+          ipAddress: data.ipAddress,
+          userAgent: data.userAgent
         }
       });
     } catch (tableError) {
-      // Table might not exist, return success anyway
       return NextResponse.json({ success: true, message: 'Log skipped' });
     }
     
-    return NextResponse.json(log);
+    return NextResponse.json({
+      ...log,
+      createdAt: log.createdAt instanceof Date ? log.createdAt.toISOString() : String(log.createdAt)
+    });
   } catch (error) {
     console.error('Error creating log:', error);
     return NextResponse.json({ success: true, message: 'Log skipped' });

@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
-// This endpoint initializes the database with sample data
 export async function GET() {
   try {
-    // Check if apartments already exist
     const existingApartments = await db.apartment.count();
     
     if (existingApartments > 0) {
@@ -14,7 +12,6 @@ export async function GET() {
       });
     }
 
-    // Sample apartments data
     const sampleApartments = [
       {
         title: 'شقة فاخرة في الزمالك',
@@ -86,12 +83,10 @@ export async function GET() {
       },
     ];
 
-    // Create apartments
     for (const apt of sampleApartments) {
       await db.apartment.create({ data: apt });
     }
 
-    // Create settings
     const existingSettings = await db.settings.count();
     if (existingSettings === 0) {
       await db.settings.create({

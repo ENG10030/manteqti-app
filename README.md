@@ -1,19 +1,23 @@
 # إصلاح أخطاء Vercel - Manteqti
 
-## 🚨 المشكلة
-قاعدة البيانات على Vercel فارغة أو الجداول غير موجودة، مما يسبب خطأ `ts.slice is not a function`.
+## 🚨 المشاكل التي تم إصلاحها:
 
-## ✅ الحل
+1. ❌ خطأ `ts.slice is not a function` - قاعدة البيانات فارغة
+2. ❌ حذف العقارات لا يعمل - مشكلة في Foreign Key
+3. ❌ خطأ 500 في `/api/logs`
 
-### الملفات المحدثة (9 ملفات):
+---
+
+## 📁 الملفات (10 ملفات):
 
 ```
 src/lib/auth-middleware.ts
 src/lib/security.ts
 src/app/api/auth/me/route.ts
 src/app/api/auth/request-otp/route.ts
-src/app/api/init-db/route.ts     ← جديد! (مهم لتهيئة قاعدة البيانات)
-src/app/api/logs/route.ts        ← محدث! (يعالج الأخطاء بهدوء)
+src/app/api/init-db/route.ts
+src/app/api/logs/route.ts
+src/app/api/apartments/[id]/route.ts   ← محدث! (إصلاح الحذف)
 next.config.ts
 prisma/schema.prisma
 tsconfig.json
@@ -23,59 +27,44 @@ tsconfig.json
 
 ## 📝 خطوات التثبيت:
 
-### الخطوة 1: نسخ الملفات
-انسخ الملفات إلى مشروعك:
+### الخطوة 1: انسخ الملفات إلى مشروعك
 
-```
-src/lib/auth-middleware.ts      →  src/lib/auth-middleware.ts
-src/lib/security.ts              →  src/lib/security.ts
-src/app/api/auth/me/route.ts    →  src/app/api/auth/me/route.ts
-src/app/api/auth/request-otp/route.ts  →  src/app/api/auth/request-otp/route.ts
-src/app/api/init-db/route.ts    →  src/app/api/init-db/route.ts
-src/app/api/logs/route.ts       →  src/app/api/logs/route.ts
-next.config.ts                   →  next.config.ts
-prisma/schema.prisma             →  prisma/schema.prisma
-tsconfig.json                    →  tsconfig.json
-```
-
-### الخطوة 2: رفع التغييرات
+### الخطوة 2: Commit & Push
 ```bash
 git add .
-git commit -m "Fix database initialization and API errors"
+git commit -m "Fix delete apartment and database errors"
 git push
 ```
 
-### الخطوة 3: تهيئة قاعدة البيانات (مهم جداً!)
-بعد نجاح النشر، افتح هذا الرابط في المتصفح:
-
+### الخطوة 3: ⭐ مهم جداً! تهيئة قاعدة البيانات
+بعد نجاح النشر، افتح:
 ```
 https://manteqti-app.vercel.app/api/init-db
 ```
 
-سترى رسالة مثل:
-```json
-{"success":true,"message":"Database initialized successfully","apartmentsCreated":4}
-```
-
-### الخطوة 4: التحقق
-افتح الموقع:
+### الخطوة 4: تحقق من الموقع
 ```
 https://manteqti-app.vercel.app
 ```
 
 ---
 
-## 🔧 إذا استمرت المشكلة:
+## ✅ إصلاح الحذف:
 
-### تأكد من وجود PostgreSQL على Vercel:
-1. اذهب إلى Vercel Dashboard
-2. اختر مشروعك
-3. اضغط **Storage**
-4. تأكد من وجود قاعدة بيانات **Postgres** مربوطة
+المشكلة: عند حذف عقار، كانت هناك علاقات مع جداول أخرى (inquiries, payments).
 
-### تأكد من Environment Variables:
-في Vercel Dashboard → Settings → Environment Variables:
-- `DATABASE_URL` - يجب أن يكون موجوداً
+الحل: نقوم أولاً بحذف المدفوعات ثم الاستفسارات ثم العقار:
+
+```typescript
+// 1. حذف المدفوعات
+await db.payment.deleteMany({ where: { inquiry: { apartmentId: id } } });
+
+// 2. حذف الاستفسارات  
+await db.inquiry.deleteMany({ where: { apartmentId: id } });
+
+// 3. حذف العقار
+await db.apartment.delete({ where: { id } });
+```
 
 ---
 

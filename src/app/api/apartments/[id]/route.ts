@@ -23,24 +23,6 @@ export async function GET(
       return NextResponse.json({ error: 'Apartment not found' }, { status: 404 });
     }
 
-    // Increment views only for approved apartments
-    if (apartment.status !== 'pending') {
-      await db.apartment.update({
-        where: { id },
-        data: { views: { increment: 1 } }
-      });
-    }
-
-    // Log the view operation
-    await db.operationLog.create({
-      data: {
-        action: 'view',
-        entityType: 'apartment',
-        entityId: id,
-        details: `Viewed: ${apartment.title}`
-      }
-    });
-
     const imageUrl = apartment.imageUrl || 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&q=80';
 
     return NextResponse.json({
@@ -81,7 +63,6 @@ export async function PUT(
     const { id } = await params;
     const data = await request.json();
 
-    // Handle approval action
     if (data.action === 'approve') {
       const apartment = await db.apartment.update({
         where: { id },
@@ -91,44 +72,17 @@ export async function PUT(
           approvedAt: new Date()
         }
       });
-
-      // Log the approval
-      await db.operationLog.create({
-        data: {
-          action: 'approve',
-          entityType: 'apartment',
-          entityId: id,
-          details: `Approved: ${apartment.title}`
-        }
-      });
-
       return NextResponse.json(apartment);
     }
 
-    // Handle rejection action
     if (data.action === 'reject') {
       const apartment = await db.apartment.update({
         where: { id },
-        data: {
-          status: 'rejected'
-        }
+        data: { status: 'rejected' }
       });
-
-      // Log the rejection
-      await db.operationLog.create({
-        data: {
-          action: 'reject',
-          entityType: 'apartment',
-          entityId: id,
-          details: `Rejected: ${apartment.title}`
-        }
-      });
-
       return NextResponse.json(apartment);
     }
 
-    // Regular update
-    // Check if status is changing to a final state (sold, unavailable, rented)
     const finalStatuses = ['sold', 'unavailable', 'rented'];
     const isChangingToFinalStatus = data.status && finalStatuses.includes(data.status);
 
@@ -145,27 +99,16 @@ export async function PUT(
         mapLink: data.mapLink,
         imageUrl: data.imageUrl,
         images: data.images ? JSON.stringify(data.images) : undefined,
+        videoUrl: data.videoUrl || undefined,
+        videos: data.videos ? JSON.stringify(data.videos) : undefined,
         amenities: data.amenities ? JSON.stringify(data.amenities) : undefined,
         featured: data.featured,
         type: data.type,
         status: data.status,
-        // Set statusChangedAt when changing to final status
         statusChangedAt: isChangingToFinalStatus ? new Date() : undefined,
         paymentRef: data.paymentRef
       }
     });
-
-    // Log the status change
-    if (data.status) {
-      await db.operationLog.create({
-        data: {
-          action: 'status_change',
-          entityType: 'apartment',
-          entityId: id,
-          details: `Status changed to: ${data.status}${isChangingToFinalStatus ? ' (will auto-delete in 48 hours)' : ''}`
-        }
-      });
-    }
 
     return NextResponse.json(apartment);
   } catch (error) {
@@ -181,28 +124,31 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    // Get apartment info before deletion
-    const apartment = await db.apartment.findUnique({
-      where: { id }
-    });
-
-    // Log the delete operation
-    await db.operationLog.create({
-      data: {
-        action: 'delete',
-        entityType: 'apartment',
-        entityId: id,
-        details: `Deleted: ${apartment?.title || 'Unknown'}`
+    // First delete all related payments
+    await db.payment.deleteMany({
+      where: {
+        inquiry: {
+          apartmentId: id
+        }
       }
     });
 
+    // Then delete all related inquiries
+    await db.inquiry.deleteMany({
+      where: { apartmentId: id }
+    });
+
+    // Finally delete the apartment
     await db.apartment.delete({
       where: { id }
     });
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
+    return NextResponse.json({ success: true, message: 'تم حذف العقار بنجاح' });
+  } catch (error: any) {
     console.error('Error deleting apartment:', error);
-    return NextResponse.json({ error: 'Failed to delete apartment' }, { status: 500 });
+    return NextResponse.json({ 
+      error: 'Failed to delete apartment',
+      details: error.message 
+    }, { status: 500 });
   }
 }
