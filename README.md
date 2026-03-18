@@ -1,24 +1,27 @@
 # إصلاح أخطاء Vercel - Manteqti
 
-## الملفات المحدثة (6 ملفات):
+## الملفات المحدثة (7 ملفات):
 
 ### 1. src/lib/auth-middleware.ts (جديد)
-ملف جديد يحتوي على دوال التحقق من المعرفات وأرقام الهواتف.
+دوال التحقق من المعرفات.
 
-### 2. src/app/api/auth/me/route.ts (محدث)
-تم إصلاح خطأ TypeScript بتغيير طريقة جلب المستخدم.
+### 2. src/lib/security.ts (محدث - مهم!)
+تم استبدال `bcryptjs` بـ `crypto` المدمج في Node.js.
 
-### 3. src/app/api/auth/request-otp/route.ts (جديد - مهم!)
-ملف جديد لإرسال رمز التحقق مع إضافة كلمة مرور افتراضية.
+### 3. src/app/api/auth/me/route.ts (محدث)
+إصلاح خطأ TypeScript.
 
-### 4. next.config.ts (محدث)
-تم إزالة `ignoreBuildErrors`.
+### 4. src/app/api/auth/request-otp/route.ts (جديد)
+ملف إرسال رمز التحقق.
 
-### 5. prisma/schema.prisma (محدث)
-تم إضافة العلاقات المفقودة بين Session و User.
+### 5. next.config.ts (محدث)
+إزالة `ignoreBuildErrors`.
 
-### 6. tsconfig.json (محدث)
-تم استبعاد المجلدات: examples/, skills/, download/
+### 6. prisma/schema.prisma (محدث)
+إضافة العلاقات المفقودة.
+
+### 7. tsconfig.json (محدث)
+استبعاد المجلدات: examples/, skills/, download/
 
 ---
 
@@ -29,6 +32,7 @@
 
 ```
 src/lib/auth-middleware.ts          →  src/lib/auth-middleware.ts
+src/lib/security.ts                  →  src/lib/security.ts
 src/app/api/auth/me/route.ts        →  src/app/api/auth/me/route.ts
 src/app/api/auth/request-otp/route.ts  →  src/app/api/auth/request-otp/route.ts
 next.config.ts                       →  next.config.ts
@@ -43,9 +47,6 @@ git commit -m "Fix TypeScript build errors for Vercel deployment"
 git push
 ```
 
-### الخطوة 3: إعادة النشر على Vercel
-سيتم إعادة البناء تلقائياً بعد الـ push.
-
 ---
 
 ## الأخطاء التي تم إصلاحها:
@@ -53,8 +54,9 @@ git push
 1. ✅ Cannot find module '@/lib/auth-middleware'
 2. ✅ Type 'never' error in auth/me/route.ts
 3. ✅ Property 'password' is missing in request-otp/route.ts
-4. ✅ Cannot find module 'socket.io-client' (تم استبعاد examples/)
-5. ✅ إزالة ignoreBuildErrors
+4. ✅ Cannot find module 'bcryptjs' (تم استبداله بـ crypto)
+5. ✅ Cannot find module 'socket.io-client' (تم استبعاد examples/)
+6. ✅ إزالة ignoreBuildErrors
 
 ---
 
