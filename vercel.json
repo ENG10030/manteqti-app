@@ -6,7 +6,7 @@
   "crons": [
     {
       "path": "/api/cron/auto-delete",
-      "schedule": "0 * * *"
+      "schedule": "0 * * * * *"
     }
   ]
 }
