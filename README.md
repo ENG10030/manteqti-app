@@ -1,77 +1,144 @@
-# إصلاحات Manteqti v2 - النسخة الكاملة
+# 🏠 نظام رفع الصور والفيديوهات - منطقتي
 
-## 🚀 الميزات الجديدة:
-
-### 1️⃣ إصلاح تغيير حالة العقار ✅
-- تم إصلاح API لتغيير الحالة بشكل صحيح
-- يعمل الآن بدون مشاكل
-
-### 2️⃣ نظام VIP / مميز ✅
-- العقارات المميزة تظهر في أعلى الصفحة
-- شارة ذهبية "VIP" على العقارات المميزة
-- يمكن للمطور تفعيل/إلغاء التمييز
-
-### 3️⃣ رفع الصور والفيديوهات من الجهاز ✅
-- رفع مباشر من الجهاز (ليس روابط)
-- دعم صور: JPEG, PNG, WebP, GIF (حتى 10MB)
-- دعم فيديوهات: MP4, WebM (حتى 50MB)
-- معاينة قبل الرفع
-
----
-
-## 📁 الملفات:
+## 📁 الملفات المضمنة
 
 ```
-src/app/api/apartments/[id]/route.ts  ← إصلاح تغيير الحالة + VIP
-src/app/api/upload/route.ts            ← رفع الملفات الجديد
-src/app/page.tsx                       ← الواجهة المحدثة (مهم!)
+src/
+├── components/
+│   └── file-upload.tsx          ← مكون رفع الملفات
+├── app/
+│   ├── api/
+│   │   ├── upload/
+│   │   │   └── route.ts         ← API رفع الملفات
+│   │   └── apartments/
+│   │       └── route.ts         ← API العقارات
+│   └── admin/
+│       └── apartments/
+│           └── new/
+│               └── page.tsx     ← صفحة إضافة عقار
+└── lib/
+    └── cloudinary.ts            ← تكوين Cloudinary
 ```
 
 ---
 
-## 📝 خطوات التثبيت:
+## 🚀 خطوات التثبيت
 
-### الخطوة 1: انسخ الملفات
-```
-src/app/api/apartments/[id]/route.ts  →  مشروعك
-src/app/api/upload/route.ts           →  مشروعك
-src/app/page.tsx                      →  مشروعك
-```
+### 1️⃣ تثبيت حزمة Cloudinary
 
-### الخطوة 2: إنشاء مجلد الرفع
 ```bash
-mkdir -p public/uploads/images
-mkdir -p public/uploads/videos
+npm install cloudinary
 ```
 
-### الخطوة 3: Commit & Push
+---
+
+### 2️⃣ نسخ الملفات
+
+انسخ الملفات من هذا المجلد إلى مشروعك:
+
+| من | إلى |
+|----|-----|
+| `src/components/file-upload.tsx` | `src/components/file-upload.tsx` |
+| `src/app/api/upload/route.ts` | `src/app/api/upload/route.ts` |
+| `src/app/api/apartments/route.ts` | `src/app/api/apartments/route.ts` |
+| `src/app/admin/apartments/new/page.tsx` | `src/app/admin/apartments/new/page.tsx` |
+| `src/lib/cloudinary.ts` | `src/lib/cloudinary.ts` |
+
+---
+
+### 3️⃣ إضافة متغيرات البيئة
+
+في ملف `.env`:
+
+```env
+# Cloudinary
+CLOUDINARY_CLOUD_NAME="ddei8bqgy"
+CLOUDINARY_API_KEY="451439326463719"
+CLOUDINARY_API_SECRET="السر_من_ Cloudinary"
+```
+
+---
+
+### 4️⃣ إضافة المتغيرات في Vercel
+
+اذهب إلى: Vercel → Settings → Environment Variables
+
+أضف:
+- `CLOUDINARY_CLOUD_NAME` = `ddei8bqgy`
+- `CLOUDINARY_API_KEY` = `451439326463719`
+- `CLOUDINARY_API_SECRET` = (انسخه من Cloudinary)
+
+---
+
+### 5️⃣ رفع ونشر
+
 ```bash
 git add .
-git commit -m "Add VIP system, file upload, and fix status change"
+git commit -m "إضافة نظام رفع الصور"
 git push
 ```
 
-### الخطوة 4: تهيئة قاعدة البيانات
-افتح بعد النشر:
-```
-https://manteqti-app.vercel.app/api/init-db
+---
+
+## 🎨 مميزات مكون الرفع
+
+| الميزة | ✅ |
+|--------|---|
+| السحب والإفلات | ✅ |
+| معاينة الصور | ✅ |
+| حذف الصور | ✅ |
+| رفع عدة ملفات | ✅ |
+| شريط تحميل | ✅ |
+| دعم الفيديو | ✅ |
+| حدود الملفات | ✅ |
+
+---
+
+## 📸 استخدام المكون
+
+```tsx
+import { FileUpload } from '@/components/file-upload';
+
+// للصور
+<FileUpload
+  type="image"
+  value={images}
+  onChange={setImages}
+  maxFiles={5}
+/>
+
+// للفيديوهات
+<FileUpload
+  type="video"
+  value={videos}
+  onChange={setVideos}
+  maxFiles={2}
+/>
 ```
 
 ---
 
-## 🎨 كيفية الاستخدام:
+## 🔗 الروابط
 
-### تفعيل VIP / مميز:
-1. ادخل لوحة المطور
-2. اضغط على العقار
-3. اضغط "جعله مميزاً"
-
-### رفع الصور والفيديوهات:
-1. عند إضافة أو تعديل عقار
-2. اضغط "رفع صورة" أو "رفع فيديو"
-3. اختر الملف من جهازك
-4. سيتم رفعه تلقائياً
+- صفحة إضافة عقار: `/admin/apartments/new`
+- API رفع الملفات: `/api/upload`
+- API العقارات: `/api/apartments`
 
 ---
 
-تم إنشاء هذا الملف بواسطة Z.ai
+## ⚠️ ملاحظات مهمة
+
+1. **حجم الملفات**: حد أقصى 50MB للملف
+2. **أنواع الصور**: JPEG, PNG, WebP, GIF
+3. **أنواع الفيديو**: MP4, WebM, OGG
+4. **الصور تُحفظ على Cloudinary**: لن تُحذف عند إعادة النشر
+
+---
+
+## 📞 للحصول على API Secret
+
+1. اذهب إلى: https://console.cloudinary.com
+2. اختر مشروعك
+3. Settings → API Keys
+4. اضغط "Reveal" بجانب API Secret
+5. انسخ السر
