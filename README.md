@@ -11,6 +11,12 @@
 ### 3. prisma/schema.prisma (محدث)
 تم إضافة العلاقات المفقودة بين Session و User.
 
+### 4. tsconfig.json (محدث - مهم!)
+تم استبعاد المجلدات التي تسبب أخطاء:
+- examples/
+- skills/
+- download/
+
 ---
 
 ## طريقة التثبيت:
@@ -22,6 +28,7 @@
 src/lib/auth-middleware.ts  →  src/lib/auth-middleware.ts
 next.config.ts              →  next.config.ts
 prisma/schema.prisma        →  prisma/schema.prisma
+tsconfig.json               →  tsconfig.json
 ```
 
 ### الخطوة 2: تحديث قاعدة البيانات (محلياً)
@@ -45,7 +52,8 @@ git push
 
 1. ✅ Cannot find module '@/lib/auth-middleware'
 2. ✅ Type 'never' error in auth/me/route.ts
-3. ✅ إزالة ignoreBuildErrors
+3. ✅ Cannot find module 'socket.io-client' (تم استبعاد examples/)
+4. ✅ إزالة ignoreBuildErrors
 
 ---
 
