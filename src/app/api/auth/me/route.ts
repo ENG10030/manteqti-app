@@ -14,19 +14,27 @@ export async function GET(request: NextRequest) {
 
     // Find session
     const session = await db.session.findUnique({
-      where: { token },
-      include: { user: true }
+      where: { token }
     });
 
     if (!session || session.expiresAt < new Date()) {
       return NextResponse.json({ user: null });
     }
 
+    // Find user separately
+    const user = await db.user.findUnique({
+      where: { id: session.userId }
+    });
+
+    if (!user) {
+      return NextResponse.json({ user: null });
+    }
+
     return NextResponse.json({ 
       user: {
-        id: session.user.id,
-        identifier: session.user.identifier,
-        name: session.user.name,
+        id: user.id,
+        identifier: user.identifier,
+        name: user.name,
       }
     });
   } catch {
