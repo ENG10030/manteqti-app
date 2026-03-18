@@ -1,72 +1,111 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
-import path from 'path';
+import { uploadImage, uploadVideo, ALLOWED_IMAGE_TYPES, ALLOWED_VIDEO_TYPES, MAX_FILE_SIZE } from '@/lib/cloudinary';
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const type = formData.get('type') as string || 'image';
+    const file = formData.get('file') as File | null;
+    const type = formData.get('type') as 'image' | 'video' | null;
 
     if (!file) {
-      return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
+      return NextResponse.json({ error: 'لم يتم إرسال ملف' }, { status: 400 });
     }
 
-    // Validate file type
-    const allowedImageTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-    const allowedVideoTypes = ['video/mp4', 'video/webm', 'video/ogg'];
-    
-    const isImage = allowedImageTypes.includes(file.type);
-    const isVideo = allowedVideoTypes.includes(file.type);
+    // التحقق من حجم الملف
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json({ error: 'حجم الملف يتجاوز الحد المسموح (50MB)' }, { status: 400 });
+    }
+
+    // التحقق من نوع الملف
+    const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
+    const isVideo = ALLOWED_VIDEO_TYPES.includes(file.type);
 
     if (!isImage && !isVideo) {
       return NextResponse.json({ 
-        error: 'Invalid file type. Allowed: JPEG, PNG, WebP, GIF, MP4, WebM, OGG' 
+        error: 'نوع الملف غير مدعوم. الأنواع المدعومة: JPEG, PNG, WebP, GIF, MP4, WebM' 
       }, { status: 400 });
     }
 
-    // Check file size
-    const maxSize = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
-    if (file.size > maxSize) {
-      return NextResponse.json({ 
-        error: `File too large. Max: ${isVideo ? '50MB' : '10MB'}` 
-      }, { status: 400 });
-    }
-
-    // Create uploads directory
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', isVideo ? 'videos' : 'images');
-    if (!existsSync(uploadDir)) {
-      await mkdir(uploadDir, { recursive: true });
-    }
-
-    // Generate filename
-    const timestamp = Date.now();
-    const randomStr = Math.random().toString(36).substring(2, 8);
-    const ext = file.name.split('.').pop() || (isVideo ? 'mp4' : 'jpg');
-    const filename = `${timestamp}-${randomStr}.${ext}`;
-    const filepath = path.join(uploadDir, filename);
-
-    // Write file
+    // تحويل الملف إلى Buffer
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    await writeFile(filepath, buffer);
 
-    // Return public URL
-    const publicUrl = `/uploads/${isVideo ? 'videos' : 'images'}/${filename}`;
+    // رفع الملف
+    let result;
+    if (type === 'video' || isVideo) {
+      result = await uploadVideo(buffer);
+    } else {
+      result = await uploadImage(buffer);
+    }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
-      url: publicUrl,
-      filename,
-      type: isVideo ? 'video' : 'image',
-      size: file.size
+      url: result.url,
+      publicId: result.publicId,
     });
-  } catch (error: any) {
-    console.error('Error uploading file:', error);
+
+  } catch (error) {
+    console.error('Upload error:', error);
     return NextResponse.json({ 
-      error: 'Failed to upload file',
-      details: error.message 
+      error: 'حدث خطأ أثناء رفع الملف',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
+  }
+}
+
+// رفع عدة ملفات
+export async function PUT(request: NextRequest) {
+  try {
+    const formData = await request.formData();
+    const files = formData.getAll('files') as File[];
+    const type = formData.get('type') as 'image' | 'video' | null;
+
+    if (!files || files.length === 0) {
+      return NextResponse.json({ error: 'لم يتم إرسال ملفات' }, { status: 400 });
+    }
+
+    const results = [];
+
+    for (const file of files) {
+      // التحقق من حجم الملف
+      if (file.size > MAX_FILE_SIZE) {
+        continue; // تخطي الملفات الكبيرة
+      }
+
+      // التحقق من نوع الملف
+      const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
+      const isVideo = ALLOWED_VIDEO_TYPES.includes(file.type);
+
+      if (!isImage && !isVideo) {
+        continue;
+      }
+
+      const bytes = await file.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+
+      let result;
+      if (type === 'video' || isVideo) {
+        result = await uploadVideo(buffer);
+      } else {
+        result = await uploadImage(buffer);
+      }
+
+      results.push({
+        url: result.url,
+        publicId: result.publicId,
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      files: results,
+      count: results.length,
+    });
+
+  } catch (error) {
+    console.error('Batch upload error:', error);
+    return NextResponse.json({ 
+      error: 'حدث خطأ أثناء رفع الملفات' 
     }, { status: 500 });
   }
 }

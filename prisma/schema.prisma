@@ -55,6 +55,11 @@ model Apartment {
   updatedAt       DateTime    @updatedAt
   inquiries       Inquiry[]
   
+  // حقول VIP والمميز - تم نقلها للمكان الصحيح
+  isFeatured      Boolean     @default(false)
+  isVip           Boolean     @default(false)
+  featuredUntil   DateTime?
+  
   @@map("apartments")  
 }
 
