@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { db } from '@/lib/db';
 
-// Initialize Prisma Client
-const prisma = new PrismaClient();
-
-// جلب كل العقارات
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -19,13 +15,14 @@ export async function GET(request: NextRequest) {
     if (type) where.type = type;
     if (status) where.status = status;
     if (minPrice || maxPrice) {
-      where.price = {};
-      if (minPrice) where.price.gte = parseInt(minPrice);
-      if (maxPrice) where.price.lte = parseInt(maxPrice);
+      const priceFilter: { gte?: number; lte?: number } = {};
+      if (minPrice) priceFilter.gte = parseInt(minPrice);
+      if (maxPrice) priceFilter.lte = parseInt(maxPrice);
+      where.price = priceFilter;
     }
     if (bedrooms) where.bedrooms = { gte: parseInt(bedrooms) };
 
-    const apartments = await prisma.apartment.findMany({
+    const apartments = await db.apartment.findMany({
       where,
       orderBy: [
         { isVip: 'desc' },
@@ -41,12 +38,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// إنشاء عقار جديد
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const apartment = await prisma.apartment.create({
+    const apartment = await db.apartment.create({
       data: {
         title: body.title,
         description: body.description || '',
