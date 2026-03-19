@@ -49,15 +49,20 @@ export async function POST(request: NextRequest) {
     });
 
     // Log successful login
-    await db.securityLog.create({
-      data: {
-        action: 'login_success',
-        identifier: user.identifier,
-        details: 'Login successful'
-      }
-    });
+    try {
+      await db.securityLog.create({
+        data: {
+          action: 'login_success',
+          identifier: user.identifier,
+          details: 'Login successful'
+        }
+      });
+    } catch {
+      // Ignore logging errors
+    }
 
-    return NextResponse.json({ 
+    // Create response with user data
+    const response = NextResponse.json({ 
       success: true,
       message: 'تم تسجيل الدخول بنجاح',
       user: {
@@ -67,6 +72,17 @@ export async function POST(request: NextRequest) {
       },
       token
     });
+
+    // Set HTTP-only cookie for authentication
+    response.cookies.set('auth_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      expires: expiresAt,
+      path: '/'
+    });
+
+    return response;
   } catch (error) {
     console.error('Error logging in:', error);
     return NextResponse.json({ error: 'فشل في تسجيل الدخول' }, { status: 500 });

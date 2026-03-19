@@ -373,8 +373,36 @@ export default function App() {
     }
   }, [isDeveloper]);
 
-  // Get unique areas from apartments
-  const uniqueAreas = [...new Set(apartments.map(apt => apt.area))].sort();
+  // Egyptian areas - static list with proper names
+  const egyptianAreas = [
+    'مدينة نصر',
+    'التجمع الخامس',
+    'المعادي',
+    'وسط البلد',
+    'جاردن سيتي',
+    'الزمالك',
+    'المهندسين',
+    'الدقي',
+    'العجوزة',
+    'حدائق الأهرام',
+    '6 أكتوبر',
+    'الشيخ زايد',
+    'القاهرة الجديدة',
+    'الشروق',
+    'العبور',
+    'الرحاب',
+    'المستقبل',
+    'بدر',
+    'العاصمة الإدارية',
+    'المنصورة',
+    'الإسكندرية',
+    'طنطا',
+    'الفيوم',
+    'أسيوط',
+  ];
+
+  // Get unique areas from apartments (for filtering)
+  const uniqueAreas = [...new Set(apartments.map(apt => apt.area))].filter(a => a).sort();
 
   // Filter apartments - regular users only see approved apartments
   const filteredApartments = apartments.filter(apt => {
@@ -951,9 +979,36 @@ export default function App() {
     }
   };
 
-  // Toggle favorite
+  // Load favorites from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('manteqti_favorites');
+      if (saved) {
+        setFavorites(JSON.parse(saved));
+      }
+    } catch {
+      // Ignore errors
+    }
+  }, []);
+
+  // Toggle favorite - saves to localStorage
   const toggleFavorite = (id: string) => {
-    setFavorites(prev => prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]);
+    setFavorites(prev => {
+      const newFavorites = prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id];
+      // Save to localStorage
+      try {
+        localStorage.setItem('manteqti_favorites', JSON.stringify(newFavorites));
+      } catch {
+        // Ignore errors
+      }
+      // Show toast
+      if (!prev.includes(id)) {
+        addToast('تمت الإضافة للمفضلة ❤️', 'success');
+      } else {
+        addToast('تمت الإزالة من المفضلة', 'info');
+      }
+      return newFavorites;
+    });
   };
 
   // Loading state

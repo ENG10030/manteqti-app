@@ -10,16 +10,28 @@ export async function GET(request: NextRequest) {
     const minPrice = searchParams.get('minPrice');
     const maxPrice = searchParams.get('maxPrice');
     const bedrooms = searchParams.get('bedrooms');
+    const area = searchParams.get('area');
 
-    const where: Record<string, unknown> = {};
+    interface WhereClause {
+      type?: string;
+      status?: string;
+      price?: { gte?: number; lte?: number };
+      bedrooms?: { gte?: number };
+      area?: string;
+    }
+    
+    const where: WhereClause = {};
 
-    if (type) where.type = type;
+    if (type && ['rent', 'sale'].includes(type)) where.type = type;
     if (status) where.status = status;
+    if (area) where.area = area;
+    
     if (minPrice || maxPrice) {
       where.price = {};
       if (minPrice) where.price.gte = parseInt(minPrice);
       if (maxPrice) where.price.lte = parseInt(maxPrice);
     }
+    
     if (bedrooms) where.bedrooms = { gte: parseInt(bedrooms) };
 
     const apartments = await db.apartment.findMany({
@@ -34,7 +46,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(apartments);
   } catch (error) {
     console.error('Error fetching apartments:', error);
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+    return NextResponse.json({ error: 'حدث خطأ في جلب العقارات' }, { status: 500 });
   }
 }
 
@@ -43,23 +55,34 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
+    // Validate required fields
+    if (!body.title || !body.price || !body.area) {
+      return NextResponse.json({ 
+        error: 'العنوان والسعر والمنطقة مطلوبون' 
+      }, { status: 400 });
+    }
+
     const apartment = await db.apartment.create({
       data: {
         title: body.title,
         description: body.description || '',
-        price: parseInt(body.price),
+        price: parseInt(body.price) || 0,
         area: body.area || '',
         bedrooms: parseInt(body.bedrooms) || 0,
         bathrooms: parseInt(body.bathrooms) || 0,
         type: body.type || 'rent',
-        status: body.status || 'available',
+        status: body.status || 'pending',
         ownerPhone: body.ownerPhone || '',
         mapLink: body.mapLink || '',
-        images: body.images,
-        videos: body.videos,
-        amenities: body.amenities,
+        imageUrl: body.imageUrl || null,
+        images: body.images || null,
+        videoUrl: body.videoUrl || null,
+        videos: body.videos || null,
+        amenities: body.amenities || null,
+        featured: body.featured || false,
         isFeatured: body.isFeatured || false,
         isVip: body.isVip || false,
+        createdBy: body.createdBy || null,
       },
     });
 

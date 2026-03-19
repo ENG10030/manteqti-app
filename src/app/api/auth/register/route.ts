@@ -59,7 +59,8 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    return NextResponse.json({ 
+    // Create response with user data
+    const response = NextResponse.json({ 
       success: true,
       message: 'تم التسجيل بنجاح',
       user: {
@@ -69,6 +70,17 @@ export async function POST(request: NextRequest) {
       },
       token
     });
+
+    // Set HTTP-only cookie for authentication
+    response.cookies.set('auth_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      expires: expiresAt,
+      path: '/'
+    });
+
+    return response;
   } catch (error) {
     console.error('Error registering user:', error);
     return NextResponse.json({ error: 'فشل في التسجيل' }, { status: 500 });

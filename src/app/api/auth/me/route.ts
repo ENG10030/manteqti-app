@@ -3,10 +3,13 @@ import { db } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
-    // Check for Authorization header or query param
+    // Check for cookie first (most secure), then Authorization header, then query param
+    const cookieToken = request.cookies.get('auth_token')?.value;
     const authHeader = request.headers.get('authorization');
-    const token = authHeader?.replace('Bearer ', '') || 
-                  request.nextUrl.searchParams.get('token');
+    const headerToken = authHeader?.replace('Bearer ', '');
+    const queryToken = request.nextUrl.searchParams.get('token');
+    
+    const token = cookieToken || headerToken || queryToken;
 
     if (!token) {
       return NextResponse.json({ user: null });
@@ -18,10 +21,13 @@ export async function GET(request: NextRequest) {
     });
 
     if (!session || session.expiresAt < new Date()) {
-      return NextResponse.json({ user: null });
+      // Clear invalid cookie
+      const response = NextResponse.json({ user: null });
+      response.cookies.delete('auth_token');
+      return response;
     }
 
-    // Find user separately
+    // Find user
     const user = await db.user.findUnique({
       where: { id: session.userId }
     });
