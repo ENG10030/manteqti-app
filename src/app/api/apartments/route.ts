@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
-// جلب كل العقارات
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -39,7 +38,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// إنشاء عقار جديد
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
