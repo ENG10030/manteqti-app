@@ -1,126 +1,106 @@
-# ملفات إصلاح منطقتي (Manteqti)
+# ملفات الإصلاح لمشروع منطقتي - الإصدار 2
 
-## 📁 محتويات هذا المجلد
+## الملفات المصلحة
 
-```
-src/
-├── app/
-│   ├── page.tsx                      # الصفحة الرئيسية (المناطق + المفضلة)
-│   └── api/
-│       ├── chat/
-│       │   └── route.ts              # المساعد الذكي
-│       ├── seed/
-│       │   └── route.ts              # البيانات التجريبية
-│       ├── apartments/
-│       │   └── route.ts              # العقارات
-│       └── auth/
-│           ├── login/route.ts        # تسجيل الدخول
-│           ├── register/route.ts     # التسجيل
-│           ├── me/route.ts           # التحقق من المستخدم
-│           └── logout/route.ts       # تسجيل الخروج
-```
+### 1. `src/app/api/apartments/route.ts`
+- **الإصلاح**: حل خطأ TypeScript `'where.price' is of type 'unknown'`
+- **التغيير**: استخدام type annotation صريح للـ price filter
 
----
+### 2. `src/app/api/chat/route.ts`
+- **الإصلاح**: المساعد الذكي لا يعمل
+- **التغيير**: استخدام z-ai-web-dev-sdk مع ردود بديلة
 
-## 🔧 المشاكل التي تم إصلاحها
+### 3. `src/app/api/auth/login/route.ts`
+- **الإصلاح**: الجلسة لا تستمر بعد تسجيل الدخول
+- **التغيير**: حفظ التوكن في HTTP-only cookie
 
-### 1. ✅ المساعد الذكي لا يرد
-- إضافة fallback responses عندما يفشل الاتصال بالـ AI
-- الردود الآن فورية ومفيدة
+### 4. `src/app/api/auth/register/route.ts`
+- **الإصلاح**: الجلسة لا تستمر بعد التسجيل
+- **التغيير**: حفظ التوكن في HTTP-only cookie
 
-### 2. ✅ تسجيل الدخول لا يعمل
-- حفظ token في HTTP-only cookies
-- الجلسة تستمر 30 يوم
+### 5. `src/app/api/auth/me/route.ts`
+- **الإصلاح**: قراءة التوكن من cookies
+- **التغيير**: دعم قراءة التوكن من cookie و header و query
 
-### 3. ✅ المناطق تظهر أرقام
-- إضافة قائمة مناطق مصرية ثابتة
-- المناطق: مدينة نصر، التجمع، المعادي، المهندسين، إلخ
+### 6. `src/app/api/auth/logout/route.ts`
+- **الإصلاح**: حذف الـ cookie عند تسجيل الخروج
+- **التغيير**: مسح auth_token cookie
 
-### 4. ✅ المفضلة لا تعمل
-- حفظ المفضلة في localStorage
-- إشعارات عند الإضافة/الإزالة
+### 7. `src/app/api/seed/route.ts`
+- **الإصلاح**: المناطق تظهر كأرقام بدلاً من أسماء
+- **التغيير**: بيانات تجريبية بأسماء مناطق مصرية صحيحة
 
-### 5. ✅ بيانات تجريبية محسّنة
-- 8 عقارات بمناطق صحيحة
-- صور من Unsplash موثوقة
+### 8. `src/app/page.tsx`
+- **الإصلاح**: قائمة المناطق الثابتة + حفظ المفضلة في localStorage
+- **التغيير**: قائمة مناطق مصرية ثابتة + localStorage للمفضلة
 
 ---
 
-## 📋 خطوات التثبيت
+## خطوات التثبيت
 
-### الخطوة 1: تحميل الملفات
-قم بفك ضغط الملف المرفق
+### الطريقة الأولى: نسخ الملفات يدوياً
 
-### الخطوة 2: نسخ الملفات إلى مشروعك
-انسخ محتويات مجلد `src` إلى مشروعك في GitHub:
+1. **انسخ الملفات إلى مشروعك**:
+   ```
+   src/app/api/apartments/route.ts → src/app/api/apartments/route.ts
+   src/app/api/chat/route.ts → src/app/api/chat/route.ts
+   src/app/api/auth/login/route.ts → src/app/api/auth/login/route.ts
+   src/app/api/auth/register/route.ts → src/app/api/auth/register/route.ts
+   src/app/api/auth/me/route.ts → src/app/api/auth/me/route.ts
+   src/app/api/auth/logout/route.ts → src/app/api/auth/logout/route.ts
+   src/app/api/seed/route.ts → src/app/api/seed/route.ts
+   src/app/page.tsx → src/app/page.tsx
+   ```
 
-```bash
-# في مجلد مشروعك
-cp -r /path/to/extracted/src/* ./src/
-```
+2. **ارفع التغييرات إلى GitHub**:
+   ```bash
+   git add .
+   git commit -m "إصلاح جميع المشاكل"
+   git push
+   ```
 
-### الخطوة 3: رفع التغييرات
-```bash
-git add .
-git commit -m "إصلاح: المساعد الذكي، المصادقة، المناطق، المفضلة"
-git push
-```
+3. **Vercel سيعيد النشر تلقائياً**
 
-### الخطوة 4: الانتظار
-Vercel سيُعيد نشر الموقع تلقائياً خلال 1-2 دقيقة
+### الطريقة الثانية: استخدام GitHub Desktop
 
----
-
-## 🗂️ الملفات المطلوب استبدالها
-
-| من (هذا المجلد) | إلى (مشروعك) |
-|----------------|---------------|
-| `src/app/api/chat/route.ts` | `src/app/api/chat/route.ts` |
-| `src/app/api/seed/route.ts` | `src/app/api/seed/route.ts` |
-| `src/app/api/apartments/route.ts` | `src/app/api/apartments/route.ts` |
-| `src/app/api/auth/login/route.ts` | `src/app/api/auth/login/route.ts` |
-| `src/app/api/auth/register/route.ts` | `src/app/api/auth/register/route.ts` |
-| `src/app/api/auth/me/route.ts` | `src/app/api/auth/me/route.ts` |
-| `src/app/api/auth/logout/route.ts` | `src/app/api/auth/logout/route.ts` |
-| `src/app/page.tsx` | `src/app/page.tsx` |
+1. افتح مشروعك في GitHub Desktop
+2. اسحب الملفات من هذا المجلد إلى مشروعك
+3. اضغط Commit
+4. اضغط Push
 
 ---
 
-## ⚠️ ملاحظات مهمة
+## ملاحظات مهمة
 
-### 1. تأكد من استخدام `db` من `@/lib/db`
-الصحيح:
-```typescript
-import { db } from '@/lib/db';
-```
+1. **تأكد من وجود z-ai-web-dev-sdk في package.json**:
+   ```json
+   "dependencies": {
+     "z-ai-web-dev-sdk": "^1.0.0"
+   }
+   ```
 
-خطأ ❌:
-```typescript
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
-```
+2. **قم بتشغيل البذرة (seed) بعد النشر**:
+   - افتح: `https://your-app.vercel.app/api/seed`
+   - هذا سيضيف البيانات التجريبية بالمناطق الصحيحة
 
-### 2. Schema يجب أن يحتوي على هذه الحقول
-تأكد أن `prisma/schema.prisma` يحتوي على:
-- `isVip` (Boolean)
-- `isFeatured` (Boolean)
-- `imageUrl` (String?)
-- `images` (String?)
-- `ownerPhone` (String)
+3. **اختبر الموقع**:
+   - سجل حساب جديد
+   - اختبر تسجيل الدخول والخروج
+   - اختبر المساعد الذكي
+   - اختبر المفضلة
 
 ---
 
-## 🧪 اختبار بعد النشر
+## المشاكل التي تم إصلاحها
 
-1. **المساعد الذكي**: اضغط على "المساعد الذكي" واكتب "مرحبا"
-2. **تسجيل الدخول**: جرّب إنشاء حساب جديد
-3. **المناطق**: تأكد أن قائمة المناطق تظهر الأسماء
-4. **المفضلة**: اضغط على قلب بجانب أي عقار
+1. ✅ المساعد الذكي لا يعمل
+2. ✅ صفحة تفاصيل العقار لا تفتح
+3. ✅ أزرار المفضلة لا تعمل
+4. ✅ نظام تسجيل الدخول (عدم ظهور رسائل الخطأ، عدم استمرار الجلسة)
+5. ✅ قائمة المناطق تظهر أرقام بدلاً من أسماء
+6. ✅ تسجيل دخول المطور لا يعمل
+7. ✅ خطأ TypeScript في Vercel build
 
 ---
 
-## 📞 للدعم
-إذا واجهت أي مشكلة، تأكد من:
-1. قراءة Build Logs في Vercel
-2. التحقق من متغيرات البيئة (DATABASE_URL)
-3. التأكد من أن Prisma محدث
+تم إنشاء هذه الملفات بواسطة Z.ai Code
