@@ -41,22 +41,49 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// إضافة تعليق جديد (في انتظار الموافقة)
+// إضافة تعليق جديد
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { apartmentId, userId, content } = body;
+    const { apartmentId, userId, content, isDeveloper, status } = body;
 
-    if (!apartmentId || !userId || !content) {
+    if (!apartmentId || !content) {
       return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 });
+    }
+
+    let finalUserId = userId;
+    let commentStatus = status || 'pending';
+
+    // إذا كان المطور يعلق
+    if (isDeveloper || userId === 'developer') {
+      // البحث عن مستخدم المطور أو إنشاؤه
+      let developerUser = await db.user.findUnique({
+        where: { identifier: 'developer' }
+      });
+
+      if (!developerUser) {
+        // إنشاء مستخدم للمطور
+        developerUser = await db.user.create({
+          data: {
+            identifier: 'developer',
+            name: 'المطور',
+            password: 'developer_internal'
+          }
+        });
+      }
+
+      finalUserId = developerUser.id;
+      commentStatus = 'approved'; // تعليقات المطور تُنشر مباشرة
     }
 
     const comment = await db.comment.create({
       data: {
         apartmentId,
-        userId,
+        userId: finalUserId,
         content,
-        status: 'pending', // في انتظار موافقة المطور
+        status: commentStatus,
+        approvedBy: isDeveloper ? 'developer' : null,
+        approvedAt: isDeveloper ? new Date() : null,
       },
       include: {
         user: {
@@ -72,7 +99,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ 
       success: true, 
       comment,
-      message: 'تم إرسال تعليقك وهو في انتظار موافقة المطور' 
+      message: isDeveloper ? 'تم نشر التعليق مباشرة' : 'تم إرسال تعليقك وهو في انتظار موافقة المطور' 
     });
   } catch (error) {
     console.error('Error creating comment:', error);

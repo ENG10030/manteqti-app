@@ -14,7 +14,7 @@ import {
   Menu, AlertTriangle, CheckCircle2, XCircle, Image as ImageIcon, Video,
   ChevronLeft, ChevronRight, Play, Hourglass, Plus, Upload, Link,
   Users, Activity, Wallet, PieChart, Layers, Key, ArrowUp, Download, RefreshCw as RefreshCwIcon,
-  Crown, Diamond
+  Crown, Diamond, Ban
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
 
@@ -101,6 +101,38 @@ interface Payment {
 
 interface Toast { id: string; message: string; type: 'success' | 'error' | 'info'; }
 interface User { id: string; identifier: string; name: string; }
+
+// واجهة طلب التعديل
+interface PropertyEditRequest {
+  id: string;
+  apartmentId: string;
+  userId: string;
+  editType: string;
+  newImages?: string[];
+  newVideos?: string[];
+  newPrice?: number;
+  newStatus?: string;
+  description?: string;
+  status: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewNotes?: string;
+  createdAt: string;
+  apartment?: {
+    id: string;
+    title: string;
+    price: number;
+    status: string;
+    images?: string;
+    videos?: string;
+    type: string;
+  };
+  user?: {
+    id: string;
+    name: string;
+    identifier: string;
+  };
+}
 
 // Helper function to parse JSON string to array
 function parseJsonArray(value: string | string[] | undefined): string[] {
@@ -192,12 +224,21 @@ export default function App() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showDevPanel, setShowDevPanel] = useState(false);
+  const [showMessages, setShowMessages] = useState(false);
+  const [messages, setMessages] = useState<Array<{ id: string; senderId: string; receiverId: string | null; content: string; isRead: boolean; createdAt: string; sender?: { id: string; name: string; identifier: string } }>>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [messageLoading, setMessageLoading] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState<Array<{ id: string; userId: string; reason: string | null; blockedAt: string; user: { id: string; name: string; identifier: string } }>>([]);
   const [selectedApartment, setSelectedApartment] = useState<Apartment | null>(null);
   const [editApartment, setEditApartment] = useState<Apartment | null>(null);
   const [inquiryApartment, setInquiryApartment] = useState<Apartment | null>(null);
   const [paymentApartment, setPaymentApartment] = useState<Apartment | null>(null);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [editSubmitting, setEditSubmitting] = useState(false);
+  const [pendingApartmentDetails, setPendingApartmentDetails] = useState<Apartment | null>(null);
+  const [myPendingApartments, setMyPendingApartments] = useState<Apartment[]>([]);
+  const [showMyPending, setShowMyPending] = useState(false);
 
   // Form states
   const [authStep, setAuthStep] = useState<'login' | 'register'>('login');
@@ -205,6 +246,19 @@ export default function App() {
   const [authPassword, setAuthPassword] = useState('');
   const [authName, setAuthName] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  
+  // Forgot password states
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSuccess, setForgotSuccess] = useState(false);
+  const [resetToken, setResetToken] = useState<string | null>(null);
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
   const [devEmail, setDevEmail] = useState('');
   const [devPassword, setDevPassword] = useState('');
   const [devLoading, setDevLoading] = useState(false);
@@ -245,13 +299,37 @@ export default function App() {
   const [aiAction, setAiAction] = useState<string | null>(null);
   const [aiResponse, setAiResponse] = useState<string>('');
   const [aiLoading, setAiLoading] = useState(false);
-  const [settings, setSettings] = useState({ contactFee: 50, featuredFee: 100, premiumFee: 200, currency: 'ج.م' });
+  const [settings, setSettings] = useState({
+    contactFee: 50,
+    featuredFee: 100,
+    premiumFee: 200,
+    saleDisplayFee: 100,
+    rentDisplayFee: 75,
+    otherServicesFee: 50,
+    highlightFee: 150,
+    priorityListingFee: 200,
+    verifiedListingFee: 250,
+    currency: 'ج.م'
+  });
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [operationLogs, setOperationLogs] = useState<any[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showGallery, setShowGallery] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
-  const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'payments' | 'likes' | 'comments' | 'settings' | 'logs'>('stats');
+  const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'payments' | 'likes' | 'comments' | 'messages' | 'blocked' | 'settings' | 'logs' | 'editRequests'>('stats');
+
+  // Edit Requests States
+  const [editRequests, setEditRequests] = useState<PropertyEditRequest[]>([]);
+  const [showEditRequestModal, setShowEditRequestModal] = useState(false);
+  const [selectedApartmentForEdit, setSelectedApartmentForEdit] = useState<Apartment | null>(null);
+  const [editRequestForm, setEditRequestForm] = useState({
+    newImages: [] as string[],
+    newVideos: [] as string[],
+    newPrice: '',
+    newStatus: '',
+    description: ''
+  });
+  const [editRequestLoading, setEditRequestLoading] = useState(false);
 
   // Add toast notification
   const addToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -313,10 +391,11 @@ export default function App() {
     }
   };
 
-  // Fetch payments for current user
+  // Fetch payments and pending apartments for current user
   useEffect(() => {
     if (currentUser && !isDeveloper) {
       fetchUserPayments();
+      fetchMyPendingApartments();
     }
   }, [currentUser, isDeveloper]);
 
@@ -331,6 +410,20 @@ export default function App() {
       setUserPaidApartments(paidApartmentIds);
     } catch (err) {
       console.error('Error fetching user payments:', err);
+    }
+  };
+
+  // Fetch user's pending apartments
+  const fetchMyPendingApartments = async () => {
+    if (!currentUser || isDeveloper) return;
+    try {
+      const res = await fetch('/api/apartments?status=pending');
+      const data = await res.json();
+      // Filter to only show user's own pending apartments
+      const myPending = data.filter((apt: Apartment) => apt.createdBy === currentUser.id);
+      setMyPendingApartments(myPending);
+    } catch (err) {
+      console.error('Error fetching my pending apartments:', err);
     }
   };
 
@@ -360,6 +453,12 @@ export default function App() {
           contactFee: data.contactFee || 50,
           featuredFee: data.featuredFee || 100,
           premiumFee: data.premiumFee || 200,
+          saleDisplayFee: data.saleDisplayFee || 100,
+          rentDisplayFee: data.rentDisplayFee || 75,
+          otherServicesFee: data.otherServicesFee || 50,
+          highlightFee: data.highlightFee || 150,
+          priorityListingFee: data.priorityListingFee || 200,
+          verifiedListingFee: data.verifiedListingFee || 250,
           currency: data.currency || 'ج.م'
         });
       }
@@ -379,7 +478,18 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok) {
-        setSettings({ contactFee: data.contactFee, featuredFee: data.featuredFee, premiumFee: data.premiumFee, currency: data.currency });
+        setSettings({
+          contactFee: data.contactFee || 50,
+          featuredFee: data.featuredFee || 100,
+          premiumFee: data.premiumFee || 200,
+          saleDisplayFee: data.saleDisplayFee || 100,
+          rentDisplayFee: data.rentDisplayFee || 75,
+          otherServicesFee: data.otherServicesFee || 50,
+          highlightFee: data.highlightFee || 150,
+          priorityListingFee: data.priorityListingFee || 200,
+          verifiedListingFee: data.verifiedListingFee || 250,
+          currency: data.currency || 'ج.م'
+        });
         addToast('تم تحديث الإعدادات بنجاح', 'success');
       }
     } catch {
@@ -407,8 +517,112 @@ export default function App() {
       fetchOperationLogs();
       fetchAllLikes();
       fetchAllComments();
+      fetchMessages();
+      fetchBlockedUsers();
+      fetchEditRequests();
     }
   }, [isDeveloper]);
+
+  // Fetch edit requests
+  const fetchEditRequests = async () => {
+    try {
+      const res = await fetch('/api/edit-requests');
+      const data = await res.json();
+      // Process the data to parse JSON strings
+      const processedData = data.map((req: any) => ({
+        ...req,
+        newImages: req.newImages ? parseJsonArray(req.newImages) : [],
+        newVideos: req.newVideos ? parseJsonArray(req.newVideos) : [],
+      }));
+      setEditRequests(processedData);
+    } catch (err) {
+      console.error('Error fetching edit requests:', err);
+    }
+  };
+
+  // Submit edit request (for publishers)
+  const submitEditRequest = async () => {
+    if (!selectedApartmentForEdit || !currentUser) return;
+    
+    setEditRequestLoading(true);
+    try {
+      const res = await fetch('/api/edit-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apartmentId: selectedApartmentForEdit.id,
+          userId: currentUser.id,
+          newImages: editRequestForm.newImages,
+          newVideos: editRequestForm.newVideos,
+          newPrice: editRequestForm.newPrice ? parseInt(editRequestForm.newPrice) : null,
+          newStatus: editRequestForm.newStatus || null,
+          description: editRequestForm.description,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast('تم إرسال طلب التعديل بنجاح! سيتم مراجعته من قبل المطور.', 'success');
+        setShowEditRequestModal(false);
+        setSelectedApartmentForEdit(null);
+        setEditRequestForm({ newImages: [], newVideos: [], newPrice: '', newStatus: '', description: '' });
+      } else {
+        addToast(data.error || 'حدث خطأ', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الاتصال', 'error');
+    } finally {
+      setEditRequestLoading(false);
+    }
+  };
+
+  // Handle approve edit request (developer only)
+  const handleApproveEditRequest = async (requestId: string, reviewNotes?: string) => {
+    try {
+      const res = await fetch(`/api/edit-requests/${requestId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'approve',
+          reviewedBy: 'developer',
+          reviewNotes,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast('تم الموافقة على التعديل وتطبيقه بنجاح', 'success');
+        fetchEditRequests();
+        fetchApartments();
+      } else {
+        addToast(data.error || 'حدث خطأ', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الاتصال', 'error');
+    }
+  };
+
+  // Handle reject edit request (developer only)
+  const handleRejectEditRequest = async (requestId: string, reviewNotes?: string) => {
+    try {
+      const res = await fetch(`/api/edit-requests/${requestId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reject',
+          reviewedBy: 'developer',
+          reviewNotes,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast('تم رفض طلب التعديل', 'success');
+        fetchEditRequests();
+      } else {
+        addToast(data.error || 'حدث خطأ', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الاتصال', 'error');
+    }
+  };
 
   // Egyptian areas - static list with proper names
   const egyptianAreas = [
@@ -472,7 +686,14 @@ export default function App() {
     if (devEmail === DEVELOPER_EMAIL && devPassword === DEVELOPER_PASSWORD) {
       setIsDeveloper(true);
       setShowDevLogin(false);
-      setDevEmail('');
+      // حفظ البريد إذا تم تحديد "تذكرني"
+      if (rememberMe) {
+        localStorage.setItem('manteqti_dev_email', devEmail);
+        localStorage.setItem('manteqti_dev_remember', 'true');
+      } else {
+        localStorage.removeItem('manteqti_dev_email');
+        localStorage.removeItem('manteqti_dev_remember');
+      }
       setDevPassword('');
       addToast('مرحباً بك في لوحة تحكم المطور!', 'success');
       fetchDevData();
@@ -490,18 +711,28 @@ export default function App() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: authIdentifier, password: authPassword })
+        body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), password: authPassword })
       });
       const data = await res.json();
       if (res.ok) {
         setCurrentUser(data.user);
         setShowAuth(false);
-        setAuthIdentifier('');
+        // حفظ البريد/الهاتف إذا تم تحديد "تذكرني"
+        if (rememberMe) {
+          localStorage.setItem('manteqti_remembered_identifier', authIdentifier.trim().toLowerCase());
+          localStorage.setItem('manteqti_remember_me', 'true');
+        } else {
+          localStorage.removeItem('manteqti_remembered_identifier');
+          localStorage.removeItem('manteqti_remember_me');
+        }
         setAuthPassword('');
         addToast(`مرحباً ${data.user.name}!`, 'success');
       } else {
         addToast(data.error || 'خطأ في تسجيل الدخول', 'error');
       }
+    } catch (error) {
+      console.error('Login error:', error);
+      addToast('حدث خطأ في الاتصال بالخادم. تأكد من اتصالك بالإنترنت.', 'error');
     } finally {
       setAuthLoading(false);
     }
@@ -515,7 +746,11 @@ export default function App() {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: authIdentifier, name: authName, password: authPassword })
+        body: JSON.stringify({ 
+          identifier: authIdentifier.trim().toLowerCase(), 
+          name: authName.trim(), 
+          password: authPassword 
+        })
       });
       const data = await res.json();
       if (res.ok) {
@@ -528,6 +763,9 @@ export default function App() {
       } else {
         addToast(data.error || 'خطأ في التسجيل', 'error');
       }
+    } catch (error) {
+      console.error('Register error:', error);
+      addToast('حدث خطأ في الاتصال بالخادم. تأكد من اتصالك بالإنترنت.', 'error');
     } finally {
       setAuthLoading(false);
     }
@@ -540,6 +778,94 @@ export default function App() {
     setIsDeveloper(false);
     addToast('تم تسجيل الخروج', 'info');
   };
+
+  // Handle forgot password
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotLoading(true);
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setForgotSuccess(true);
+        if (data.resetUrl) {
+          setResetToken(data.token);
+        }
+        addToast('تم إرسال رابط استعادة كلمة المرور', 'success');
+      } else {
+        addToast(data.error || 'حدث خطأ', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الاتصال', 'error');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  // Handle reset password
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      addToast('كلمتا المرور غير متطابقتين', 'error');
+      return;
+    }
+    if (newPassword.length < 6) {
+      addToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'error');
+      return;
+    }
+    setResetLoading(true);
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: resetToken, newPassword, confirmPassword })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast('تم تغيير كلمة المرور بنجاح!', 'success');
+        setShowResetPassword(false);
+        setShowForgotPassword(false);
+        setResetToken(null);
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        addToast(data.error || 'حدث خطأ', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الاتصال', 'error');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  // Check for reset token in URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (token) {
+      // Verify token
+      fetch(`/api/auth/reset-password?token=${token}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            setResetToken(token);
+            setResetEmail(data.email);
+            setShowResetPassword(true);
+          } else {
+            addToast(data.error || 'الرابط غير صالح', 'error');
+          }
+        })
+        .catch(() => {
+          addToast('حدث خطأ في التحقق من الرابط', 'error');
+        });
+      // Clean URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [addToast]);
 
   // Submit apartment after login
   const submitApartment = async (data: any, userId?: string) => {
@@ -580,12 +906,23 @@ export default function App() {
     }
   };
 
-  // Handle add apartment - Available for all logged in users
+  // Handle add apartment - Available for everyone (guests need to login to submit)
   const handleAddApartment = async (confirmed: boolean = false) => {
-    // يجب تسجيل الدخول أولاً
+    // إذا لم يكن مسجل الدخول، نطلب منه التسجيل أولاً
     if (!currentUser && !isDeveloper) {
-      addToast('يجب تسجيل الدخول أولاً لإضافة عقار', 'error');
-      setShowAuth(true);
+      setConfirmDialog({
+        isOpen: true,
+        title: 'تسجيل الدخول مطلوب',
+        message: 'يجب تسجيل الدخول أولاً لنشر عقارك. هل تريد تسجيل الدخول أو إنشاء حساب جديد؟',
+        confirmText: 'تسجيل الدخول',
+        cancelText: 'إلغاء',
+        onConfirm: () => {
+          setShowAddModal(false);
+          setShowAuth(true);
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+        },
+        type: 'info'
+      });
       return;
     }
 
@@ -1052,6 +1389,34 @@ export default function App() {
     }
   }, []);
 
+  // Load remembered identifier from localStorage
+  useEffect(() => {
+    try {
+      const remembered = localStorage.getItem('manteqti_remembered_identifier');
+      const rememberMeFlag = localStorage.getItem('manteqti_remember_me');
+      if (remembered && rememberMeFlag === 'true') {
+        setAuthIdentifier(remembered);
+        setRememberMe(true);
+      }
+    } catch {
+      // Ignore errors
+    }
+  }, []);
+
+  // Load remembered developer email from localStorage
+  useEffect(() => {
+    try {
+      const devEmail = localStorage.getItem('manteqti_dev_email');
+      const devRemember = localStorage.getItem('manteqti_dev_remember');
+      if (devEmail && devRemember === 'true') {
+        setDevEmail(devEmail);
+        setRememberMe(true);
+      }
+    } catch {
+      // Ignore errors
+    }
+  }, []);
+
   // Fetch likes for current user
   useEffect(() => {
     if (currentUser) {
@@ -1101,6 +1466,91 @@ export default function App() {
       setComments(data);
     } catch (err) {
       console.error('Error fetching all comments:', err);
+    }
+  };
+
+  // Fetch messages
+  const fetchMessages = async () => {
+    if (!currentUser) return;
+    try {
+      const res = await fetch(`/api/messages?userId=${currentUser.id}&isDeveloper=${isDeveloper}`);
+      const data = await res.json();
+      setMessages(data);
+    } catch (err) {
+      console.error('Error fetching messages:', err);
+    }
+  };
+
+  // Send message to developer
+  const sendMessage = async () => {
+    if (!currentUser || !newMessage.trim()) return;
+    if (isBlocked) {
+      addToast('تم حظرك من استخدام الموقع. تواصل مع المطور.', 'error');
+      return;
+    }
+    setMessageLoading(true);
+    try {
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ senderId: currentUser.id, content: newMessage })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessages(prev => [data.message, ...prev]);
+        setNewMessage('');
+        addToast('تم إرسال الرسالة', 'success');
+      } else if (data.isBlocked) {
+        setIsBlocked(true);
+        addToast('تم حظرك من استخدام الموقع. تواصل مع المطور.', 'error');
+      } else {
+        addToast(data.error || 'حدث خطأ', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الإرسال', 'error');
+    } finally {
+      setMessageLoading(false);
+    }
+  };
+
+  // Fetch blocked users (developer only)
+  const fetchBlockedUsers = async () => {
+    try {
+      const res = await fetch('/api/block');
+      const data = await res.json();
+      setBlockedUsers(data);
+    } catch (err) {
+      console.error('Error fetching blocked users:', err);
+    }
+  };
+
+  // Block user
+  const blockUser = async (userId: string, reason?: string) => {
+    try {
+      const res = await fetch('/api/block', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, reason })
+      });
+      if (res.ok) {
+        addToast('تم حظر المستخدم', 'success');
+        fetchBlockedUsers();
+      }
+    } catch {
+      addToast('حدث خطأ', 'error');
+    }
+  };
+
+  // Unblock user
+  const unblockUser = async (userId: string) => {
+    try {
+      const res = await fetch(`/api/block?userId=${userId}`, { method: 'DELETE' });
+      if (res.ok) {
+        addToast('تم إلغاء حظر المستخدم', 'success');
+        fetchBlockedUsers();
+      }
+    } catch {
+      addToast('حدث خطأ', 'error');
     }
   };
 
@@ -1159,7 +1609,7 @@ export default function App() {
 
   // Add comment
   const addComment = async (apartmentId: string) => {
-    if (!currentUser) {
+    if (!currentUser && !isDeveloper) {
       addToast('يجب تسجيل الدخول للتعليق', 'error');
       return;
     }
@@ -1173,12 +1623,24 @@ export default function App() {
       const res = await fetch('/api/comments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apartmentId, userId: currentUser.id, content: newComment })
+        body: JSON.stringify({ 
+          apartmentId, 
+          userId: currentUser?.id || 'developer', 
+          content: newComment,
+          isDeveloper: isDeveloper, // المطور ينشر مباشرة
+          status: isDeveloper ? 'approved' : 'pending'
+        })
       });
       const data = await res.json();
       if (data.success) {
         setNewComment('');
-        addToast('تم إرسال تعليقك وهو في انتظار موافقة المطور', 'success');
+        if (isDeveloper) {
+          addToast('تم نشر التعليق مباشرة', 'success');
+          // إضافة التعليق للقائمة مباشرة
+          fetchComments(apartmentId);
+        } else {
+          addToast('تم إرسال تعليقك وهو في انتظار موافقة المطور', 'success');
+        }
       } else {
         addToast(data.error || 'حدث خطأ', 'error');
       }
@@ -1301,15 +1763,13 @@ export default function App() {
                 {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </motion.button>
 
-              {/* Add Apartment Button - Available for logged in users */}
-              {(currentUser || isDeveloper) && (
-                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                  onClick={() => setShowAddModal(true)}
-                  className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all">
-                  <Building2 className="h-5 w-5" />
-                  <span>إضافة شقة</span>
-                </motion.button>
-              )}
+              {/* Add Apartment Button - Available for everyone */}
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all">
+                <Building2 className="h-5 w-5" />
+                <span>إضافة شقة</span>
+              </motion.button>
 
               <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                 onClick={() => setShowChat(true)}
@@ -1336,10 +1796,17 @@ export default function App() {
                 </div>
               ) : currentUser ? (
                 <div className="flex items-center gap-2">
-                  <div className={`px-4 py-2 rounded-xl ${darkMode ? 'bg-slate-800' : 'bg-slate-100'}`}>
+                  <button onClick={() => { fetchMyPendingApartments(); setShowMyPending(true); }}
+                    className={`px-4 py-2 rounded-xl ${darkMode ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-100 hover:bg-slate-200'} transition-all relative`}
+                    title="عقاراتي قيد المراجعة">
                     <User className="h-4 w-4 inline ml-2" />
                     <span className="text-sm font-medium">{currentUser.name}</span>
-                  </div>
+                    {myPendingApartments.length > 0 && (
+                      <span className="absolute -top-1 -left-1 w-5 h-5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center">
+                        {myPendingApartments.length}
+                      </span>
+                    )}
+                  </button>
                   <button onClick={handleLogout} className="p-3 rounded-xl bg-rose-500/10 text-rose-500">
                     <LogOut className="h-5 w-5" />
                   </button>
@@ -1708,11 +2175,15 @@ export default function App() {
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className={`text-sm font-medium ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>ملاحظة مهمة</p>
+                      <p className={`text-sm font-medium ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>
+                        {isDeveloper ? 'صلاحية المطور' : currentUser ? 'ملاحظة مهمة' : 'تسجيل الدخول مطلوب'}
+                      </p>
                       <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>
-                        {currentUser 
-                          ? 'سيتم إرسال الشقة للمراجعة وسيتم نشرها بعد موافقة المطور.'
-                          : 'يجب تسجيل الدخول لإضافة شقة. سيتم إرسال الشقة للمراجعة بعد تسجيل الدخول.'}
+                        {isDeveloper 
+                          ? 'بصفتك مطور، سيتم نشر العقار مباشرة بدون مراجعة.'
+                          : currentUser 
+                            ? 'سيتم إرسال الشقة للمراجعة وسيتم نشرها بعد موافقة المطور.'
+                            : 'يمكنك ملء البيانات الآن، لكن يجب تسجيل الدخول للنشر.'}
                       </p>
                     </div>
                   </div>
@@ -1725,7 +2196,10 @@ export default function App() {
                   </button>
                   <button onClick={() => handleAddApartment(false)} disabled={aptSubmitting}
                     className="flex-1 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 transition-all">
-                    {aptSubmitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'إرسال للمراجعة'}
+                    {aptSubmitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 
+                      isDeveloper ? 'نشر مباشرة' : 
+                      currentUser ? 'إرسال للمراجعة' : 
+                      'تسجيل الدخول للنشر'}
                   </button>
                 </div>
               </div>
@@ -1892,6 +2366,30 @@ export default function App() {
                   </div>
                 )}
 
+                {/* Publisher Actions - Request Edit */}
+                {currentUser && selectedApartment.createdBy === currentUser.id && selectedApartment.status === 'available' && !isDeveloper && (
+                  <div className={`mt-6 pt-6 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                    <h3 className={`text-lg font-bold mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                      <RefreshCw className="h-5 w-5 inline ml-2 text-teal-500" />
+                      طلب تعديل العقار
+                    </h3>
+                    <p className={`text-sm mb-3 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                      يمكنك طلب تعديل على عقارك (إضافة صور/فيديوهات، تغيير السعر أو الحالة). سيتم مراجعة الطلب من قبل المطور.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setSelectedApartmentForEdit(selectedApartment);
+                        setShowEditRequestModal(true);
+                        setSelectedApartment(null);
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-teal-500 to-cyan-600 text-white hover:from-teal-600 hover:to-cyan-700 font-medium transition-all"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      طلب تعديل
+                    </button>
+                  </div>
+                )}
+
                 {/* Comments Section */}
                 <div className={`mt-6 pt-6 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
                   <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
@@ -1900,17 +2398,24 @@ export default function App() {
                   </h3>
                   
                   {/* Comment Input */}
-                  {currentUser ? (
+                  {(currentUser || isDeveloper) ? (
                     <div className="flex gap-2 mb-4">
                       <input
                         type="text"
                         value={newComment}
                         onChange={(e) => setNewComment(e.target.value)}
-                        placeholder="اكتب تعليقاً..."
+                        placeholder={isDeveloper ? "كتعليق كمطور (يُنشر مباشرة)..." : "اكتب تعليقاً..."}
                         className={`flex-1 px-4 py-2 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-500'} focus:outline-none focus:ring-2 focus:ring-violet-500`}
                       />
                       <button
-                        onClick={() => addComment(selectedApartment.id)}
+                        onClick={() => {
+                          if (isDeveloper) {
+                            // المطور ينشر التعليق مباشرة
+                            addComment(selectedApartment.id);
+                          } else {
+                            addComment(selectedApartment.id);
+                          }
+                        }}
                         disabled={commentLoading || !newComment.trim()}
                         className="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white hover:from-violet-700 hover:to-purple-800 disabled:opacity-50"
                       >
@@ -2154,6 +2659,19 @@ export default function App() {
                       className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-violet-500`}
                       placeholder="••••••••" required />
                   </div>
+                  <div className="mb-4 flex items-center gap-2">
+                    <input type="checkbox" id="rememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)}
+                      className="w-4 h-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500" />
+                    <label htmlFor="rememberMe" className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      تذكرني (حفظ البريد/الهاتف)
+                    </label>
+                  </div>
+                  <div className="mb-4 text-left">
+                    <button type="button" onClick={() => { setShowAuth(false); setShowForgotPassword(true); setForgotSuccess(false); }}
+                      className="text-sm text-violet-600 hover:text-violet-700 font-medium">
+                      نسيت كلمة المرور؟
+                    </button>
+                  </div>
                   <button type="submit" disabled={authLoading}
                     className="w-full py-3 rounded-xl font-medium text-white bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 disabled:opacity-50">
                     {authLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'تسجيل الدخول'}
@@ -2217,10 +2735,128 @@ export default function App() {
                   <input type="password" value={devPassword} onChange={(e) => setDevPassword(e.target.value)}
                     className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-amber-500`}
                     placeholder="كلمة المرور" required />
+                  <div className="flex items-center gap-2 mt-3">
+                    <input type="checkbox" id="devRememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)}
+                      className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500" />
+                    <label htmlFor="devRememberMe" className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      تذكرني
+                    </label>
+                  </div>
                 </div>
                 <button type="submit" disabled={devLoading}
                   className="w-full mt-6 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 disabled:opacity-50">
                   {devLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'دخول'}
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Forgot Password Modal */}
+      <AnimatePresence>
+        {showForgotPassword && !showResetPassword && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowForgotPassword(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center mx-auto mb-4">
+                  <Key className="h-8 w-8 text-white" />
+                </div>
+                <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>استعادة كلمة المرور</h2>
+                <p className={`text-sm mt-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  أدخل بريدك الإلكتروني وسنرسل لك رابطاً لاستعادة كلمة المرور
+                </p>
+              </div>
+              
+              {forgotSuccess ? (
+                <div className="text-center">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle2 className="h-8 w-8 text-white" />
+                  </div>
+                  <p className={`mb-4 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                    إذا كان البريد مسجل لدينا، ستصلك رسالة تحتوي على رابط استعادة كلمة المرور
+                  </p>
+                  {resetToken && (
+                    <div className={`p-4 rounded-xl mb-4 ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
+                      <p className="text-xs text-slate-500 mb-2">للتجربة - رابط الاستعادة:</p>
+                      <button onClick={() => { setResetEmail(forgotEmail); setShowResetPassword(true); }}
+                        className="text-violet-600 text-sm underline break-all">
+                        اضغط هنا لتجربة استعادة كلمة المرور
+                      </button>
+                    </div>
+                  )}
+                  <button onClick={() => setShowForgotPassword(false)}
+                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium">
+                    حسناً
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleForgotPassword}>
+                  <div className="mb-4">
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      البريد الإلكتروني
+                    </label>
+                    <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-violet-500`}
+                      placeholder="example@email.com" required />
+                  </div>
+                  <button type="submit" disabled={forgotLoading}
+                    className="w-full py-3 rounded-xl font-medium text-white bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 disabled:opacity-50">
+                    {forgotLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'إرسال رابط الاستعادة'}
+                  </button>
+                  <button type="button" onClick={() => { setShowForgotPassword(false); setShowAuth(true); }}
+                    className={`w-full mt-3 py-3 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>
+                    العودة لتسجيل الدخول
+                  </button>
+                </form>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Reset Password Modal */}
+      <AnimatePresence>
+        {showResetPassword && resetToken && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowResetPassword(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mx-auto mb-4">
+                  <Key className="h-8 w-8 text-white" />
+                </div>
+                <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>تعيين كلمة مرور جديدة</h2>
+                <p className={`text-sm mt-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  للحساب: {resetEmail}
+                </p>
+              </div>
+              <form onSubmit={handleResetPassword}>
+                <div className="mb-4">
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                    كلمة المرور الجديدة
+                  </label>
+                  <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-emerald-500`}
+                    placeholder="6 أحرف على الأقل" required minLength={6} />
+                </div>
+                <div className="mb-4">
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                    تأكيد كلمة المرور
+                  </label>
+                  <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-emerald-500`}
+                    placeholder="أعد كتابة كلمة المرور" required />
+                </div>
+                <button type="submit" disabled={resetLoading}
+                  className="w-full py-3 rounded-xl font-medium text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50">
+                  {resetLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'تغيير كلمة المرور'}
                 </button>
               </form>
             </motion.div>
@@ -2259,10 +2895,13 @@ export default function App() {
                   {[
                     { id: 'stats', label: 'الإحصائيات', icon: BarChart3, color: 'from-violet-500 to-purple-600' },
                     { id: 'pending', label: 'في انتظار الموافقة', count: pendingApartments.length, icon: Hourglass, color: 'from-amber-500 to-orange-600' },
+                    { id: 'editRequests', label: 'طلبات التعديل', count: editRequests.filter(r => r.status === 'pending').length, icon: RefreshCw, color: 'from-teal-500 to-cyan-600' },
                     { id: 'apartments', label: 'العقارات', count: allApartments.length, icon: Building2, color: 'from-blue-500 to-cyan-600' },
                     { id: 'payments', label: 'المدفوعات', count: payments.length, icon: CreditCard, color: 'from-emerald-500 to-teal-600' },
                     { id: 'likes', label: 'المفضلات', count: likes.length, icon: Heart, color: 'from-red-500 to-pink-600' },
                     { id: 'comments', label: 'التعليقات', count: comments.filter(c => c.status === 'pending').length, icon: MessageCircle, color: 'from-indigo-500 to-purple-600' },
+                    { id: 'messages', label: 'الرسائل', count: messages.filter(m => !m.isRead).length, icon: Send, color: 'from-cyan-500 to-blue-600' },
+                    { id: 'blocked', label: 'المحظورين', count: blockedUsers.length, icon: Ban, color: 'from-red-600 to-rose-700' },
                     { id: 'settings', label: 'الإعدادات', icon: Settings, color: 'from-pink-500 to-rose-600' },
                     { id: 'logs', label: 'السجل', icon: BookOpen, color: 'from-slate-500 to-slate-600' },
                   ].map(tab => (
@@ -2434,33 +3073,216 @@ export default function App() {
                         <p className={`${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا توجد شقق في انتظار الموافقة</p>
                       </div>
                     ) : (
-                      <div className="space-y-4">
+                      <div className="space-y-6">
                         {pendingApartments.map(apt => (
-                          <div key={apt.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
-                            <div className="flex flex-col md:flex-row gap-4">
-                              <img src={apt.imageUrl || apt.images?.[0] || '/generated-images/apt1.png'} alt={apt.title}
-                                className="w-full md:w-32 h-24 object-cover rounded-lg" />
-                              <div className="flex-1">
-                                <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
-                                <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.area} • {apt.bedrooms} غرف • {apt.type === 'rent' ? 'إيجار' : 'بيع'}</p>
-                                <p className={`text-sm mt-1 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{apt.description?.substring(0, 100)}...</p>
-                                <p className={`text-sm mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                                  <Phone className="h-3 w-3 inline ml-1" />{apt.ownerPhone}
-                                </p>
+                          <div key={apt.id} className={`rounded-2xl overflow-hidden ${darkMode ? 'bg-slate-700' : 'bg-white'} shadow-lg`}>
+                            {/* Header with image */}
+                            <div className="flex flex-col md:flex-row">
+                              <div className="md:w-1/3">
+                                <img src={apt.imageUrl || (apt.images && apt.images[0]) || '/generated-images/apt1.png'} alt={apt.title}
+                                  className="w-full h-48 md:h-full object-cover" />
                               </div>
+                              <div className="flex-1 p-6">
+                                <div className="flex justify-between items-start mb-4">
+                                  <div>
+                                    <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
+                                    <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                      {apt.area} • {apt.bedrooms} غرف • {apt.bathrooms} حمام • {apt.type === 'rent' ? 'إيجار' : 'بيع'}
+                                    </p>
+                                  </div>
+                                  <span className="text-2xl font-bold text-violet-600">
+                                    {apt.price.toLocaleString()} ج.م
+                                    {apt.type === 'rent' && <span className="text-sm text-slate-500">/شهر</span>}
+                                  </span>
+                                </div>
+                                
+                                <p className={`text-sm mb-4 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                                  {apt.description}
+                                </p>
+                                
+                                {/* Details Grid */}
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+                                  <div className={`p-2 rounded-lg ${darkMode ? 'bg-slate-600' : 'bg-slate-100'}`}>
+                                    <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>📞 هاتف الناشر</p>
+                                    <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.ownerPhone}</p>
+                                  </div>
+                                  <div className={`p-2 rounded-lg ${darkMode ? 'bg-slate-600' : 'bg-slate-100'}`}>
+                                    <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>📅 تاريخ النشر</p>
+                                    <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                                      {new Date(apt.createdAt).toLocaleDateString('ar-EG')}
+                                    </p>
+                                  </div>
+                                  <div className={`p-2 rounded-lg ${darkMode ? 'bg-slate-600' : 'bg-slate-100'}`}>
+                                    <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>👤 الناشر</p>
+                                    <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                                      {apt.createdBy ? 'مستخدم مسجل' : 'زائر'}
+                                    </p>
+                                  </div>
+                                </div>
+                                
+                                {/* Map Link */}
+                                {apt.mapLink && (
+                                  <a href={apt.mapLink} target="_blank" rel="noopener noreferrer"
+                                    className={`inline-flex items-center gap-2 text-sm ${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-violet-600 hover:text-violet-700'} mb-4`}>
+                                    <MapPin className="h-4 w-4" />عرض الموقع على الخريطة
+                                  </a>
+                                )}
+                                
+                                {/* Action Buttons */}
+                                <div className="flex flex-wrap gap-2 pt-4 border-t border-slate-200 dark:border-slate-600">
+                                  <button onClick={() => handleApproveApartment(apt.id)}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 font-medium">
+                                    <Check className="h-4 w-4" />موافقة
+                                  </button>
+                                  <button onClick={() => handleRejectApartment(apt.id)}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 font-medium">
+                                    <XCircle className="h-4 w-4" />رفض
+                                  </button>
+                                  <button onClick={() => setEditApartment(apt)}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium ${darkMode ? 'bg-slate-600 text-white hover:bg-slate-500' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                                    تعديل
+                                  </button>
+                                  <button onClick={() => {
+                                    // فتح نافذة الرسائل مع رابط للتواصل
+                                    setNewMessage(`بخصوص عقار "${apt.title}" - رقم التواصل: ${apt.ownerPhone}`);
+                                    setShowMessages(true);
+                                  }}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium ${darkMode ? 'bg-violet-600 text-white hover:bg-violet-500' : 'bg-violet-100 text-violet-700 hover:bg-violet-200'}`}>
+                                    <MessageCircle className="h-4 w-4" />
+                                    تواصل مع الناشر
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Edit Requests Tab */}
+                {devTab === 'editRequests' && (
+                  <div>
+                    {editRequests.filter(r => r.status === 'pending').length === 0 ? (
+                      <div className="text-center py-12">
+                        <CheckCircle2 className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
+                        <p className={`${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا توجد طلبات تعديل معلقة</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {editRequests.filter(r => r.status === 'pending').map(request => (
+                          <div key={request.id} className={`p-5 rounded-2xl ${darkMode ? 'bg-slate-800' : 'bg-slate-50'} border ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                            <div className="flex flex-col md:flex-row gap-4">
+                              {/* Property Info */}
+                              <div className="flex-1">
+                                <div className="flex items-center gap-3 mb-3">
+                                  <Building2 className="h-5 w-5 text-violet-500" />
+                                  <div>
+                                    <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                                      {request.apartment?.title || 'عقار محذوف'}
+                                    </h3>
+                                    <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                     طلب من: {request.user?.name || 'مستخدم'} • {new Date(request.createdAt).toLocaleDateString('ar-EG')}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {/* Edit Type Badge */}
+                                <div className="flex flex-wrap gap-2 mb-3">
+                                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${darkMode ? 'bg-teal-900/30 text-teal-400' : 'bg-teal-100 text-teal-700'}`}>
+                                    {request.editType === 'images' ? '📷 صور' :
+                                     request.editType === 'videos' ? '🎬 فيديوهات' :
+                                     request.editType === 'price' ? '💰 سعر' :
+                                     request.editType === 'status' ? '📊 حالة' :
+                                     '📝 تعديلات متعددة'}
+                                  </span>
+                                </div>
+
+                                {/* Request Details */}
+                                <div className={`space-y-2 text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                                  {request.newImages && request.newImages.length > 0 && (
+                                    <div className="flex items-center gap-2">
+                                      <ImageIcon className="h-4 w-4 text-blue-500" />
+                                      <span>إضافة {request.newImages.length} صورة جديدة</span>
+                                    </div>
+                                  )}
+                                  {request.newVideos && request.newVideos.length > 0 && (
+                                    <div className="flex items-center gap-2">
+                                      <Video className="h-4 w-4 text-purple-500" />
+                                      <span>إضافة {request.newVideos.length} فيديو جديد</span>
+                                    </div>
+                                  )}
+                                  {request.newPrice && (
+                                    <div className="flex items-center gap-2">
+                                      <DollarSign className="h-4 w-4 text-emerald-500" />
+                                      <span>تغيير السعر من {request.apartment?.price?.toLocaleString()} إلى {request.newPrice?.toLocaleString()} ج.م</span>
+                                    </div>
+                                  )}
+                                  {request.newStatus && (
+                                    <div className="flex items-center gap-2">
+                                      <RefreshCw className="h-4 w-4 text-amber-500" />
+                                      <span>تغيير الحالة إلى: {statusConfig[request.newStatus]?.label || request.newStatus}</span>
+                                    </div>
+                                  )}
+                                  {request.description && (
+                                    <div className={`p-3 rounded-lg mt-2 ${darkMode ? 'bg-slate-700' : 'bg-white'}`}>
+                                      <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>ملاحظة:</p>
+                                      <p>{request.description}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Action Buttons */}
                               <div className="flex md:flex-col gap-2">
-                                <button onClick={() => handleApproveApartment(apt.id)}
-                                  className="flex-1 md:flex-none px-4 py-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 text-sm font-medium">
-                                  <Check className="h-4 w-4 inline ml-1" />موافقة
+                                <button
+                                  onClick={() => handleApproveEditRequest(request.id)}
+                                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 font-medium transition-all"
+                                >
+                                  <Check className="h-4 w-4" />
+                                  موافقة
                                 </button>
-                                <button onClick={() => handleRejectApartment(apt.id)}
-                                  className="flex-1 md:flex-none px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 text-sm font-medium">
-                                  <XCircle className="h-4 w-4 inline ml-1" />رفض
+                                <button
+                                  onClick={() => handleRejectEditRequest(request.id)}
+                                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 font-medium transition-all"
+                                >
+                                  <XCircle className="h-4 w-4" />
+                                  رفض
                                 </button>
                               </div>
                             </div>
                           </div>
                         ))}
+                      </div>
+                    )}
+
+                    {/* Processed Requests */}
+                    {editRequests.filter(r => r.status !== 'pending').length > 0 && (
+                      <div className="mt-8">
+                        <h3 className={`text-lg font-bold mb-4 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                          الطلبات السابقة
+                        </h3>
+                        <div className="space-y-2">
+                          {editRequests.filter(r => r.status !== 'pending').slice(0, 5).map(request => (
+                            <div key={request.id} className={`p-3 rounded-lg flex items-center justify-between ${darkMode ? 'bg-slate-800/50' : 'bg-slate-100/50'}`}>
+                              <div className="flex items-center gap-3">
+                                {request.status === 'approved' ? (
+                                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                ) : (
+                                  <XCircle className="h-4 w-4 text-red-500" />
+                                )}
+                                <span className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                                  {request.apartment?.title || 'عقار'} - {request.editType === 'price' ? 'تغيير السعر' : request.editType === 'status' ? 'تغيير الحالة' : 'إضافة وسائط'}
+                                </span>
+                              </div>
+                              <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                                {request.status === 'approved' ? 'تمت الموافقة' : 'مرفوض'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2717,20 +3539,84 @@ export default function App() {
                               <label className={`text-sm font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{fee.label}</label>
                             </div>
                             <div className="flex items-center gap-2">
-                              <input type="number" value={settings[fee.key as keyof typeof settings] || 0}
-                                onChange={(e) => updateSettings({ [fee.key]: parseInt(e.target.value) || 0 })}
+                              <input type="number" 
+                                value={settings[fee.key as keyof typeof settings]} 
+                                onChange={(e) => {
+                                  // تحديث الحالة المحلية فقط بدون حفظ تلقائي
+                                  const value = e.target.value === '' ? 0 : parseInt(e.target.value);
+                                  setSettings(prev => ({ ...prev, [fee.key]: value }));
+                                }}
+                                min="0"
                                 className={`flex-1 px-3 py-2 rounded-lg border text-lg font-bold ${darkMode ? 'bg-slate-600 border-slate-500 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`} />
                               <span className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>ج.م</span>
                             </div>
                           </div>
                         ))}
                       </div>
-                      <button onClick={async () => { await updateSettings(settings); addToast('تم حفظ جميع الإعدادات', 'success'); }}
+                      <button onClick={async () => { await updateSettings(settings); }}
                         disabled={settingsLoading}
                         className="mt-6 w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 flex items-center justify-center gap-2">
                         {settingsLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
-                        حفظ جميع الإعدادات
+                        تأكيد الحفظ
                       </button>
+                    </div>
+
+                    {/* Change Password */}
+                    <div className={`p-6 rounded-2xl ${darkMode ? 'bg-slate-800' : 'bg-slate-50'} border ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                      <h3 className={`font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                        <Key className="h-5 w-5 text-violet-500" />
+                        تغيير كلمة المرور
+                      </h3>
+                      <div className="space-y-4">
+                        <div>
+                          <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                            كلمة المرور الحالية
+                          </label>
+                          <input type="password" id="currentPassword"
+                            className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'}`}
+                            placeholder="أدخل كلمة المرور الحالية" />
+                        </div>
+                        <div>
+                          <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                            كلمة المرور الجديدة
+                          </label>
+                          <input type="password" id="newPassword"
+                            className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'}`}
+                            placeholder="6 أحرف على الأقل" />
+                        </div>
+                        <button onClick={async () => {
+                          const currentPassword = (document.getElementById('currentPassword') as HTMLInputElement)?.value;
+                          const newPassword = (document.getElementById('newPassword') as HTMLInputElement)?.value;
+                          if (!currentPassword || !newPassword) {
+                            addToast('يرجى ملء جميع الحقول', 'error');
+                            return;
+                          }
+                          try {
+                            const res = await fetch('/api/auth/change-password', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                identifier: currentUser?.identifier,
+                                currentPassword,
+                                newPassword
+                              })
+                            });
+                            const data = await res.json();
+                            if (res.ok) {
+                              addToast('تم تغيير كلمة المرور بنجاح', 'success');
+                              (document.getElementById('currentPassword') as HTMLInputElement).value = '';
+                              (document.getElementById('newPassword') as HTMLInputElement).value = '';
+                            } else {
+                              addToast(data.error || 'حدث خطأ', 'error');
+                            }
+                          } catch {
+                            addToast('حدث خطأ في الاتصال', 'error');
+                          }
+                        }}
+                          className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-bold hover:from-violet-700 hover:to-purple-800">
+                          تغيير كلمة المرور
+                        </button>
+                      </div>
                     </div>
 
                     {/* AI Assistant */}
@@ -2786,6 +3672,73 @@ export default function App() {
                         </button>
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {/* Messages Tab */}
+                {devTab === 'messages' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>رسائل المستخدمين</h3>
+                      <button onClick={fetchMessages} className={`p-2 rounded-lg ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
+                        <RefreshCw className="h-4 w-4" />
+                      </button>
+                    </div>
+                    {messages.length === 0 ? (
+                      <div className="text-center py-12">
+                        <Send className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
+                        <p className={`${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا توجد رسائل</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 max-h-96 overflow-y-auto">
+                        {messages.map(msg => (
+                          <div key={msg.id} className={`p-4 rounded-xl ${msg.isRead ? (darkMode ? 'bg-slate-700' : 'bg-slate-100') : (darkMode ? 'bg-violet-900/30 border border-violet-500' : 'bg-violet-50 border border-violet-200')}`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className={`font-medium ${darkMode ? 'text-violet-400' : 'text-violet-600'}`}>
+                                {msg.sender?.name || 'مستخدم'} ({msg.sender?.identifier})
+                              </span>
+                              <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                                {new Date(msg.createdAt).toLocaleString('ar-EG')}
+                              </span>
+                            </div>
+                            <p className={`${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{msg.content}</p>
+                            {!msg.isRead && <span className="text-xs text-violet-500 mt-1 block">رسالة جديدة</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Blocked Users Tab */}
+                {devTab === 'blocked' && (
+                  <div>
+                    <h3 className={`font-bold mb-4 ${darkMode ? 'text-white' : 'text-slate-900'}`}>المستخدمون المحظورون</h3>
+                    {blockedUsers.length === 0 ? (
+                      <div className="text-center py-12">
+                        <Ban className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
+                        <p className={`${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا يوجد مستخدمون محظورون</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {blockedUsers.map(blocked => (
+                          <div key={blocked.id} className={`p-4 rounded-xl flex items-center justify-between ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
+                            <div>
+                              <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{blocked.user.name}</p>
+                              <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{blocked.user.identifier}</p>
+                              {blocked.reason && <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>السبب: {blocked.reason}</p>}
+                              <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                                تم الحظر: {new Date(blocked.blockedAt).toLocaleString('ar-EG')}
+                              </p>
+                            </div>
+                            <button onClick={() => unblockUser(blocked.userId)}
+                              className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-sm">
+                              إلغاء الحظر
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2987,6 +3940,12 @@ export default function App() {
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}>
                     <Brain className="h-5 w-5" />المساعد الذكي
                   </button>
+                  {currentUser && !isDeveloper && (
+                    <button onClick={() => { setShowMessages(true); fetchMessages(); setShowMobileMenu(false); }}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-violet-400' : 'bg-slate-100 text-violet-600'}`}>
+                      <MessageCircle className="h-5 w-5" />رسائل للمطور
+                    </button>
+                  )}
                   {isDeveloper ? (
                     <>
                       <button onClick={() => { setShowDevPanel(true); setShowMobileMenu(false); }}
@@ -3016,6 +3975,300 @@ export default function App() {
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-amber-400' : 'bg-slate-100 text-slate-700'}`}>
                     {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
                     {darkMode ? 'الوضع النهاري' : 'الوضع الليلي'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* My Pending Apartments Modal - For regular users */}
+      <AnimatePresence>
+        {showMyPending && currentUser && !isDeveloper && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowMyPending(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-2xl rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl max-h-[80vh] overflow-hidden flex flex-col`}>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                  <Hourglass className="h-6 w-6 text-amber-500" />
+                  عقاراتي قيد المراجعة
+                </h2>
+                <button onClick={() => setShowMyPending(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                  <X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto">
+                {myPendingApartments.length === 0 ? (
+                  <div className="text-center py-12">
+                    <CheckCircle2 className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
+                    <p className={`${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا توجد عقارات قيد المراجعة</p>
+                    <button onClick={() => { setShowMyPending(false); setShowAddModal(true); }}
+                      className="mt-4 px-6 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium">
+                      إضافة عقار جديد
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {myPendingApartments.map(apt => (
+                      <div key={apt.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                        <div className="flex gap-4">
+                          <img src={apt.imageUrl || (apt.images && apt.images[0]) || '/generated-images/apt1.png'} 
+                            alt={apt.title} className="w-24 h-20 object-cover rounded-lg" />
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">قيد المراجعة</span>
+                            </div>
+                            <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
+                            <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                              {apt.area} • {apt.price.toLocaleString()} ج.م
+                            </p>
+                            <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                              أُرسلت: {new Date(apt.createdAt).toLocaleDateString('ar-EG')}
+                            </p>
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <button onClick={() => setEditApartment(apt)}
+                              className={`p-2 rounded-lg ${darkMode ? 'bg-violet-600 text-white hover:bg-violet-500' : 'bg-violet-100 text-violet-700 hover:bg-violet-200'}`}>
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                            </button>
+                            <button onClick={async () => {
+                              if (confirm('هل تريد حذف هذا العقار؟')) {
+                                await fetch(`/api/apartments/${apt.id}`, { method: 'DELETE' });
+                                fetchMyPendingApartments();
+                                fetchApartments();
+                                addToast('تم حذف العقار', 'success');
+                              }
+                            }}
+                              className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600">
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Messages Modal */}
+      <AnimatePresence>
+        {showMessages && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowMessages(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-lg rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl max-h-[80vh] overflow-hidden flex flex-col`}>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                  <MessageCircle className="h-6 w-6 text-violet-500" />
+                  {isDeveloper ? 'رسائل المستخدمين' : 'تواصل مع المطور'}
+                </h2>
+                <button onClick={() => setShowMessages(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                  <X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} />
+                </button>
+              </div>
+
+              {/* Message input for non-developers */}
+              {!isDeveloper && (
+                <div className="mb-4">
+                  {isBlocked && (
+                    <div className={`p-3 rounded-xl mb-3 ${darkMode ? 'bg-red-900/30 border border-red-700' : 'bg-red-50 border border-red-200'}`}>
+                      <p className="text-red-500 text-sm">⚠️ تم حظرك من استخدام الموقع. تواصل مع المطور عبر البريد: ahmadmamdouh10030@gmail.com</p>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)}
+                      placeholder="اكتب رسالتك للمطور..."
+                      className={`flex-1 px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`}
+                      disabled={isBlocked} />
+                    <button onClick={sendMessage} disabled={messageLoading || isBlocked}
+                      className="px-4 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white disabled:opacity-50">
+                      {messageLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Messages list */}
+              <div className="flex-1 overflow-y-auto space-y-3">
+                {messages.length === 0 ? (
+                  <div className="text-center py-8">
+                    <MessageCircle className={`h-12 w-12 mx-auto mb-3 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
+                    <p className={`${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا توجد رسائل</p>
+                  </div>
+                ) : (
+                  messages.map(msg => (
+                    <div key={msg.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                      {isDeveloper && msg.sender && (
+                        <div className="flex items-center justify-between mb-2">
+                          <span className={`text-sm font-medium ${darkMode ? 'text-violet-400' : 'text-violet-600'}`}>
+                            {msg.sender.name} ({msg.sender.identifier})
+                          </span>
+                          <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                            {new Date(msg.createdAt).toLocaleString('ar-EG')}
+                          </span>
+                        </div>
+                      )}
+                      <p className={`${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{msg.content}</p>
+                      {!msg.isRead && isDeveloper && (
+                        <span className="text-xs text-blue-500 mt-1 block">جديد</span>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Request Modal for Publisher */}
+      <AnimatePresence>
+        {showEditRequestModal && selectedApartmentForEdit && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowEditRequestModal(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>طلب تعديل العقار</h2>
+                  <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {selectedApartmentForEdit.title}
+                  </p>
+                </div>
+                <button onClick={() => setShowEditRequestModal(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                  <X className={`h-6 w-6 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                {/* Notice */}
+                <div className={`p-4 rounded-xl ${darkMode ? 'bg-amber-900/20 border border-amber-700' : 'bg-amber-50 border border-amber-200'}`}>
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className={`text-sm font-medium ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>
+                        تنبيه مهم
+                      </p>
+                      <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>
+                        سيتم إرسال طلبك للمطور للمراجعة. لن يتم تطبيق أي تغييرات إلا بعد موافقة المطور.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Current Values */}
+                <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50'}`}>
+                  <h3 className={`text-sm font-medium mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                    البيانات الحالية
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className={`${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>السعر الحالي:</span>
+                      <span className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}> {selectedApartmentForEdit.price?.toLocaleString()} ج.م</span>
+                    </div>
+                    <div>
+                      <span className={`${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>الحالة الحالية:</span>
+                      <span className={`font-medium ${statusConfig[selectedApartmentForEdit.status]?.color}`}>
+                        {' '}{statusConfig[selectedApartmentForEdit.status]?.label}
+                      </span>
+                    </div>
+                    <div>
+                      <span className={`${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>عدد الصور:</span>
+                      <span className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}> {selectedApartmentForEdit.images?.length || 0}</span>
+                    </div>
+                    <div>
+                      <span className={`${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>عدد الفيديوهات:</span>
+                      <span className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}> {selectedApartmentForEdit.videos?.length || 0}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* New Price */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                    <DollarSign className="h-4 w-4 inline ml-1" />
+                    السعر الجديد (اختياري)
+                  </label>
+                  <input type="number" value={editRequestForm.newPrice} onChange={(e) => setEditRequestForm({ ...editRequestForm, newPrice: e.target.value })}
+                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-teal-500`}
+                    placeholder="أترك فارغ للإبقاء على السعر الحالي" />
+                </div>
+
+                {/* New Status */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                    <RefreshCw className="h-4 w-4 inline ml-1" />
+                    الحالة الجديدة (اختياري)
+                  </label>
+                  <select value={editRequestForm.newStatus} onChange={(e) => setEditRequestForm({ ...editRequestForm, newStatus: e.target.value })}
+                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-teal-500`}>
+                    <option value="">أترك فارغ للإبقاء على الحالة الحالية</option>
+                    <option value="available">متاح</option>
+                    <option value="reserved">محجوز</option>
+                  </select>
+                </div>
+
+                {/* New Images */}
+                <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50'}`}>
+                  <label className={`block text-sm font-medium mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                    <ImageIcon className="h-4 w-4 inline ml-1" />
+                    صور جديدة للإضافة (اختياري)
+                  </label>
+                  <FileUpload
+                    type="image"
+                    value={editRequestForm.newImages}
+                    onChange={(urls) => setEditRequestForm({ ...editRequestForm, newImages: urls })}
+                    maxFiles={5}
+                  />
+                </div>
+
+                {/* New Videos */}
+                <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50'}`}>
+                  <label className={`block text-sm font-medium mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                    <Video className="h-4 w-4 inline ml-1" />
+                    فيديوهات جديدة للإضافة (اختياري)
+                  </label>
+                  <FileUpload
+                    type="video"
+                    value={editRequestForm.newVideos}
+                    onChange={(urls) => setEditRequestForm({ ...editRequestForm, newVideos: urls })}
+                    maxFiles={3}
+                  />
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                    ملاحظات للمراجعة (اختياري)
+                  </label>
+                  <textarea value={editRequestForm.description} onChange={(e) => setEditRequestForm({ ...editRequestForm, description: e.target.value })}
+                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-teal-500`}
+                    rows={3}
+                    placeholder="أضف ملاحظاتك هنا..." />
+                </div>
+
+                {/* Submit Button */}
+                <div className="flex gap-3">
+                  <button onClick={() => setShowEditRequestModal(false)}
+                    className={`flex-1 py-3 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+                    إلغاء
+                  </button>
+                  <button onClick={submitEditRequest} disabled={editRequestLoading}
+                    className="flex-1 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-600 hover:to-cyan-700 disabled:opacity-50 transition-all">
+                    {editRequestLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'إرسال طلب التعديل'}
                   </button>
                 </div>
               </div>

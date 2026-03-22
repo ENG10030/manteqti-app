@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
         bedrooms: parseInt(body.bedrooms) || 0,
         bathrooms: parseInt(body.bathrooms) || 0,
         type: body.type || 'rent',
-        status: body.status || 'pending',
+        status: body.status || 'pending', // الافتراضي: في انتظار الموافقة
         ownerPhone: body.ownerPhone || '',
         mapLink: body.mapLink || '',
         images: body.images,
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
         amenities: body.amenities,
         isFeatured: body.isFeatured || false,
         isVip: body.isVip || false,
-        createdBy: body.createdBy || null,
+        createdBy: body.createdBy || null, // من أنشأ العقار
       },
     });
 

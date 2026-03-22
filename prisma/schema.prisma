@@ -20,6 +20,7 @@ model User {
   email      String?
   otp        String?
   otpExpires DateTime?
+  isBlocked  Boolean     @default(false)
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
   inquiries  Inquiry[]
@@ -27,6 +28,10 @@ model User {
   sessions   Session[]
   likes      Like[]
   comments   Comment[]
+  sentMessages     Message[]  @relation("SentMessages")
+  receivedMessages Message[]  @relation("ReceivedMessages")
+  blockedRecords   BlockedUser[]
+  editRequests      PropertyEditRequest[]
 }
 
 model Apartment {
@@ -59,8 +64,9 @@ model Apartment {
   inquiries       Inquiry[]
   likes           Like[]
   comments        Comment[]
+  editRequests    PropertyEditRequest[]
   
-  // حقول VIP والمميز
+  // VIP and featured fields
   isFeatured      Boolean     @default(false)
   isVip           Boolean     @default(false)
   featuredUntil   DateTime?
@@ -155,7 +161,7 @@ model SecurityLog {
   createdAt   DateTime @default(now())
 }
 
-// نظام الإعجابات
+// Likes system
 model Like {
   id          String   @id @default(cuid())
   apartmentId String
@@ -164,20 +170,80 @@ model Like {
   apartment   Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  @@unique([apartmentId, userId]) // مستخدم واحد يمكنه الإعجاب مرة واحدة فقط
+  @@unique([apartmentId, userId])
 }
 
-// نظام التعليقات مع الموافقة
+// Comments system with approval
 model Comment {
   id          String   @id @default(cuid())
   apartmentId String
   userId      String
   content     String
-  status      String   @default("pending") // pending, approved, rejected
+  status      String   @default("pending")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   approvedBy  String?
   approvedAt  DateTime?
   apartment   Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Messaging system between users and developer
+model Message {
+  id           String   @id @default(cuid())
+  senderId     String
+  receiverId   String?
+  content      String
+  isRead       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  sender       User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver     User?    @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+}
+
+// Blocking system
+model BlockedUser {
+  id          String   @id @default(cuid())
+  userId      String
+  reason      String?
+  blockedAt   DateTime @default(now())
+  blockedBy   String?
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Password reset system
+model PasswordReset {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// Property edit requests after publishing
+model PropertyEditRequest {
+  id              String   @id @default(cuid())
+  apartmentId     String
+  userId          String
+  
+  editType        String
+  
+  newImages       String?
+  newVideos       String?
+  newPrice        Int?
+  newStatus       String?
+  
+  description     String?
+  
+  status          String   @default("pending")
+  
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  reviewNotes     String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  apartment       Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
