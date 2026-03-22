@@ -251,7 +251,7 @@ export default function App() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showGallery, setShowGallery] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
-  const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'payments' | 'settings' | 'logs'>('stats');
+  const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'payments' | 'likes' | 'comments' | 'settings' | 'logs'>('stats');
 
   // Add toast notification
   const addToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -395,6 +395,8 @@ export default function App() {
       fetchDevData();
       fetchSettings();
       fetchOperationLogs();
+      fetchAllLikes();
+      fetchAllComments();
     }
   }, [isDeveloper]);
 
@@ -1004,7 +1006,16 @@ export default function App() {
     }
   };
 
-  // Load favorites from localStorage on mount
+  // Likes state - for database-backed favorites
+  const [likes, setLikes] = useState<Array<{ id: string; apartmentId: string; userId: string; user: { id: string; name: string; identifier: string }; createdAt: string }>>([]);
+  const [likeLoading, setLikeLoading] = useState<string | null>(null);
+
+  // Comments state
+  const [comments, setComments] = useState<Array<{ id: string; apartmentId: string; userId: string; content: string; status: string; user: { id: string; name: string; identifier: string }; createdAt: string }>>([]);
+  const [newComment, setNewComment] = useState('');
+  const [commentLoading, setCommentLoading] = useState(false);
+
+  // Load favorites from localStorage on mount (for guests)
   useEffect(() => {
     try {
       const saved = localStorage.getItem('manteqti_favorites');
@@ -1016,24 +1027,187 @@ export default function App() {
     }
   }, []);
 
-  // Toggle favorite - saves to localStorage
-  const toggleFavorite = (id: string) => {
-    setFavorites(prev => {
-      const newFavorites = prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id];
-      // Save to localStorage
-      try {
-        localStorage.setItem('manteqti_favorites', JSON.stringify(newFavorites));
-      } catch {
-        // Ignore errors
-      }
-      // Show toast
-      if (!prev.includes(id)) {
-        addToast('تمت الإضافة للمفضلة ❤️', 'success');
-      } else {
+  // Fetch likes for current user
+  useEffect(() => {
+    if (currentUser) {
+      fetchUserLikes();
+    }
+  }, [currentUser]);
+
+  const fetchUserLikes = async () => {
+    try {
+      const res = await fetch(`/api/likes?userId=${currentUser?.id}`);
+      const data = await res.json();
+      setLikes(data);
+      // Update favorites state with apartment IDs from likes
+      setFavorites(data.map((l: any) => l.apartmentId));
+    } catch (err) {
+      console.error('Error fetching likes:', err);
+    }
+  };
+
+  // Fetch all likes (for developer)
+  const fetchAllLikes = async () => {
+    try {
+      const res = await fetch('/api/likes');
+      const data = await res.json();
+      setLikes(data);
+    } catch (err) {
+      console.error('Error fetching all likes:', err);
+    }
+  };
+
+  // Fetch comments for an apartment
+  const fetchComments = async (apartmentId: string) => {
+    try {
+      const res = await fetch(`/api/comments?apartmentId=${apartmentId}&status=approved`);
+      const data = await res.json();
+      setComments(data);
+    } catch (err) {
+      console.error('Error fetching comments:', err);
+    }
+  };
+
+  // Fetch all comments (for developer - including pending)
+  const fetchAllComments = async () => {
+    try {
+      const res = await fetch('/api/comments');
+      const data = await res.json();
+      setComments(data);
+    } catch (err) {
+      console.error('Error fetching all comments:', err);
+    }
+  };
+
+  // Toggle favorite - uses database if logged in, localStorage otherwise
+  const toggleFavorite = async (apartmentId: string) => {
+    if (!currentUser) {
+      // Not logged in - use localStorage
+      setFavorites(prev => {
+        const newFavorites = prev.includes(apartmentId) ? prev.filter(f => f !== apartmentId) : [...prev, apartmentId];
+        try {
+          localStorage.setItem('manteqti_favorites', JSON.stringify(newFavorites));
+        } catch {}
+        if (!prev.includes(apartmentId)) {
+          addToast('تمت الإضافة للمفضلة ❤️', 'success');
+        } else {
+          addToast('تمت الإزالة من المفضلة', 'info');
+        }
+        return newFavorites;
+      });
+      return;
+    }
+
+    // Logged in - use database
+    setLikeLoading(apartmentId);
+    try {
+      const existingLike = likes.find(l => l.apartmentId === apartmentId && l.userId === currentUser.id);
+      
+      if (existingLike) {
+        // Remove like
+        await fetch(`/api/likes/${existingLike.id}`, { method: 'DELETE' });
+        setLikes(prev => prev.filter(l => l.id !== existingLike.id));
+        setFavorites(prev => prev.filter(f => f !== apartmentId));
         addToast('تمت الإزالة من المفضلة', 'info');
+      } else {
+        // Add like
+        const res = await fetch('/api/likes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apartmentId, userId: currentUser.id })
+        });
+        const data = await res.json();
+        if (data.success) {
+          setLikes(prev => [...prev, data.like]);
+          setFavorites(prev => [...prev, apartmentId]);
+          addToast('تمت الإضافة للمفضلة ❤️', 'success');
+        } else {
+          addToast(data.error || 'حدث خطأ', 'error');
+        }
       }
-      return newFavorites;
-    });
+    } catch (err) {
+      addToast('حدث خطأ', 'error');
+    } finally {
+      setLikeLoading(null);
+    }
+  };
+
+  // Add comment
+  const addComment = async (apartmentId: string) => {
+    if (!currentUser) {
+      addToast('يجب تسجيل الدخول للتعليق', 'error');
+      return;
+    }
+    if (!newComment.trim()) {
+      addToast('اكتب تعليقاً', 'error');
+      return;
+    }
+
+    setCommentLoading(true);
+    try {
+      const res = await fetch('/api/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apartmentId, userId: currentUser.id, content: newComment })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewComment('');
+        addToast('تم إرسال تعليقك وهو في انتظار موافقة المطور', 'success');
+      } else {
+        addToast(data.error || 'حدث خطأ', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ', 'error');
+    } finally {
+      setCommentLoading(false);
+    }
+  };
+
+  // Approve comment (developer only)
+  const approveComment = async (commentId: string) => {
+    try {
+      const res = await fetch(`/api/comments/${commentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'approved', approvedBy: 'developer' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchAllComments();
+        addToast('تمت الموافقة على التعليق', 'success');
+      }
+    } catch {
+      addToast('حدث خطأ', 'error');
+    }
+  };
+
+  // Reject/delete comment (developer only)
+  const deleteComment = async (commentId: string) => {
+    try {
+      const res = await fetch(`/api/comments/${commentId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        fetchAllComments();
+        addToast('تم حذف التعليق', 'success');
+      }
+    } catch {
+      addToast('حدث خطأ', 'error');
+    }
+  };
+
+  // Delete like (developer only)
+  const deleteLike = async (likeId: string) => {
+    try {
+      const res = await fetch(`/api/likes/${likeId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        fetchAllLikes();
+        addToast('تم حذف الإعجاب', 'success');
+      }
+    } catch {
+      addToast('حدث خطأ', 'error');
+    }
   };
 
   // Loading state
@@ -1355,7 +1529,7 @@ export default function App() {
                     {/* Action Buttons */}
                     <div className="flex gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
                       <button 
-                        onClick={() => setSelectedApartment(apartment)}
+                        onClick={() => { setSelectedApartment(apartment); fetchComments(apartment.id); }}
                         className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium text-sm hover:from-violet-700 hover:to-purple-800 transition-all flex items-center justify-center gap-1.5">
                         <Eye className="h-4 w-4" />
                         التفاصيل
@@ -1692,6 +1866,86 @@ export default function App() {
                     </div>
                   </div>
                 )}
+
+                {/* Comments Section */}
+                <div className={`mt-6 pt-6 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                  <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                    <MessageCircle className="h-5 w-5 text-violet-500" />
+                    التعليقات
+                  </h3>
+                  
+                  {/* Comment Input */}
+                  {currentUser ? (
+                    <div className="flex gap-2 mb-4">
+                      <input
+                        type="text"
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        placeholder="اكتب تعليقاً..."
+                        className={`flex-1 px-4 py-2 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-500'} focus:outline-none focus:ring-2 focus:ring-violet-500`}
+                      />
+                      <button
+                        onClick={() => addComment(selectedApartment.id)}
+                        disabled={commentLoading || !newComment.trim()}
+                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white hover:from-violet-700 hover:to-purple-800 disabled:opacity-50"
+                      >
+                        {commentLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className={`text-sm mb-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                      <button onClick={() => setShowAuth(true)} className="text-violet-500 hover:underline">سجل الدخول</button> للتعليق
+                    </p>
+                  )}
+
+                  {/* Comments List */}
+                  <div className="space-y-3 max-h-60 overflow-y-auto">
+                    {comments.filter(c => c.apartmentId === selectedApartment.id).length === 0 ? (
+                      <p className={`text-sm text-center py-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>لا توجد تعليقات بعد</p>
+                    ) : (
+                      comments
+                        .filter(c => c.apartmentId === selectedApartment.id && c.status === 'approved')
+                        .map(comment => (
+                          <div key={comment.id} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
+                            <div className="flex items-center gap-2 mb-1">
+                              <User className="h-4 w-4 text-violet-500" />
+                              <span className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-slate-900'}`}>{comment.user?.name || 'مستخدم'}</span>
+                              <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                                {new Date(comment.createdAt).toLocaleDateString('ar-EG')}
+                              </span>
+                            </div>
+                            <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{comment.content}</p>
+                          </div>
+                        ))
+                    )}
+                  </div>
+
+                  {/* Likes count for this apartment */}
+                  <div className={`mt-4 pt-4 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                    <div className="flex items-center gap-2">
+                      <Heart className="h-4 w-4 text-red-500" />
+                      <span className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                        {likes.filter(l => l.apartmentId === selectedApartment.id).length} أعجبوا بهذا العقار
+                      </span>
+                    </div>
+                    {/* Show who liked - for developer and publisher */}
+                    {(isDeveloper || (currentUser && selectedApartment.createdBy === currentUser.id)) && (
+                      <div className="mt-2">
+                        {likes.filter(l => l.apartmentId === selectedApartment.id).slice(0, 5).map(like => (
+                          <span key={like.id} className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg ${darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-600'} ml-1 mb-1`}>
+                            <User className="h-3 w-3" />
+                            {like.user?.name || 'مستخدم'}
+                          </span>
+                        ))}
+                        {likes.filter(l => l.apartmentId === selectedApartment.id).length > 5 && (
+                          <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                            +{likes.filter(l => l.apartmentId === selectedApartment.id).length - 5} آخرين
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </motion.div>
           </motion.div>
@@ -1982,6 +2236,8 @@ export default function App() {
                     { id: 'pending', label: 'في انتظار الموافقة', count: pendingApartments.length, icon: Hourglass, color: 'from-amber-500 to-orange-600' },
                     { id: 'apartments', label: 'العقارات', count: allApartments.length, icon: Building2, color: 'from-blue-500 to-cyan-600' },
                     { id: 'payments', label: 'المدفوعات', count: payments.length, icon: CreditCard, color: 'from-emerald-500 to-teal-600' },
+                    { id: 'likes', label: 'المفضلات', count: likes.length, icon: Heart, color: 'from-red-500 to-pink-600' },
+                    { id: 'comments', label: 'التعليقات', count: comments.filter(c => c.status === 'pending').length, icon: MessageCircle, color: 'from-indigo-500 to-purple-600' },
                     { id: 'settings', label: 'الإعدادات', icon: Settings, color: 'from-pink-500 to-rose-600' },
                     { id: 'logs', label: 'السجل', icon: BookOpen, color: 'from-slate-500 to-slate-600' },
                   ].map(tab => (
@@ -2277,6 +2533,133 @@ export default function App() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+
+                {/* Likes Tab */}
+                {devTab === 'likes' && (
+                  <div>
+                    {likes.length === 0 ? (
+                      <div className="text-center py-12">
+                        <Heart className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
+                        <p className={`${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا توجد مفضلات بعد</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className={`w-full ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                          <thead>
+                            <tr className={darkMode ? 'text-slate-400' : 'text-slate-500'}>
+                              <th className="text-right py-3 px-2">المستخدم</th>
+                              <th className="text-right py-3 px-2">العقار</th>
+                              <th className="text-right py-3 px-2">التاريخ</th>
+                              <th className="text-right py-3 px-2">إجراءات</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {likes.map(like => (
+                              <tr key={like.id} className={`border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                                <td className="py-3 px-2">
+                                  <div className="flex items-center gap-2">
+                                    <User className="h-4 w-4 text-violet-500" />
+                                    <span>{like.user?.name || 'مستخدم'}</span>
+                                    <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>({like.user?.identifier})</span>
+                                  </div>
+                                </td>
+                                <td className="py-3 px-2">{like.apartment?.title || 'عقار محذوف'}</td>
+                                <td className="py-3 px-2">{new Date(like.createdAt).toLocaleString('ar-EG')}</td>
+                                <td className="py-3 px-2">
+                                  <button onClick={() => deleteLike(like.id)} className="text-red-500 hover:text-red-600">
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Comments Tab */}
+                {devTab === 'comments' && (
+                  <div>
+                    {comments.length === 0 ? (
+                      <div className="text-center py-12">
+                        <MessageCircle className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
+                        <p className={`${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا توجد تعليقات بعد</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {/* Pending Comments */}
+                        {comments.filter(c => c.status === 'pending').length > 0 && (
+                          <div className={`p-4 rounded-xl ${darkMode ? 'bg-amber-900/20 border border-amber-700' : 'bg-amber-50 border border-amber-200'}`}>
+                            <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>
+                              <Hourglass className="h-5 w-5" />
+                              في انتظار الموافقة ({comments.filter(c => c.status === 'pending').length})
+                            </h3>
+                            <div className="space-y-3">
+                              {comments.filter(c => c.status === 'pending').map(comment => (
+                                <div key={comment.id} className={`p-3 rounded-lg ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <User className="h-4 w-4 text-violet-500" />
+                                        <span className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{comment.user?.name || 'مستخدم'}</span>
+                                        <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>({comment.user?.identifier})</span>
+                                      </div>
+                                      <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{comment.content}</p>
+                                      <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                                        على: {comment.apartment?.title || 'عقار محذوف'} • {new Date(comment.createdAt).toLocaleString('ar-EG')}
+                                      </p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <button onClick={() => approveComment(comment.id)} className="p-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600">
+                                        <Check className="h-4 w-4" />
+                                      </button>
+                                      <button onClick={() => deleteComment(comment.id)} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600">
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Approved Comments */}
+                        {comments.filter(c => c.status === 'approved').length > 0 && (
+                          <div className={`p-4 rounded-xl ${darkMode ? 'bg-emerald-900/20 border border-emerald-700' : 'bg-emerald-50 border border-emerald-200'}`}>
+                            <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>
+                              <CheckCircle2 className="h-5 w-5" />
+                              تعليقات موافق عليها ({comments.filter(c => c.status === 'approved').length})
+                            </h3>
+                            <div className="space-y-3">
+                              {comments.filter(c => c.status === 'approved').map(comment => (
+                                <div key={comment.id} className={`p-3 rounded-lg ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <User className="h-4 w-4 text-violet-500" />
+                                        <span className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{comment.user?.name || 'مستخدم'}</span>
+                                      </div>
+                                      <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{comment.content}</p>
+                                      <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                                        على: {comment.apartment?.title || 'عقار محذوف'}
+                                      </p>
+                                    </div>
+                                    <button onClick={() => deleteComment(comment.id)} className="text-red-500 hover:text-red-600">
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
