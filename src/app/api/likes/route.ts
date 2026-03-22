@@ -1,20 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
-// جلب التعليقات
+// جلب كل الإعجابات أو إعجابات عقار معين
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const apartmentId = searchParams.get('apartmentId');
-    const status = searchParams.get('status');
     const userId = searchParams.get('userId');
 
     const where: Record<string, unknown> = {};
     if (apartmentId) where.apartmentId = apartmentId;
-    if (status) where.status = status;
     if (userId) where.userId = userId;
 
-    const comments = await db.comment.findMany({
+    const likes = await db.like.findMany({
       where,
       include: {
         user: {
@@ -34,29 +32,41 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return NextResponse.json(comments);
+    return NextResponse.json(likes);
   } catch (error) {
-    console.error('Error fetching comments:', error);
+    console.error('Error fetching likes:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }
 
-// إضافة تعليق جديد (في انتظار الموافقة)
+// إضافة إعجاب جديد
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { apartmentId, userId, content } = body;
+    const { apartmentId, userId } = body;
 
-    if (!apartmentId || !userId || !content) {
+    if (!apartmentId || !userId) {
       return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 });
     }
 
-    const comment = await db.comment.create({
+    // التحقق من عدم وجود إعجاب سابق
+    const existingLike = await db.like.findUnique({
+      where: {
+        apartmentId_userId: {
+          apartmentId,
+          userId,
+        }
+      }
+    });
+
+    if (existingLike) {
+      return NextResponse.json({ error: 'تم الإعجاب مسبقاً' }, { status: 400 });
+    }
+
+    const like = await db.like.create({
       data: {
         apartmentId,
         userId,
-        content,
-        status: 'pending', // في انتظار موافقة المطور
       },
       include: {
         user: {
@@ -69,13 +79,9 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    return NextResponse.json({ 
-      success: true, 
-      comment,
-      message: 'تم إرسال تعليقك وهو في انتظار موافقة المطور' 
-    });
+    return NextResponse.json({ success: true, like });
   } catch (error) {
-    console.error('Error creating comment:', error);
+    console.error('Error creating like:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }
