@@ -41,6 +41,14 @@ export async function POST(request: NextRequest) {
       }, { status: 401 });
     }
 
+    // التحقق من الحظر
+    if (user.isBlocked) {
+      return NextResponse.json({
+        error: 'تم حظرك من استخدام الموقع. تواصل مع المطور: ahmadmamdouh10030@gmail.com',
+        isBlocked: true
+      }, { status: 403 });
+    }
+
     // التحقق من كلمة المرور
     const hashedPassword = hashPassword(password);
     if (user.password !== hashedPassword) {
