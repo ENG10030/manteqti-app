@@ -1032,11 +1032,11 @@ export default function App() {
   };
 
   // Likes state - for database-backed favorites
-  const [likes, setLikes] = useState<Array<{ id: string; apartmentId: string; userId: string; user: { id: string; name: string; identifier: string }; createdAt: string }>>([]);
+  const [likes, setLikes] = useState<Array<{ id: string; apartmentId: string; userId: string; user: { id: string; name: string; identifier: string }; apartment: { id: string; title: string } | null; createdAt: string }>>([]);
   const [likeLoading, setLikeLoading] = useState<string | null>(null);
 
   // Comments state
-  const [comments, setComments] = useState<Array<{ id: string; apartmentId: string; userId: string; content: string; status: string; user: { id: string; name: string; identifier: string }; createdAt: string }>>([]);
+  const [comments, setComments] = useState<Array<{ id: string; apartmentId: string; userId: string; content: string; status: string; user: { id: string; name: string; identifier: string }; apartment: { id: string; title: string } | null; createdAt: string }>>([]);
   const [newComment, setNewComment] = useState('');
   const [commentLoading, setCommentLoading] = useState(false);
 
