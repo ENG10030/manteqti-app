@@ -9,46 +9,65 @@ function hashPassword(password: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const { identifier, password } = await request.json();
+    const body = await request.json();
+    const { identifier, password } = body;
 
+    // التحقق من وجود البيانات
     if (!identifier || !password) {
       return NextResponse.json({ 
-        error: 'البريد/الهاتف وكلمة المرور مطلوبان' 
+        error: 'البريد/الهاتف وكلمة المرور مطلوبان',
+        details: { identifier: !identifier, password: !password }
       }, { status: 400 });
     }
 
-    // Find user by identifier
-    const user = await db.user.findUnique({
-      where: { identifier }
-    });
+    // البحث عن المستخدم
+    let user;
+    try {
+      user = await db.user.findUnique({
+        where: { identifier: identifier.toLowerCase().trim() }
+      });
+    } catch (dbError) {
+      console.error('Database error finding user:', dbError);
+      return NextResponse.json({ 
+        error: 'خطأ في الاتصال بقاعدة البيانات. يرجى المحاولة مرة أخرى.',
+        details: process.env.NODE_ENV === 'development' ? String(dbError) : undefined
+      }, { status: 500 });
+    }
 
     if (!user) {
       return NextResponse.json({ 
-        error: 'البريد/الهاتف أو كلمة المرور غير صحيح' 
+        error: 'لم يتم العثور على حساب بهذا البريد/الهاتف. تأكد من البيانات أو قم بإنشاء حساب جديد.',
+        details: { identifier }
       }, { status: 401 });
     }
 
-    // Verify password
+    // التحقق من كلمة المرور
     const hashedPassword = hashPassword(password);
     if (user.password !== hashedPassword) {
       return NextResponse.json({ 
-        error: 'البريد/الهاتف أو كلمة المرور غير صحيح' 
+        error: 'كلمة المرور غير صحيحة. تأكد من كتابتها بشكل صحيح.',
+        details: { hint: 'إذا نسيت كلمة المرور، تواصل مع الدعم' }
       }, { status: 401 });
     }
 
-    // Create new session token
+    // إنشاء جلسة جديدة
     const token = randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 يوم
 
-    await db.session.create({
-      data: {
-        userId: user.id,
-        token,
-        expiresAt,
-      }
-    });
+    try {
+      await db.session.create({
+        data: {
+          userId: user.id,
+          token,
+          expiresAt,
+        }
+      });
+    } catch (sessionError) {
+      console.error('Error creating session:', sessionError);
+      // نستمر حتى لو فشل إنشاء الجلسة
+    }
 
-    // Log successful login
+    // تسجيل نجاح الدخول
     try {
       await db.securityLog.create({
         data: {
@@ -58,13 +77,13 @@ export async function POST(request: NextRequest) {
         }
       });
     } catch {
-      // Ignore logging errors
+      // تجاهل أخطاء التسجيل
     }
 
-    // Create response with user data
+    // إنشاء الاستجابة
     const response = NextResponse.json({ 
       success: true,
-      message: 'تم تسجيل الدخول بنجاح',
+      message: 'تم تسجيل الدخول بنجاح! مرحباً ' + user.name,
       user: {
         id: user.id,
         identifier: user.identifier,
@@ -73,7 +92,7 @@ export async function POST(request: NextRequest) {
       token
     });
 
-    // Set HTTP-only cookie for authentication
+    // تعيين cookie
     response.cookies.set('auth_token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -84,7 +103,10 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error('Error logging in:', error);
-    return NextResponse.json({ error: 'فشل في تسجيل الدخول' }, { status: 500 });
+    console.error('Unexpected error in login:', error);
+    return NextResponse.json({ 
+      error: 'حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.',
+      details: process.env.NODE_ENV === 'development' ? String(error) : undefined
+    }, { status: 500 });
   }
 }
