@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
+// جلب كل العقارات
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -38,6 +39,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// إنشاء عقار جديد
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -51,7 +53,7 @@ export async function POST(request: NextRequest) {
         bedrooms: parseInt(body.bedrooms) || 0,
         bathrooms: parseInt(body.bathrooms) || 0,
         type: body.type || 'rent',
-        status: body.status || 'available',
+        status: body.status || 'pending', // الافتراضي: في انتظار الموافقة
         ownerPhone: body.ownerPhone || '',
         mapLink: body.mapLink || '',
         images: body.images,
@@ -59,13 +61,16 @@ export async function POST(request: NextRequest) {
         amenities: body.amenities,
         isFeatured: body.isFeatured || false,
         isVip: body.isVip || false,
+        createdBy: body.createdBy || null, // من أنشأ العقار
       },
     });
 
     return NextResponse.json({
       success: true,
       apartment,
-      message: 'تم إضافة العقار بنجاح'
+      message: body.status === 'pending' 
+        ? 'تم إرسال العقار للمراجعة' 
+        : 'تم إضافة العقار بنجاح'
     });
   } catch (error) {
     console.error('Error creating apartment:', error);

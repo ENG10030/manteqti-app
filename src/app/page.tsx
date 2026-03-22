@@ -282,24 +282,34 @@ export default function App() {
       });
   }, []);
 
-  // Fetch apartments
+  // Fetch apartments with retry
   useEffect(() => {
     fetchApartments();
   }, []);
 
-  const fetchApartments = async () => {
+  const fetchApartments = async (retryCount = 0) => {
     try {
-      const res = await fetch('/api/apartments');
+      setLoading(true);
+      const res = await fetch('/api/apartments', {
+        signal: AbortSignal.timeout(10000) // 10 second timeout
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to fetch');
       // Process apartments to convert JSON strings to arrays
       const processedData = data.map(processApartment);
       setApartments(processedData);
       setAllApartments(processedData);
+      setError(null);
       setLoading(false);
     } catch (err: any) {
-      setError(err.message);
-      setLoading(false);
+      console.error('Error fetching apartments:', err);
+      // Retry up to 3 times
+      if (retryCount < 3) {
+        setTimeout(() => fetchApartments(retryCount + 1), 1000 * (retryCount + 1));
+      } else {
+        setError('حدث خطأ في تحميل البيانات. يرجى تحديث الصفحة.');
+        setLoading(false);
+      }
     }
   };
 
@@ -543,7 +553,9 @@ export default function App() {
           images: JSON.stringify(imageUrls),
           videos: JSON.stringify(videoUrls),
           videoUrl: videoUrls[0] || null,
-          createdBy: userId || currentUser?.id
+          createdBy: userId || currentUser?.id,
+          // المطور ينشر مباشرة، المستخدم العادي يرسل للمراجعة
+          status: isDeveloper ? 'available' : 'pending'
         })
       });
       if (res.ok) {
@@ -552,17 +564,28 @@ export default function App() {
         setAptForm({ title: '', price: '', area: '', bedrooms: '1', bathrooms: '1', description: '', ownerPhone: '', mapLink: '', type: 'rent', images: '', videoUrl: '' });
         setImageUrls([]);
         setVideoUrls([]);
-        addToast('تم إضافة الشقة بنجاح!', 'success');
+        if (isDeveloper) {
+          addToast('تم نشر الشقة بنجاح!', 'success');
+        } else {
+          addToast('تم إرسال الشقة للمراجعة! سيتم نشرها بعد موافقة المطور.', 'success');
+        }
+      } else {
+        const data = await res.json();
+        addToast(data.error || 'حدث خطأ', 'error');
       }
+    } catch (err) {
+      addToast('حدث خطأ في الإرسال', 'error');
     } finally {
       setAptSubmitting(false);
     }
   };
 
-  // Handle add apartment - Developer Only
+  // Handle add apartment - Available for all logged in users
   const handleAddApartment = async (confirmed: boolean = false) => {
-    if (!isDeveloper) {
-      addToast('فقط المطور يمكنه إضافة عقارات', 'error');
+    // يجب تسجيل الدخول أولاً
+    if (!currentUser && !isDeveloper) {
+      addToast('يجب تسجيل الدخول أولاً لإضافة عقار', 'error');
+      setShowAuth(true);
       return;
     }
 
@@ -574,8 +597,10 @@ export default function App() {
       }
       setConfirmDialog({
         isOpen: true,
-        title: 'إضافة شقة جديدة',
-        message: 'هل أنت متأكد من إضافة هذه الشقة؟',
+        title: isDeveloper ? 'إضافة شقة جديدة' : 'إرسال شقة للمراجعة',
+        message: isDeveloper 
+          ? 'هل أنت متأكد من إضافة هذه الشقة؟'
+          : 'سيتم إرسال الشقة للمراجعة وسيتم نشرها بعد موافقة المطور. هل تريد المتابعة؟',
         onConfirm: () => handleAddApartment(true),
         type: 'info'
       });
@@ -1276,8 +1301,8 @@ export default function App() {
                 {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </motion.button>
 
-              {/* Add Apartment Button - Developer Only */}
-              {isDeveloper && (
+              {/* Add Apartment Button - Available for logged in users */}
+              {(currentUser || isDeveloper) && (
                 <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                   onClick={() => setShowAddModal(true)}
                   className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all">
@@ -1506,16 +1531,16 @@ export default function App() {
                     <h3 className={`text-lg font-bold mb-2 line-clamp-1 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apartment.title}</h3>
                     <div className="flex items-center gap-2 mb-2">
                       <MapPin className="h-4 w-4 text-violet-500" />
-                      <span className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apartment.area}</span>
+                      <span className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apartment.area || 'غير متوفر'}</span>
                     </div>
                     <div className="flex items-center gap-4 mb-3">
                       <div className="flex items-center gap-1">
                         <Bed className="h-4 w-4 text-violet-500" />
-                        <span className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{apartment.bedrooms}</span>
+                        <span className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{apartment.bedrooms || '-'}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <Bath className="h-4 w-4 text-violet-500" />
-                        <span className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{apartment.bathrooms}</span>
+                        <span className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{apartment.bathrooms || '-'}</span>
                       </div>
                     </div>
                     <div className="flex items-center justify-between mb-4">
@@ -1746,7 +1771,7 @@ export default function App() {
                     <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{selectedApartment.title}</h2>
                     <div className="flex items-center gap-2 mt-1">
                       <MapPin className="h-4 w-4 text-violet-500" />
-                      <span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>{selectedApartment.area}</span>
+                      <span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>{selectedApartment.area || 'غير متوفر'}</span>
                     </div>
                   </div>
                   <p className="text-2xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent">
@@ -1761,11 +1786,11 @@ export default function App() {
                 <div className="grid grid-cols-4 gap-4 mb-6">
                   <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
                     <Bed className="h-5 w-5 text-violet-500 mx-auto mb-1" />
-                    <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{selectedApartment.bedrooms} غرف</p>
+                    <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{selectedApartment.bedrooms || 'غير متوفر'} غرف</p>
                   </div>
                   <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
                     <Bath className="h-5 w-5 text-violet-500 mx-auto mb-1" />
-                    <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{selectedApartment.bathrooms} حمام</p>
+                    <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{selectedApartment.bathrooms || 'غير متوفر'} حمام</p>
                   </div>
                   <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
                     <Home className="h-5 w-5 text-violet-500 mx-auto mb-1" />
@@ -1778,7 +1803,7 @@ export default function App() {
                 </div>
 
                 {/* Description */}
-                <p className={`mb-6 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{selectedApartment.description}</p>
+                <p className={`mb-6 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{selectedApartment.description || 'لا يوجد وصف متاح'}</p>
 
                 {/* Amenities */}
                 {selectedApartment.amenities && selectedApartment.amenities.length > 0 && (
