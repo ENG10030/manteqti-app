@@ -101,6 +101,28 @@ interface Payment {
 interface Toast { id: string; message: string; type: 'success' | 'error' | 'info'; }
 interface User { id: string; identifier: string; name: string; }
 
+// Helper function to parse JSON string to array
+function parseJsonArray(value: string | string[] | undefined): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+// Helper function to process apartment data
+function processApartment(apt: any): Apartment {
+  return {
+    ...apt,
+    images: parseJsonArray(apt.images),
+    videos: parseJsonArray(apt.videos),
+    amenities: parseJsonArray(apt.amenities),
+  };
+}
+
 // Confirm Dialog Component
 function ConfirmDialog({
   isOpen, title, message, confirmText = 'تأكيد', cancelText = 'إلغاء',
@@ -269,8 +291,9 @@ export default function App() {
       const res = await fetch('/api/apartments');
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to fetch');
-      setApartments(data);
-      setAllApartments(data);
+      const processedData = data.map(processApartment);
+      setApartments(processedData);
+      setAllApartments(processedData);
       setLoading(false);
     } catch (err: any) {
       setError(err.message);
