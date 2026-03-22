@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
+// Fixed settings ID to ensure single record
+const SETTINGS_ID = 'default-settings';
+
 // Get settings
 export async function GET() {
   try {
-    let settings = await db.settings.findFirst();
+    let settings = await db.settings.findUnique({
+      where: { id: SETTINGS_ID }
+    });
 
     if (!settings) {
       settings = await db.settings.create({
         data: {
+          id: SETTINGS_ID,
           contactFee: 50,
           featuredFee: 100,
           premiumFee: 200,
@@ -35,8 +41,6 @@ export async function PUT(request: NextRequest) {
   try {
     const data = await request.json();
 
-    let settings = await db.settings.findFirst();
-
     const updateData = {
       contactFee: data.contactFee ?? 50,
       featuredFee: data.featuredFee ?? 100,
@@ -50,16 +54,15 @@ export async function PUT(request: NextRequest) {
       currency: data.currency ?? 'ج.م'
     };
 
-    if (!settings) {
-      settings = await db.settings.create({
-        data: updateData
-      });
-    } else {
-      settings = await db.settings.update({
-        where: { id: settings.id },
-        data: updateData
-      });
-    }
+    // Use upsert to create or update
+    const settings = await db.settings.upsert({
+      where: { id: SETTINGS_ID },
+      create: {
+        id: SETTINGS_ID,
+        ...updateData
+      },
+      update: updateData
+    });
 
     return NextResponse.json(settings);
   } catch (error) {
