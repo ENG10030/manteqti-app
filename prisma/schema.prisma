@@ -20,6 +20,7 @@ model User {
   email      String?
   otp        String?
   otpExpires DateTime?
+  isBlocked  Boolean     @default(false)
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
   inquiries  Inquiry[]
@@ -27,6 +28,9 @@ model User {
   sessions   Session[]
   likes      Like[]
   comments   Comment[]
+  sentMessages     Message[]  @relation("SentMessages")
+  receivedMessages Message[]  @relation("ReceivedMessages")
+  blockedRecords   BlockedUser[]
 }
 
 model Apartment {
@@ -180,4 +184,36 @@ model Comment {
   approvedAt  DateTime?
   apartment   Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// نظام الرسائل بين المستخدمين والمطور
+model Message {
+  id           String   @id @default(cuid())
+  senderId     String
+  receiverId   String?  // null للمطور (رسالة للمطور)
+  content      String
+  isRead       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  sender       User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver     User?    @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+}
+
+// نظام الحظر
+model BlockedUser {
+  id          String   @id @default(cuid())
+  userId      String
+  reason      String?
+  blockedAt   DateTime @default(now())
+  blockedBy   String?  // المطور الذي قام بالحظر
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// نظام استعادة كلمة المرور
+model PasswordReset {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
 }
