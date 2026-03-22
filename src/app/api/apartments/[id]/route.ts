@@ -44,17 +44,32 @@ export async function PUT(
       return NextResponse.json({ error: 'العقار غير موجود' }, { status: 404 });
     }
 
-    const apartment = await db.apartment.update({
-      where: { id },
-      data: {
+    // معالجة الإجراءات الخاصة
+    let updateData: Record<string, unknown> = {};
+
+    if (body.action === 'approve') {
+      // الموافقة على العقار
+      updateData = {
+        status: 'available',
+        approvedBy: body.approvedBy || 'developer',
+        approvedAt: new Date(),
+      };
+    } else if (body.action === 'reject') {
+      // رفض العقار
+      updateData = {
+        status: 'rejected',
+      };
+    } else {
+      // تحديث عادي
+      updateData = {
         title: body.title,
         description: body.description,
         type: body.type,
         status: body.status,
-        price: body.price,
+        price: body.price ? parseInt(body.price) : undefined,
         area: body.area,
-        bedrooms: body.bedrooms,
-        bathrooms: body.bathrooms,
+        bedrooms: body.bedrooms ? parseInt(body.bedrooms) : undefined,
+        bathrooms: body.bathrooms ? parseInt(body.bathrooms) : undefined,
         ownerPhone: body.ownerPhone,
         mapLink: body.mapLink,
         images: body.images,
@@ -63,10 +78,16 @@ export async function PUT(
         isFeatured: body.isFeatured,
         isVip: body.isVip,
         featuredUntil: body.featuredUntil ? new Date(body.featuredUntil) : null,
-      },
+        featured: body.featured,
+      };
+    }
+
+    const apartment = await db.apartment.update({
+      where: { id },
+      data: updateData,
     });
 
-    return NextResponse.json(apartment);
+    return NextResponse.json({ success: true, apartment });
   } catch (error) {
     console.error('Error updating apartment:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
