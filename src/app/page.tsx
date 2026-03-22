@@ -490,7 +490,7 @@ export default function App() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: authIdentifier, password: authPassword })
+        body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), password: authPassword })
       });
       const data = await res.json();
       if (res.ok) {
@@ -502,6 +502,9 @@ export default function App() {
       } else {
         addToast(data.error || 'خطأ في تسجيل الدخول', 'error');
       }
+    } catch (error) {
+      console.error('Login error:', error);
+      addToast('حدث خطأ في الاتصال بالخادم. تأكد من اتصالك بالإنترنت.', 'error');
     } finally {
       setAuthLoading(false);
     }
@@ -515,7 +518,11 @@ export default function App() {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: authIdentifier, name: authName, password: authPassword })
+        body: JSON.stringify({ 
+          identifier: authIdentifier.trim().toLowerCase(), 
+          name: authName.trim(), 
+          password: authPassword 
+        })
       });
       const data = await res.json();
       if (res.ok) {
@@ -528,6 +535,9 @@ export default function App() {
       } else {
         addToast(data.error || 'خطأ في التسجيل', 'error');
       }
+    } catch (error) {
+      console.error('Register error:', error);
+      addToast('حدث خطأ في الاتصال بالخادم. تأكد من اتصالك بالإنترنت.', 'error');
     } finally {
       setAuthLoading(false);
     }
