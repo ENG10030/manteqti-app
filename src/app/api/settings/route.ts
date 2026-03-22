@@ -5,18 +5,24 @@ import { db } from '@/lib/db';
 export async function GET() {
   try {
     let settings = await db.settings.findFirst();
-    
+
     if (!settings) {
       settings = await db.settings.create({
         data: {
           contactFee: 50,
           featuredFee: 100,
           premiumFee: 200,
+          saleDisplayFee: 100,
+          rentDisplayFee: 75,
+          otherServicesFee: 50,
+          highlightFee: 150,
+          priorityListingFee: 200,
+          verifiedListingFee: 250,
           currency: 'ج.م'
         }
       });
     }
-    
+
     return NextResponse.json(settings);
   } catch (error) {
     console.error('Error fetching settings:', error);
@@ -28,30 +34,33 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   try {
     const data = await request.json();
-    
+
     let settings = await db.settings.findFirst();
-    
+
+    const updateData = {
+      contactFee: data.contactFee ?? 50,
+      featuredFee: data.featuredFee ?? 100,
+      premiumFee: data.premiumFee ?? 200,
+      saleDisplayFee: data.saleDisplayFee ?? 100,
+      rentDisplayFee: data.rentDisplayFee ?? 75,
+      otherServicesFee: data.otherServicesFee ?? 50,
+      highlightFee: data.highlightFee ?? 150,
+      priorityListingFee: data.priorityListingFee ?? 200,
+      verifiedListingFee: data.verifiedListingFee ?? 250,
+      currency: data.currency ?? 'ج.م'
+    };
+
     if (!settings) {
       settings = await db.settings.create({
-        data: {
-          contactFee: data.contactFee || 50,
-          featuredFee: data.featuredFee || 100,
-          premiumFee: data.premiumFee || 200,
-          currency: data.currency || 'ج.م'
-        }
+        data: updateData
       });
     } else {
       settings = await db.settings.update({
         where: { id: settings.id },
-        data: {
-          contactFee: data.contactFee,
-          featuredFee: data.featuredFee,
-          premiumFee: data.premiumFee,
-          currency: data.currency
-        }
+        data: updateData
       });
     }
-    
+
     return NextResponse.json(settings);
   } catch (error) {
     console.error('Error updating settings:', error);

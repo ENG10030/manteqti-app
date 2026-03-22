@@ -245,7 +245,18 @@ export default function App() {
   const [aiAction, setAiAction] = useState<string | null>(null);
   const [aiResponse, setAiResponse] = useState<string>('');
   const [aiLoading, setAiLoading] = useState(false);
-  const [settings, setSettings] = useState({ contactFee: 50, featuredFee: 100, premiumFee: 200, currency: 'ج.م' });
+  const [settings, setSettings] = useState({
+    contactFee: 50,
+    featuredFee: 100,
+    premiumFee: 200,
+    saleDisplayFee: 100,
+    rentDisplayFee: 75,
+    otherServicesFee: 50,
+    highlightFee: 150,
+    priorityListingFee: 200,
+    verifiedListingFee: 250,
+    currency: 'ج.م'
+  });
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [operationLogs, setOperationLogs] = useState<any[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -360,6 +371,12 @@ export default function App() {
           contactFee: data.contactFee || 50,
           featuredFee: data.featuredFee || 100,
           premiumFee: data.premiumFee || 200,
+          saleDisplayFee: data.saleDisplayFee || 100,
+          rentDisplayFee: data.rentDisplayFee || 75,
+          otherServicesFee: data.otherServicesFee || 50,
+          highlightFee: data.highlightFee || 150,
+          priorityListingFee: data.priorityListingFee || 200,
+          verifiedListingFee: data.verifiedListingFee || 250,
           currency: data.currency || 'ج.م'
         });
       }
@@ -379,7 +396,18 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok) {
-        setSettings({ contactFee: data.contactFee, featuredFee: data.featuredFee, premiumFee: data.premiumFee, currency: data.currency });
+        setSettings({
+          contactFee: data.contactFee || 50,
+          featuredFee: data.featuredFee || 100,
+          premiumFee: data.premiumFee || 200,
+          saleDisplayFee: data.saleDisplayFee || 100,
+          rentDisplayFee: data.rentDisplayFee || 75,
+          otherServicesFee: data.otherServicesFee || 50,
+          highlightFee: data.highlightFee || 150,
+          priorityListingFee: data.priorityListingFee || 200,
+          verifiedListingFee: data.verifiedListingFee || 250,
+          currency: data.currency || 'ج.م'
+        });
         addToast('تم تحديث الإعدادات بنجاح', 'success');
       }
     } catch {
