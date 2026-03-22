@@ -207,3 +207,13 @@ model BlockedUser {
   blockedBy   String?  // المطور الذي قام بالحظر
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+// نظام استعادة كلمة المرور
+model PasswordReset {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}

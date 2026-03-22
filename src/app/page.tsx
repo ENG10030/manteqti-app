@@ -1433,7 +1433,7 @@ export default function App() {
 
   // Add comment
   const addComment = async (apartmentId: string) => {
-    if (!currentUser) {
+    if (!currentUser && !isDeveloper) {
       addToast('يجب تسجيل الدخول للتعليق', 'error');
       return;
     }
@@ -1447,12 +1447,24 @@ export default function App() {
       const res = await fetch('/api/comments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apartmentId, userId: currentUser.id, content: newComment })
+        body: JSON.stringify({ 
+          apartmentId, 
+          userId: currentUser?.id || 'developer', 
+          content: newComment,
+          isDeveloper: isDeveloper, // المطور ينشر مباشرة
+          status: isDeveloper ? 'approved' : 'pending'
+        })
       });
       const data = await res.json();
       if (data.success) {
         setNewComment('');
-        addToast('تم إرسال تعليقك وهو في انتظار موافقة المطور', 'success');
+        if (isDeveloper) {
+          addToast('تم نشر التعليق مباشرة', 'success');
+          // إضافة التعليق للقائمة مباشرة
+          fetchComments(apartmentId);
+        } else {
+          addToast('تم إرسال تعليقك وهو في انتظار موافقة المطور', 'success');
+        }
       } else {
         addToast(data.error || 'حدث خطأ', 'error');
       }
@@ -2174,17 +2186,24 @@ export default function App() {
                   </h3>
                   
                   {/* Comment Input */}
-                  {currentUser ? (
+                  {(currentUser || isDeveloper) ? (
                     <div className="flex gap-2 mb-4">
                       <input
                         type="text"
                         value={newComment}
                         onChange={(e) => setNewComment(e.target.value)}
-                        placeholder="اكتب تعليقاً..."
+                        placeholder={isDeveloper ? "كتعليق كمطور (يُنشر مباشرة)..." : "اكتب تعليقاً..."}
                         className={`flex-1 px-4 py-2 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-500'} focus:outline-none focus:ring-2 focus:ring-violet-500`}
                       />
                       <button
-                        onClick={() => addComment(selectedApartment.id)}
+                        onClick={() => {
+                          if (isDeveloper) {
+                            // المطور ينشر التعليق مباشرة
+                            addComment(selectedApartment.id);
+                          } else {
+                            addComment(selectedApartment.id);
+                          }
+                        }}
                         disabled={commentLoading || !newComment.trim()}
                         className="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white hover:from-violet-700 hover:to-purple-800 disabled:opacity-50"
                       >
