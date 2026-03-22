@@ -16,6 +16,7 @@ import {
   Users, Activity, Wallet, PieChart, Layers, Key, ArrowUp, Download, RefreshCw as RefreshCwIcon,
   Crown, Diamond
 } from 'lucide-react';
+import { FileUpload } from '@/components/file-upload';
 
 // Developer credentials
 const DEVELOPER_EMAIL = 'ahmadmamdouh10030@gmail.com';
@@ -113,7 +114,7 @@ function parseJsonArray(value: string | string[] | undefined): string[] {
   }
 }
 
-// Helper function to process apartment data
+// Helper function to process apartment data (convert JSON strings to arrays)
 function processApartment(apt: any): Apartment {
   return {
     ...apt,
@@ -291,6 +292,7 @@ export default function App() {
       const res = await fetch('/api/apartments');
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to fetch');
+      // Process apartments to convert JSON strings to arrays
       const processedData = data.map(processApartment);
       setApartments(processedData);
       setAllApartments(processedData);
@@ -1477,60 +1479,13 @@ export default function App() {
                     صور الشقة
                   </label>
                   
-                  {/* Add Image Input */}
-                  <div className="flex gap-2 mb-3">
-                    <input type="url" value={newImageUrl} onChange={(e) => setNewImageUrl(e.target.value)}
-                      className={`flex-1 px-4 py-2 rounded-xl border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-500'} focus:outline-none focus:ring-2 focus:ring-violet-500`}
-                      placeholder="الصق رابط الصورة هنا..." 
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter' && newImageUrl.trim()) {
-                          e.preventDefault();
-                          setImageUrls([...imageUrls, newImageUrl.trim()]);
-                          setNewImageUrl('');
-                        }
-                      }} />
-                    <button type="button" onClick={() => {
-                      if (newImageUrl.trim()) {
-                        setImageUrls([...imageUrls, newImageUrl.trim()]);
-                        setNewImageUrl('');
-                      }
-                    }}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium hover:from-violet-700 hover:to-purple-800 transition-all flex items-center gap-2">
-                      <Plus className="h-4 w-4" />
-                      إضافة
-                    </button>
-                  </div>
-                  
-                  {/* Image Preview Grid */}
-                  {imageUrls.length > 0 && (
-                    <div className="grid grid-cols-3 gap-2 mb-3">
-                      {imageUrls.map((url, index) => (
-                        <div key={index} className="relative group">
-                          <img src={url} alt={`صورة ${index + 1}`}
-                            className="w-full h-24 object-cover rounded-lg border-2 border-transparent group-hover:border-violet-500 transition-all"
-                            onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=خطأ'; }} />
-                          <button type="button" onClick={() => setImageUrls(imageUrls.filter((_, i) => i !== index))}
-                            className="absolute -top-2 -left-2 p-1 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
-                            <X className="h-3 w-3" />
-                          </button>
-                          <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/60 text-white text-xs">
-                            {index + 1}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  
-                  {/* Image URL List */}
-                  {imageUrls.length > 0 && (
-                    <div className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                      تم إضافة {imageUrls.length} صورة
-                    </div>
-                  )}
-                  
-                  <p className={`text-xs mt-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                    نصيحة: استخدم روابط من مواقع مثل Imgur أو Google Drive أو أي خدمة استضافة صور
-                  </p>
+                  {/* File Upload Component */}
+                  <FileUpload
+                    type="image"
+                    value={imageUrls}
+                    onChange={setImageUrls}
+                    maxFiles={5}
+                  />
                 </div>
                 
                 {/* Videos Section */}
@@ -1540,52 +1495,13 @@ export default function App() {
                     فيديوهات الشقة (اختياري)
                   </label>
                   
-                  {/* Add Video Input */}
-                  <div className="flex gap-2 mb-3">
-                    <input type="url" value={newVideoUrl} onChange={(e) => setNewVideoUrl(e.target.value)}
-                      className={`flex-1 px-4 py-2 rounded-xl border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-500'} focus:outline-none focus:ring-2 focus:ring-violet-500`}
-                      placeholder="الصق رابط الفيديو (YouTube, Vimeo...)"
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter' && newVideoUrl.trim()) {
-                          e.preventDefault();
-                          setVideoUrls([...videoUrls, newVideoUrl.trim()]);
-                          setNewVideoUrl('');
-                        }
-                      }} />
-                    <button type="button" onClick={() => {
-                      if (newVideoUrl.trim()) {
-                        setVideoUrls([...videoUrls, newVideoUrl.trim()]);
-                        setNewVideoUrl('');
-                      }
-                    }}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 text-white font-medium hover:from-rose-600 hover:to-pink-700 transition-all flex items-center gap-2">
-                      <Plus className="h-4 w-4" />
-                      إضافة
-                    </button>
-                  </div>
-                  
-                  {/* Video List */}
-                  {videoUrls.length > 0 && (
-                    <div className="space-y-2 mb-3">
-                      {videoUrls.map((url, index) => (
-                        <div key={index} className={`flex items-center gap-2 p-2 rounded-lg ${darkMode ? 'bg-slate-600' : 'bg-white'} border ${darkMode ? 'border-slate-500' : 'border-slate-200'}`}>
-                          <Play className="h-4 w-4 text-rose-500 flex-shrink-0" />
-                          <a href={url} target="_blank" rel="noopener noreferrer" 
-                            className={`flex-1 text-sm truncate hover:underline ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
-                            {url.length > 50 ? url.substring(0, 50) + '...' : url}
-                          </a>
-                          <button type="button" onClick={() => setVideoUrls(videoUrls.filter((_, i) => i !== index))}
-                            className="p-1 rounded hover:bg-red-500/10 text-red-500">
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  
-                  <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                    يمكنك إضافة روابط من YouTube أو Vimeo أو أي منصة فيديو أخرى
-                  </p>
+                  {/* File Upload Component */}
+                  <FileUpload
+                    type="video"
+                    value={videoUrls}
+                    onChange={setVideoUrls}
+                    maxFiles={3}
+                  />
                 </div>
 
                 {/* Notice */}
@@ -1863,58 +1779,13 @@ export default function App() {
                       صور الشقة
                     </label>
                     
-                    {/* Add Image Input */}
-                    <div className="flex gap-2 mb-3">
-                      <input type="url" value={newEditImageUrl} onChange={(e) => setNewEditImageUrl(e.target.value)}
-                        className={`flex-1 px-4 py-2 rounded-xl border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-500'} focus:outline-none focus:ring-2 focus:ring-violet-500`}
-                        placeholder="الصق رابط الصورة هنا..."
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter' && newEditImageUrl.trim()) {
-                            e.preventDefault();
-                            const newImages = [...(editApartment.images || []), newEditImageUrl.trim()];
-                            setEditApartment({ ...editApartment, images: newImages });
-                            setNewEditImageUrl('');
-                          }
-                        }} />
-                      <button type="button" onClick={() => {
-                        if (newEditImageUrl.trim()) {
-                          const newImages = [...(editApartment.images || []), newEditImageUrl.trim()];
-                          setEditApartment({ ...editApartment, images: newImages });
-                          setNewEditImageUrl('');
-                        }
-                      }}
-                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium hover:from-violet-700 hover:to-purple-800 transition-all flex items-center gap-2">
-                        <Plus className="h-4 w-4" />
-                        إضافة
-                      </button>
-                    </div>
-                    
-                    {/* Image Preview Grid */}
-                    {editApartment.images && editApartment.images.length > 0 && (
-                      <div className="grid grid-cols-3 gap-2 mb-3">
-                        {editApartment.images.map((url, index) => (
-                          <div key={index} className="relative group">
-                            <img src={url} alt={`صورة ${index + 1}`}
-                              className="w-full h-24 object-cover rounded-lg border-2 border-transparent group-hover:border-violet-500 transition-all"
-                              onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150?text=خطأ'; }} />
-                            <button type="button" onClick={() => {
-                              const newImages = editApartment.images?.filter((_, i) => i !== index) || [];
-                              setEditApartment({ ...editApartment, images: newImages });
-                            }}
-                              className="absolute -top-2 -left-2 p-1 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
-                              <X className="h-3 w-3" />
-                            </button>
-                            <div className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/60 text-white text-xs">
-                              {index + 1}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    
-                    <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                      {editApartment.images?.length || 0} صورة مضافة
-                    </p>
+                    {/* File Upload Component */}
+                    <FileUpload
+                      type="image"
+                      value={editApartment.images || []}
+                      onChange={(urls) => setEditApartment({ ...editApartment, images: urls })}
+                      maxFiles={5}
+                    />
                   </div>
                   
                   {/* Videos Section for Edit */}
@@ -1924,59 +1795,13 @@ export default function App() {
                       فيديوهات الشقة
                     </label>
                     
-                    {/* Add Video Input */}
-                    <div className="flex gap-2 mb-3">
-                      <input type="url" value={newEditVideoUrl} onChange={(e) => setNewEditVideoUrl(e.target.value)}
-                        className={`flex-1 px-4 py-2 rounded-xl border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-500'} focus:outline-none focus:ring-2 focus:ring-violet-500`}
-                        placeholder="الصق رابط الفيديو (YouTube, Vimeo...)"
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter' && newEditVideoUrl.trim()) {
-                            e.preventDefault();
-                            const currentVideos = editApartment.videoUrl ? [editApartment.videoUrl] : [];
-                            const newVideos = editApartment.videos || currentVideos;
-                            setEditApartment({ ...editApartment, videos: [...newVideos, newEditVideoUrl.trim()], videoUrl: newEditVideoUrl.trim() });
-                            setNewEditVideoUrl('');
-                          }
-                        }} />
-                      <button type="button" onClick={() => {
-                        if (newEditVideoUrl.trim()) {
-                          const currentVideos = editApartment.videoUrl ? [editApartment.videoUrl] : [];
-                          const newVideos = editApartment.videos || currentVideos;
-                          setEditApartment({ ...editApartment, videos: [...newVideos, newEditVideoUrl.trim()], videoUrl: newEditVideoUrl.trim() });
-                          setNewEditVideoUrl('');
-                        }
-                      }}
-                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-rose-500 to-pink-600 text-white font-medium hover:from-rose-600 hover:to-pink-700 transition-all flex items-center gap-2">
-                        <Plus className="h-4 w-4" />
-                        إضافة
-                      </button>
-                    </div>
-                    
-                    {/* Video List */}
-                    {editApartment.videos && editApartment.videos.length > 0 && (
-                      <div className="space-y-2 mb-3">
-                        {editApartment.videos.map((url, index) => (
-                          <div key={index} className={`flex items-center gap-2 p-2 rounded-lg ${darkMode ? 'bg-slate-600' : 'bg-white'} border ${darkMode ? 'border-slate-500' : 'border-slate-200'}`}>
-                            <Play className="h-4 w-4 text-rose-500 flex-shrink-0" />
-                            <a href={url} target="_blank" rel="noopener noreferrer" 
-                              className={`flex-1 text-sm truncate hover:underline ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
-                              {url.length > 50 ? url.substring(0, 50) + '...' : url}
-                            </a>
-                            <button type="button" onClick={() => {
-                              const newVideos = editApartment.videos?.filter((_, i) => i !== index) || [];
-                              setEditApartment({ ...editApartment, videos: newVideos, videoUrl: newVideos[0] || undefined });
-                            }}
-                              className="p-1 rounded hover:bg-red-500/10 text-red-500">
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    
-                    <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                      {editApartment.videos?.length || 0} فيديو مضاف
-                    </p>
+                    {/* File Upload Component */}
+                    <FileUpload
+                      type="video"
+                      value={editApartment.videos || []}
+                      onChange={(urls) => setEditApartment({ ...editApartment, videos: urls, videoUrl: urls[0] || undefined })}
+                      maxFiles={3}
+                    />
                   </div>
                 </div>
 
