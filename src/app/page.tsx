@@ -212,6 +212,18 @@ export default function App() {
   const [authName, setAuthName] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  
+  // Forgot password states
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSuccess, setForgotSuccess] = useState(false);
+  const [resetToken, setResetToken] = useState<string | null>(null);
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
   const [devEmail, setDevEmail] = useState('');
   const [devPassword, setDevPassword] = useState('');
   const [devLoading, setDevLoading] = useState(false);
@@ -601,6 +613,94 @@ export default function App() {
     setIsDeveloper(false);
     addToast('تم تسجيل الخروج', 'info');
   };
+
+  // Handle forgot password
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotLoading(true);
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setForgotSuccess(true);
+        if (data.resetUrl) {
+          setResetToken(data.token);
+        }
+        addToast('تم إرسال رابط استعادة كلمة المرور', 'success');
+      } else {
+        addToast(data.error || 'حدث خطأ', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الاتصال', 'error');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  // Handle reset password
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      addToast('كلمتا المرور غير متطابقتين', 'error');
+      return;
+    }
+    if (newPassword.length < 6) {
+      addToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'error');
+      return;
+    }
+    setResetLoading(true);
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: resetToken, newPassword, confirmPassword })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addToast('تم تغيير كلمة المرور بنجاح!', 'success');
+        setShowResetPassword(false);
+        setShowForgotPassword(false);
+        setResetToken(null);
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        addToast(data.error || 'حدث خطأ', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الاتصال', 'error');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  // Check for reset token in URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (token) {
+      // Verify token
+      fetch(`/api/auth/reset-password?token=${token}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            setResetToken(token);
+            setResetEmail(data.email);
+            setShowResetPassword(true);
+          } else {
+            addToast(data.error || 'الرابط غير صالح', 'error');
+          }
+        })
+        .catch(() => {
+          addToast('حدث خطأ في التحقق من الرابط', 'error');
+        });
+      // Clean URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [addToast]);
 
   // Submit apartment after login
   const submitApartment = async (data: any, userId?: string) => {
@@ -2335,6 +2435,12 @@ export default function App() {
                       تذكرني (حفظ البريد/الهاتف)
                     </label>
                   </div>
+                  <div className="mb-4 text-left">
+                    <button type="button" onClick={() => { setShowAuth(false); setShowForgotPassword(true); setForgotSuccess(false); }}
+                      className="text-sm text-violet-600 hover:text-violet-700 font-medium">
+                      نسيت كلمة المرور؟
+                    </button>
+                  </div>
                   <button type="submit" disabled={authLoading}
                     className="w-full py-3 rounded-xl font-medium text-white bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 disabled:opacity-50">
                     {authLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'تسجيل الدخول'}
@@ -2409,6 +2515,117 @@ export default function App() {
                 <button type="submit" disabled={devLoading}
                   className="w-full mt-6 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 disabled:opacity-50">
                   {devLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'دخول'}
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Forgot Password Modal */}
+      <AnimatePresence>
+        {showForgotPassword && !showResetPassword && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowForgotPassword(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center mx-auto mb-4">
+                  <Key className="h-8 w-8 text-white" />
+                </div>
+                <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>استعادة كلمة المرور</h2>
+                <p className={`text-sm mt-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  أدخل بريدك الإلكتروني وسنرسل لك رابطاً لاستعادة كلمة المرور
+                </p>
+              </div>
+              
+              {forgotSuccess ? (
+                <div className="text-center">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle2 className="h-8 w-8 text-white" />
+                  </div>
+                  <p className={`mb-4 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                    إذا كان البريد مسجل لدينا، ستصلك رسالة تحتوي على رابط استعادة كلمة المرور
+                  </p>
+                  {resetToken && (
+                    <div className={`p-4 rounded-xl mb-4 ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
+                      <p className="text-xs text-slate-500 mb-2">للتجربة - رابط الاستعادة:</p>
+                      <button onClick={() => { setResetEmail(forgotEmail); setShowResetPassword(true); }}
+                        className="text-violet-600 text-sm underline break-all">
+                        اضغط هنا لتجربة استعادة كلمة المرور
+                      </button>
+                    </div>
+                  )}
+                  <button onClick={() => setShowForgotPassword(false)}
+                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium">
+                    حسناً
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleForgotPassword}>
+                  <div className="mb-4">
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      البريد الإلكتروني
+                    </label>
+                    <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-violet-500`}
+                      placeholder="example@email.com" required />
+                  </div>
+                  <button type="submit" disabled={forgotLoading}
+                    className="w-full py-3 rounded-xl font-medium text-white bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 disabled:opacity-50">
+                    {forgotLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'إرسال رابط الاستعادة'}
+                  </button>
+                  <button type="button" onClick={() => { setShowForgotPassword(false); setShowAuth(true); }}
+                    className={`w-full mt-3 py-3 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>
+                    العودة لتسجيل الدخول
+                  </button>
+                </form>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Reset Password Modal */}
+      <AnimatePresence>
+        {showResetPassword && resetToken && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowResetPassword(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mx-auto mb-4">
+                  <Key className="h-8 w-8 text-white" />
+                </div>
+                <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>تعيين كلمة مرور جديدة</h2>
+                <p className={`text-sm mt-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  للحساب: {resetEmail}
+                </p>
+              </div>
+              <form onSubmit={handleResetPassword}>
+                <div className="mb-4">
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                    كلمة المرور الجديدة
+                  </label>
+                  <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-emerald-500`}
+                    placeholder="6 أحرف على الأقل" required minLength={6} />
+                </div>
+                <div className="mb-4">
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                    تأكيد كلمة المرور
+                  </label>
+                  <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-emerald-500`}
+                    placeholder="أعد كتابة كلمة المرور" required />
+                </div>
+                <button type="submit" disabled={resetLoading}
+                  className="w-full py-3 rounded-xl font-medium text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50">
+                  {resetLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'تغيير كلمة المرور'}
                 </button>
               </form>
             </motion.div>
@@ -2907,19 +3124,25 @@ export default function App() {
                               <label className={`text-sm font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{fee.label}</label>
                             </div>
                             <div className="flex items-center gap-2">
-                              <input type="number" value={settings[fee.key as keyof typeof settings] || 0}
-                                onChange={(e) => updateSettings({ [fee.key]: parseInt(e.target.value) || 0 })}
+                              <input type="number" 
+                                value={settings[fee.key as keyof typeof settings]} 
+                                onChange={(e) => {
+                                  // تحديث الحالة المحلية فقط بدون حفظ تلقائي
+                                  const value = e.target.value === '' ? 0 : parseInt(e.target.value);
+                                  setSettings(prev => ({ ...prev, [fee.key]: value }));
+                                }}
+                                min="0"
                                 className={`flex-1 px-3 py-2 rounded-lg border text-lg font-bold ${darkMode ? 'bg-slate-600 border-slate-500 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`} />
                               <span className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>ج.م</span>
                             </div>
                           </div>
                         ))}
                       </div>
-                      <button onClick={async () => { await updateSettings(settings); addToast('تم حفظ جميع الإعدادات', 'success'); }}
+                      <button onClick={async () => { await updateSettings(settings); }}
                         disabled={settingsLoading}
                         className="mt-6 w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 flex items-center justify-center gap-2">
                         {settingsLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
-                        حفظ جميع الإعدادات
+                        تأكيد الحفظ
                       </button>
                     </div>
 
