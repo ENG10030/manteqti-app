@@ -2055,7 +2055,7 @@ export default function App() {
       <footer className={`relative z-10 mt-auto py-6 border-t ${darkMode ? 'bg-slate-900/80 border-slate-700' : 'bg-white/80 border-slate-200'} backdrop-blur`}>
         <div className="max-w-7xl mx-auto px-4 text-center">
           <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-            © 2026 منطقتي | Manteqti - جميع الحقوق محفوظة
+            © 2024 منطقتي | Manteqti - جميع الحقوق محفوظة
           </p>
         </div>
       </footer>
