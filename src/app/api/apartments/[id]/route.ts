@@ -47,89 +47,38 @@ export async function PUT(
     // معالجة الإجراءات الخاصة
     let updateData: Record<string, unknown> = {};
 
-    switch (body.action) {
-      case 'approve':
-        // الموافقة على العقار
-        updateData = {
-          status: 'available',
-          approvedBy: body.approvedBy || 'developer',
-          approvedAt: new Date(),
-        };
-        break;
-        
-      case 'reject':
-        // رفض العقار
-        updateData = {
-          status: 'rejected',
-        };
-        break;
-        
-      case 'feature':
-        // جعل العقار مميز
-        updateData = {
-          isFeatured: true,
-          featuredUntil: body.featuredUntil ? new Date(body.featuredUntil) : null,
-        };
-        break;
-        
-      case 'unfeature':
-        // إزالة التمييز
-        updateData = {
-          isFeatured: false,
-          featuredUntil: null,
-        };
-        break;
-        
-      case 'vip':
-        // جعل العقار مميز+ (VIP)
-        updateData = {
-          isVip: true,
-          isFeatured: true,
-          featuredUntil: body.featuredUntil ? new Date(body.featuredUntil) : null,
-        };
-        break;
-        
-      case 'unvip':
-        // إزالة VIP
-        updateData = {
-          isVip: false,
-        };
-        break;
-        
-      case 'hide':
-        // إخفاء العقار (للمحظورين)
-        updateData = {
-          status: 'hidden',
-        };
-        break;
-        
-      case 'show':
-        // إظهار العقار مرة أخرى
-        updateData = {
-          status: 'available',
-        };
-        break;
-        
-      default:
-        // تحديث عادي
-        updateData = {
-          title: body.title,
-          description: body.description,
-          type: body.type,
-          status: body.status,
-          price: body.price,
-          area: body.area,
-          bedrooms: body.bedrooms,
-          bathrooms: body.bathrooms,
-          ownerPhone: body.ownerPhone,
-          mapLink: body.mapLink,
-          images: body.images,
-          videos: body.videos,
-          amenities: body.amenities,
-          isFeatured: body.isFeatured,
-          isVip: body.isVip,
-          featuredUntil: body.featuredUntil ? new Date(body.featuredUntil) : null,
-        };
+    if (body.action === 'approve') {
+      // الموافقة على العقار
+      updateData = {
+        status: 'available',
+        approvedBy: body.approvedBy || 'developer',
+        approvedAt: new Date(),
+      };
+    } else if (body.action === 'reject') {
+      // رفض العقار
+      updateData = {
+        status: 'rejected',
+      };
+    } else {
+      // تحديث عادي
+      updateData = {
+        title: body.title,
+        description: body.description,
+        type: body.type,
+        status: body.status,
+        price: body.price,
+        area: body.area,
+        bedrooms: body.bedrooms,
+        bathrooms: body.bathrooms,
+        ownerPhone: body.ownerPhone,
+        mapLink: body.mapLink,
+        images: body.images,
+        videos: body.videos,
+        amenities: body.amenities,
+        isFeatured: body.isFeatured,
+        isVip: body.isVip,
+        featuredUntil: body.featuredUntil ? new Date(body.featuredUntil) : null,
+      };
     }
 
     const apartment = await db.apartment.update({
@@ -151,15 +100,11 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    // حذف السجلات المرتبطة
     await db.payment.deleteMany({ where: { inquiry: { apartmentId: id } } });
     await db.inquiry.deleteMany({ where: { apartmentId: id } });
-    await db.like.deleteMany({ where: { apartmentId: id } });
-    await db.comment.deleteMany({ where: { apartmentId: id } });
-    await db.propertyEditRequest.deleteMany({ where: { apartmentId: id } });
     await db.apartment.delete({ where: { id } });
 
-    return NextResponse.json({ success: true, message: 'تم حذف العقار' });
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting apartment:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
