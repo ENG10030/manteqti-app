@@ -1,32 +1,53 @@
-import type { Metadata } from "next"
-import { Noto_Sans_Arabic } from "next/font/google"
-import "./globals.css"
-import { Providers } from "./providers"
-import { Toaster } from "@/components/ui/sonner"
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+import { Toaster } from "@/components/ui/toaster";
 
-const notoSansArabic = Noto_Sans_Arabic({
-  subsets: ["arabic"],
-  variable: "--font-arabic",
-})
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
 
 export const metadata: Metadata = {
-  title: "منطقتي - عقاراتك في منطقتك",
-  description: "منصة عقارية متكاملة لعرض وإدارة العقارات",
-}
+  title: "منطقتي - عقارات مصر",
+  description: "منصة عقارية متكاملة للبحث عن شقق وعقارات في مصر. إيجار، بيع، شقق، فيلات وأكثر.",
+  keywords: ["عقارات", "مصر", "شقق", "إيجار", "بيع", "فيلا", "منطقتي", "عقارات مصر"],
+  authors: [{ name: "منطقتي" }],
+  icons: {
+    icon: "/logo.svg",
+  },
+  openGraph: {
+    title: "منطقتي - عقارات مصر",
+    description: "منصة عقارية متكاملة للبحث عن شقق وعقارات في مصر",
+    url: "https://manteqti-app.vercel.app",
+    siteName: "منطقتي",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "منطقتي - عقارات مصر",
+    description: "منصة عقارية متكاملة للبحث عن شقق وعقارات في مصر",
+  },
+};
 
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode
+  children: React.ReactNode;
 }>) {
   return (
-    <html lang="ar" dir="rtl" suppressHydrationWarning>
-      <body className={`${notoSansArabic.variable} font-sans antialiased`}>
-        <Providers>
-          {children}
-          <Toaster position="top-center" />
-        </Providers>
+    <html lang="en" suppressHydrationWarning>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
+      >
+        {children}
+        <Toaster />
       </body>
     </html>
-  )
+  );
 }

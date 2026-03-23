@@ -3,57 +3,47 @@ import { db } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
-    // Get session token from cookie
-    const token = request.cookies.get('session_token')?.value;
+    // Check for cookie first (most secure), then Authorization header, then query param
+    const cookieToken = request.cookies.get('auth_token')?.value;
+    const authHeader = request.headers.get('authorization');
+    const headerToken = authHeader?.replace('Bearer ', '');
+    const queryToken = request.nextUrl.searchParams.get('token');
+    
+    const token = cookieToken || headerToken || queryToken;
 
     if (!token) {
-      return NextResponse.json({
-        user: null
-      });
+      return NextResponse.json({ user: null });
     }
 
     // Find session
     const session = await db.session.findUnique({
-      where: { token },
-      include: { user: true }
+      where: { token }
     });
 
-    if (!session) {
+    if (!session || session.expiresAt < new Date()) {
+      // Clear invalid cookie
       const response = NextResponse.json({ user: null });
-      response.cookies.delete('session_token');
+      response.cookies.delete('auth_token');
       return response;
     }
 
-    // Check if session expired
-    if (session.expiresAt < new Date()) {
-      // Delete expired session
-      await db.session.delete({ where: { token } });
-      const response = NextResponse.json({ user: null });
-      response.cookies.delete('session_token');
-      return response;
+    // Find user
+    const user = await db.user.findUnique({
+      where: { id: session.userId }
+    });
+
+    if (!user) {
+      return NextResponse.json({ user: null });
     }
 
-    // Check if user is blocked
-    if (session.user.isBlocked) {
-      await db.session.delete({ where: { token } });
-      const response = NextResponse.json({ user: null, blocked: true });
-      response.cookies.delete('session_token');
-      return response;
-    }
-
-    return NextResponse.json({
+    return NextResponse.json({ 
       user: {
-        id: session.user.id,
-        identifier: session.user.identifier,
-        name: session.user.name,
-        phone: session.user.phone,
-        email: session.user.email
+        id: user.id,
+        identifier: user.identifier,
+        name: user.name,
       }
     });
-  } catch (error) {
-    console.error('Get current user error:', error);
-    return NextResponse.json({
-      user: null
-    });
+  } catch {
+    return NextResponse.json({ user: null });
   }
 }

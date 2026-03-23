@@ -10,137 +10,244 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ===========================================
-// نموذج المستخدم
-// ===========================================
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  name          String?
-  password      String?
-  phone         String?
-  role          String    @default("user") // "user" or "developer"
-  image         String?
-  isBlocked     Boolean   @default(false)
-  blockedAt     DateTime?
-  blockedBy     String?   // ID of developer who blocked
-  blockedReason String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  // العلاقات
-  apartments         Apartment[]
-  blockedContents    BlockedContent[]
-  sessions           Session[]
-  accounts           Account[]
-
-  @@map("users")
+  id         String      @id @default(cuid())
+  identifier String      @unique
+  name       String
+  password   String
+  phone      String?
+  email      String?
+  otp        String?
+  otpExpires DateTime?
+  isBlocked  Boolean     @default(false)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  inquiries  Inquiry[]
+  payments   Payment[]
+  sessions   Session[]
+  likes      Like[]
+  comments   Comment[]
+  sentMessages     Message[]  @relation("SentMessages")
+  receivedMessages Message[]  @relation("ReceivedMessages")
+  blockedRecords   BlockedUser[]
+  editRequests      PropertyEditRequest[]
 }
 
-// ===========================================
-// نموذج العقار
-// ===========================================
 model Apartment {
-  id              String    @id @default(cuid())
+  id              String      @id @default(cuid())
   title           String
-  description     String?
-  price           Float?
-  area            Float?
-  rooms           Int?
-  bathrooms       Int?
-  address         String?
-  city            String?
-  neighborhood    String?
-  type            String?   // "sale", "rent", etc.
-  status          String    @default("pending") // "pending", "approved", "rejected"
-  images          String?   // JSON array of image URLs
-  
-  // التمييز
-  isFeatured      Boolean   @default(false)
-  featuredType    String?   // "featured" or "featured_plus"
-  featuredBy      String?   // ID of developer who featured
-  featuredAt      DateTime?
-  
-  // الموافقة
-  approvedBy      String?   // ID of developer who approved
+  price           Int
+  area            String
+  bedrooms        Int
+  bathrooms       Int
+  description     String
+  ownerPhone      String
+  mapLink         String
+  imageUrl        String?
+  images          String?
+  videoUrl        String?
+  videos          String?
+  amenities       String?
+  featured        Boolean     @default(false)
+  type            String
+  status          String      @default("pending")
+  statusChangedAt DateTime?
+  views           Int         @default(0)
+  paymentRef      String?
+  agreementStatus String?
+  createdBy       String?
+  approvedBy      String?
   approvedAt      DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  inquiries       Inquiry[]
+  likes           Like[]
+  comments        Comment[]
+  editRequests    PropertyEditRequest[]
   
-  // الملكية
-  createdBy       String
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  
-  // إخفاء المحتوى المحظور
-  isHidden        Boolean   @default(false) // مخفي بسبب حظر المستخدم
-  hiddenAt        DateTime?
-  
-  // العلاقات
-  creator         User      @relation(fields: [createdBy], references: [id])
-  blockedContents BlockedContent[]
-
-  @@index([status])
-  @@index([isFeatured, featuredType])
-  @@index([createdBy])
-  @@map("apartments")
+  // حقول VIP والمميز
+  isFeatured      Boolean     @default(false)
+  isVip           Boolean     @default(false)
+  featuredUntil   DateTime?
 }
 
-// ===========================================
-// نموذج المحتوى المحظور
-// ===========================================
-model BlockedContent {
-  id              String   @id @default(cuid())
-  userId          String   // المستخدم المحظور
-  apartmentId     String   // العقار المخفي
-  blockedBy       String   // المطور الذي حظر
-  action          String   // "hidden", "deleted"
-  canRestore      Boolean  @default(true) // هل يمكن استعادته
-  createdAt       DateTime @default(now())
-  
-  // العلاقات
-  user            User      @relation(fields: [userId], references: [id])
-  apartment       Apartment @relation(fields: [apartmentId], references: [id])
-
-  @@map("blocked_contents")
+model Inquiry {
+  id               String    @id @default(cuid())
+  apartmentId      String
+  userId           String?
+  name             String
+  email            String
+  phone            String
+  message          String
+  lifecycleStatus  String    @default("New")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  apartment        Apartment @relation(fields: [apartmentId], references: [id])
+  user             User?     @relation(fields: [userId], references: [id])
+  payment          Payment?
 }
 
-// ===========================================
-// نماذج NextAuth
-// ===========================================
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String?
-  access_token      String?
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String?
-  session_state     String?
+model Payment {
+  id             String    @id @default(cuid())
+  inquiryId      String    @unique
+  method         String
+  status         String    @default("Pending")
+  inquiryStatus  String    @default("Contacted")
+  amount         Int
+  transactionRef String?
+  paymentLink    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  inquiry        Inquiry   @relation(fields: [inquiryId], references: [id])
+  user           User?     @relation(fields: [userId], references: [id])
+  userId         String?
+}
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+model OtpCode {
+  id        String   @id @default(cuid())
+  code      String
+  email     String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
 
-  @@unique([provider, providerAccountId])
-  @@map("accounts")
+model OperationLog {
+  id          String   @id @default(cuid())
+  action      String
+  entityType  String
+  entityId    String?
+  userId      String?
+  details     String?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+}
+
+model Settings {
+  id                  String   @id @default(cuid())
+  contactFee          Int      @default(50)
+  featuredFee         Int      @default(100)
+  premiumFee          Int      @default(200)
+  saleDisplayFee      Int      @default(100)
+  rentDisplayFee      Int      @default(75)
+  otherServicesFee    Int      @default(50)
+  highlightFee        Int      @default(150)
+  priorityListingFee  Int      @default(200)
+  verifiedListingFee  Int      @default(250)
+  currency            String   @default("ج.م")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 model Session {
   id           String   @id @default(cuid())
-  sessionToken String   @unique
   userId       String
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("sessions")
+  token        String   @unique
+  expiresAt    DateTime
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id])
 }
 
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
+model SecurityLog {
+  id          String   @id @default(cuid())
+  action      String
+  identifier  String
+  ipAddress   String?
+  userAgent   String?
+  details     String?
+  createdAt   DateTime @default(now())
+}
 
-  @@unique([identifier, token])
-  @@map("verification_tokens")
+// نظام الإعجابات
+model Like {
+  id          String   @id @default(cuid())
+  apartmentId String
+  userId      String
+  createdAt   DateTime @default(now())
+  apartment   Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([apartmentId, userId]) // مستخدم واحد يمكنه الإعجاب مرة واحدة فقط
+}
+
+// نظام التعليقات مع الموافقة
+model Comment {
+  id          String   @id @default(cuid())
+  apartmentId String
+  userId      String
+  content     String
+  status      String   @default("pending") // pending, approved, rejected
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  approvedBy  String?
+  approvedAt  DateTime?
+  apartment   Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// نظام الرسائل بين المستخدمين والمطور
+model Message {
+  id           String   @id @default(cuid())
+  senderId     String
+  receiverId   String?  // null للمطور (رسالة للمطور)
+  content      String
+  isRead       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  sender       User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver     User?    @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+}
+
+// نظام الحظر
+model BlockedUser {
+  id          String   @id @default(cuid())
+  userId      String
+  reason      String?
+  blockedAt   DateTime @default(now())
+  blockedBy   String?  // المطور الذي قام بالحظر
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// نظام استعادة كلمة المرور
+model PasswordReset {
+  id        String   @id @default(cuid())
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// نظام طلبات تعديل العقارات بعد النشر
+model PropertyEditRequest {
+  id              String   @id @default(cuid())
+  apartmentId     String
+  userId          String   // الناشر الذي طلب التعديل
+  
+  // أنواع التعديلات المطلوبة
+  editType        String   // 'images' | 'videos' | 'price' | 'status' | 'multiple'
+  
+  // البيانات الجديدة (حسب نوع التعديل)
+  newImages       String?  // JSON array of new image URLs
+  newVideos       String?  // JSON array of new video URLs
+  newPrice        Int?
+  newStatus       String?
+  
+  // وصف التعديل
+  description     String?  // سبب التعديل أو ملاحظات
+  
+  // حالة الطلب
+  status          String   @default("pending") // pending, approved, rejected
+  
+  // بيانات المراجعة
+  reviewedBy      String?  // المطور الذي راجع الطلب
+  reviewedAt      DateTime?
+  reviewNotes     String?  // ملاحظات المطور عند القبول أو الرفض
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  apartment       Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

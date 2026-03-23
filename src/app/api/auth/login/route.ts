@@ -1,89 +1,120 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { createHash, randomBytes } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
 
+// Hash password with SHA-256
 function hashPassword(password: string): string {
   return createHash('sha256').update(password).digest('hex');
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { identifier, password } = await request.json();
+    const body = await request.json();
+    const { identifier, password } = body;
 
+    // التحقق من وجود البيانات
     if (!identifier || !password) {
-      return NextResponse.json({
-        error: 'يرجى إدخال البريد/الهاتف وكلمة المرور'
+      return NextResponse.json({ 
+        error: 'البريد/الهاتف وكلمة المرور مطلوبان',
+        details: { identifier: !identifier, password: !password }
       }, { status: 400 });
     }
 
-    // Find user by identifier (email or phone)
-    const user = await db.user.findUnique({
-      where: { identifier: identifier.trim().toLowerCase() }
-    });
+    // البحث عن المستخدم
+    let user;
+    try {
+      user = await db.user.findUnique({
+        where: { identifier: identifier.toLowerCase().trim() }
+      });
+    } catch (dbError) {
+      console.error('Database error finding user:', dbError);
+      return NextResponse.json({ 
+        error: 'خطأ في الاتصال بقاعدة البيانات. يرجى المحاولة مرة أخرى.',
+        details: process.env.NODE_ENV === 'development' ? String(dbError) : undefined
+      }, { status: 500 });
+    }
 
     if (!user) {
-      return NextResponse.json({
-        error: 'بيانات الدخول غير صحيحة'
+      return NextResponse.json({ 
+        error: 'لم يتم العثور على حساب بهذا البريد/الهاتف. تأكد من البيانات أو قم بإنشاء حساب جديد.',
+        details: { identifier }
       }, { status: 401 });
     }
 
-    // Check if user is blocked
+    // التحقق من الحظر
     if (user.isBlocked) {
       return NextResponse.json({
-        error: 'تم حظر حسابك. يرجى التواصل مع الدعم.'
+        error: 'تم حظرك من استخدام الموقع. تواصل مع المطور: ahmadmamdouh10030@gmail.com',
+        isBlocked: true
       }, { status: 403 });
     }
 
-    // Verify password
+    // التحقق من كلمة المرور
     const hashedPassword = hashPassword(password);
     if (user.password !== hashedPassword) {
-      return NextResponse.json({
-        error: 'بيانات الدخول غير صحيحة'
+      return NextResponse.json({ 
+        error: 'كلمة المرور غير صحيحة. تأكد من كتابتها بشكل صحيح.',
+        details: { hint: 'إذا نسيت كلمة المرور، تواصل مع الدعم' }
       }, { status: 401 });
     }
 
-    // Create session token
+    // إنشاء جلسة جديدة
     const token = randomBytes(32).toString('hex');
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30); // 30 days
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 يوم
 
-    // Save session
-    await db.session.create({
-      data: {
-        userId: user.id,
-        token,
-        expiresAt,
-        ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
-        userAgent: request.headers.get('user-agent') || 'unknown'
-      }
-    });
+    try {
+      await db.session.create({
+        data: {
+          userId: user.id,
+          token,
+          expiresAt,
+        }
+      });
+    } catch (sessionError) {
+      console.error('Error creating session:', sessionError);
+      // نستمر حتى لو فشل إنشاء الجلسة
+    }
 
-    // Create response with cookie
-    const response = NextResponse.json({
+    // تسجيل نجاح الدخول
+    try {
+      await db.securityLog.create({
+        data: {
+          action: 'login_success',
+          identifier: user.identifier,
+          details: 'Login successful'
+        }
+      });
+    } catch {
+      // تجاهل أخطاء التسجيل
+    }
+
+    // إنشاء الاستجابة
+    const response = NextResponse.json({ 
       success: true,
+      message: 'تم تسجيل الدخول بنجاح! مرحباً ' + user.name,
       user: {
         id: user.id,
         identifier: user.identifier,
         name: user.name,
-        phone: user.phone,
-        email: user.email
-      }
+      },
+      token
     });
 
-    // Set cookie
-    response.cookies.set('session_token', token, {
+    // تعيين cookie
+    response.cookies.set('auth_token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 30 * 24 * 60 * 60, // 30 days
+      expires: expiresAt,
       path: '/'
     });
 
     return response;
   } catch (error) {
-    console.error('Login error:', error);
-    return NextResponse.json({
-      error: 'حدث خطأ في تسجيل الدخول'
+    console.error('Unexpected error in login:', error);
+    return NextResponse.json({ 
+      error: 'حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.',
+      details: process.env.NODE_ENV === 'development' ? String(error) : undefined
     }, { status: 500 });
   }
 }
