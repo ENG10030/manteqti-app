@@ -1,80 +1,131 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { verify } from "jsonwebtoken";
 
-// حظر مستخدم
-export async function POST(request: NextRequest) {
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
+// التحقق من صلاحيات المطور
+async function isDeveloper(request: Request) {
+  const cookieHeader = request.headers.get("cookie");
+  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
+  const token = cookies.get("auth-token");
+
+  if (!token) return false;
+
   try {
-    const body = await request.json();
-    const { userId, reason } = body;
+    const decoded = verify(token, JWT_SECRET) as { userId: string; role: string };
+    if (decoded.role !== "DEVELOPER") return false;
 
-    if (!userId) {
-      return NextResponse.json({ error: 'مطلوب معرف المستخدم' }, { status: 400 });
-    }
-
-    // تحديث حالة المستخدم
-    await db.user.update({
-      where: { id: userId },
-      data: { isBlocked: true }
+    const user = await db.user.findUnique({
+      where: { id: decoded.userId },
+      select: { role: true },
     });
 
-    // إنشاء سجل الحظر
-    const blockRecord = await db.blockedUser.create({
-      data: {
-        userId,
-        reason: reason || 'تم الحظر من قبل المطور'
-      }
-    });
-
-    return NextResponse.json({ success: true, message: 'تم حظر المستخدم', blockRecord });
-  } catch (error) {
-    console.error('Error blocking user:', error);
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+    return user?.role === "DEVELOPER";
+  } catch {
+    return false;
   }
 }
 
-// إلغاء حظر مستخدم
-export async function DELETE(request: NextRequest) {
+// GET - جلب قائمة المستخدمين المحظورين
+export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-
-    if (!userId) {
-      return NextResponse.json({ error: 'مطلوب معرف المستخدم' }, { status: 400 });
+    if (!(await isDeveloper(request))) {
+      return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
     }
 
-    // تحديث حالة المستخدم
-    await db.user.update({
-      where: { id: userId },
-      data: { isBlocked: false }
-    });
-
-    // حذف سجل الحظر
-    await db.blockedUser.deleteMany({
-      where: { userId }
-    });
-
-    return NextResponse.json({ success: true, message: 'تم إلغاء حظر المستخدم' });
-  } catch (error) {
-    console.error('Error unblocking user:', error);
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
-  }
-}
-
-// جلب قائمة المحظورين
-export async function GET() {
-  try {
-    const blockedUsers = await db.blockedUser.findMany({
-      include: {
-        user: {
-          select: { id: true, name: true, identifier: true }
-        }
+    const blockedUsers = await db.user.findMany({
+      where: { isBlocked: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        blockedAt: true,
+        blockReason: true,
+        _count: {
+          select: { apartments: true },
+        },
       },
-      orderBy: { blockedAt: 'desc' }
+      orderBy: { blockedAt: "desc" },
     });
 
-    return NextResponse.json(blockedUsers);
+    return NextResponse.json({ blockedUsers });
   } catch (error) {
-    console.error('Error fetching blocked users:', error);
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+    console.error("Get blocked users error:", error);
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء جلب البيانات" },
+      { status: 500 }
+    );
+  }
+}
+
+// POST - حظر/إلغاء حظر مستخدم
+export async function POST(request: Request) {
+  try {
+    if (!(await isDeveloper(request))) {
+      return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { userId, action, reason } = body;
+
+    if (!userId || !action) {
+      return NextResponse.json(
+        { error: "معرف المستخدم والإجراء مطلوبان" },
+        { status: 400 }
+      );
+    }
+
+    if (action === "block") {
+      // حظر المستخدم
+      const user = await db.user.update({
+        where: { id: userId },
+        data: {
+          isBlocked: true,
+          blockedAt: new Date(),
+          blockReason: reason || "تم الحظر من قبل الإدارة",
+        },
+      });
+
+      // إخفاء جميع عقارات المستخدم
+      await db.apartment.updateMany({
+        where: { createdBy: userId },
+        data: { status: "BLOCKED" },
+      });
+
+      return NextResponse.json({
+        message: "تم حظر المستخدم وإخفاء عقاراته",
+        user: { id: user.id, name: user.name, email: user.email },
+      });
+    } else if (action === "unblock") {
+      // إلغاء حظر المستخدم
+      const user = await db.user.update({
+        where: { id: userId },
+        data: {
+          isBlocked: false,
+          blockedAt: null,
+          blockReason: null,
+        },
+      });
+
+      // إعادة عقاراته إلى الحالة المعلقة
+      await db.apartment.updateMany({
+        where: { createdBy: userId, status: "BLOCKED" },
+        data: { status: "PENDING" },
+      });
+
+      return NextResponse.json({
+        message: "تم إلغاء حظر المستخدم. عقاراته في انتظار المراجعة",
+        user: { id: user.id, name: user.name, email: user.email },
+      });
+    } else {
+      return NextResponse.json({ error: "إجراء غير صالح" }, { status: 400 });
+    }
+  } catch (error) {
+    console.error("Block/unblock error:", error);
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء تنفيذ العملية" },
+      { status: 500 }
+    );
   }
 }

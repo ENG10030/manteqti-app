@@ -1,40 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { NextResponse } from "next/server";
 
-export async function POST(request: NextRequest) {
-  try {
-    // Get token from cookie or header
-    const cookieToken = request.cookies.get('auth_token')?.value;
-    const authHeader = request.headers.get('authorization');
-    const headerToken = authHeader?.replace('Bearer ', '');
-    const token = cookieToken || headerToken;
+export async function POST() {
+  const response = NextResponse.json({ message: "تم تسجيل الخروج بنجاح" });
 
-    // Delete session from database if token exists
-    if (token) {
-      try {
-        await db.session.deleteMany({
-          where: { token }
-        });
-      } catch {
-        // Ignore errors
-      }
-    }
+  // حذف cookie
+  response.cookies.set("auth-token", "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 0,
+    path: "/",
+  });
 
-    // Create response and clear cookie
-    const response = NextResponse.json({ 
-      success: true,
-      message: 'تم تسجيل الخروج بنجاح'
-    });
-    
-    response.cookies.delete('auth_token');
-    
-    return response;
-  } catch (error) {
-    console.error('Error logging out:', error);
-    
-    // Still try to clear cookie
-    const response = NextResponse.json({ success: true });
-    response.cookies.delete('auth_token');
-    return response;
-  }
+  return response;
 }

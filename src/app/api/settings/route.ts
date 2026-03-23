@@ -1,72 +1,121 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { verify } from "jsonwebtoken";
 
-// Fixed settings ID to ensure single record
-const SETTINGS_ID = 'default-settings';
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
-// Get settings
+// التحقق من صلاحيات المطور
+async function isDeveloper(request: Request) {
+  const cookieHeader = request.headers.get("cookie");
+  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
+  const token = cookies.get("auth-token");
+
+  if (!token) return false;
+
+  try {
+    const decoded = verify(token, JWT_SECRET) as { userId: string; role: string };
+    if (decoded.role !== "DEVELOPER") return false;
+
+    const user = await db.user.findUnique({
+      where: { id: decoded.userId },
+      select: { role: true },
+    });
+
+    return user?.role === "DEVELOPER";
+  } catch {
+    return false;
+  }
+}
+
+// GET - جلب الإعدادات
 export async function GET() {
   try {
-    let settings = await db.settings.findUnique({
-      where: { id: SETTINGS_ID }
-    });
+    let settings = await db.settings.findFirst();
+
+    if (!settings) {
+      // إنشاء إعدادات افتراضية
+      settings = await db.settings.create({
+        data: {
+          siteName: "منطقتي",
+          siteDescription: "منصة عقارية متكاملة",
+          contactEmail: "info@manteqti.com",
+          contactPhone: "+966500000000",
+          featuredFee: 100,
+          vipFee: 200,
+          commissionRate: 5,
+          minWithdrawal: 100,
+          maxApartmentsPerUser: 10,
+          allowUserRegistration: true,
+          requireApproval: true,
+        },
+      });
+    }
+
+    return NextResponse.json({ settings });
+  } catch (error) {
+    console.error("Get settings error:", error);
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء جلب الإعدادات" },
+      { status: 500 }
+    );
+  }
+}
+
+// PUT - تحديث الإعدادات (مطور فقط)
+export async function PUT(request: Request) {
+  try {
+    if (!(await isDeveloper(request))) {
+      return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
+    }
+
+    const body = await request.json();
+
+    let settings = await db.settings.findFirst();
 
     if (!settings) {
       settings = await db.settings.create({
         data: {
-          id: SETTINGS_ID,
-          contactFee: 50,
-          featuredFee: 100,
-          premiumFee: 200,
-          saleDisplayFee: 100,
-          rentDisplayFee: 75,
-          otherServicesFee: 50,
-          highlightFee: 150,
-          priorityListingFee: 200,
-          verifiedListingFee: 250,
-          currency: 'ج.م'
-        }
+          siteName: body.siteName || "منطقتي",
+          siteDescription: body.siteDescription || "",
+          contactEmail: body.contactEmail || "",
+          contactPhone: body.contactPhone || "",
+          featuredFee: body.featuredFee || 100,
+          vipFee: body.vipFee || 200,
+          commissionRate: body.commissionRate || 5,
+          minWithdrawal: body.minWithdrawal || 100,
+          maxApartmentsPerUser: body.maxApartmentsPerUser || 10,
+          allowUserRegistration: body.allowUserRegistration ?? true,
+          requireApproval: body.requireApproval ?? true,
+        },
+      });
+    } else {
+      settings = await db.settings.update({
+        where: { id: settings.id },
+        data: {
+          siteName: body.siteName,
+          siteDescription: body.siteDescription,
+          contactEmail: body.contactEmail,
+          contactPhone: body.contactPhone,
+          featuredFee: body.featuredFee,
+          vipFee: body.vipFee,
+          commissionRate: body.commissionRate,
+          minWithdrawal: body.minWithdrawal,
+          maxApartmentsPerUser: body.maxApartmentsPerUser,
+          allowUserRegistration: body.allowUserRegistration,
+          requireApproval: body.requireApproval,
+        },
       });
     }
 
-    return NextResponse.json(settings);
-  } catch (error) {
-    console.error('Error fetching settings:', error);
-    return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 });
-  }
-}
-
-// Update settings
-export async function PUT(request: NextRequest) {
-  try {
-    const data = await request.json();
-
-    const updateData = {
-      contactFee: data.contactFee ?? 50,
-      featuredFee: data.featuredFee ?? 100,
-      premiumFee: data.premiumFee ?? 200,
-      saleDisplayFee: data.saleDisplayFee ?? 100,
-      rentDisplayFee: data.rentDisplayFee ?? 75,
-      otherServicesFee: data.otherServicesFee ?? 50,
-      highlightFee: data.highlightFee ?? 150,
-      priorityListingFee: data.priorityListingFee ?? 200,
-      verifiedListingFee: data.verifiedListingFee ?? 250,
-      currency: data.currency ?? 'ج.م'
-    };
-
-    // Use upsert to create or update
-    const settings = await db.settings.upsert({
-      where: { id: SETTINGS_ID },
-      create: {
-        id: SETTINGS_ID,
-        ...updateData
-      },
-      update: updateData
+    return NextResponse.json({
+      message: "تم تحديث الإعدادات بنجاح",
+      settings,
     });
-
-    return NextResponse.json(settings);
   } catch (error) {
-    console.error('Error updating settings:', error);
-    return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 });
+    console.error("Update settings error:", error);
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء تحديث الإعدادات" },
+      { status: 500 }
+    );
   }
 }

@@ -1,49 +1,48 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { verify } from "jsonwebtoken";
 
-export async function GET(request: NextRequest) {
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
+export async function GET(request: Request) {
   try {
-    // Check for cookie first (most secure), then Authorization header, then query param
-    const cookieToken = request.cookies.get('auth_token')?.value;
-    const authHeader = request.headers.get('authorization');
-    const headerToken = authHeader?.replace('Bearer ', '');
-    const queryToken = request.nextUrl.searchParams.get('token');
-    
-    const token = cookieToken || headerToken || queryToken;
+    // الحصول على token من cookie
+    const cookieHeader = request.headers.get("cookie");
+    const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
+    const token = cookies.get("auth-token");
 
     if (!token) {
-      return NextResponse.json({ user: null });
+      return NextResponse.json({ user: null }, { status: 401 });
     }
 
-    // Find session
-    const session = await db.session.findUnique({
-      where: { token }
-    });
+    // التحقق من token
+    const decoded = verify(token, JWT_SECRET) as { userId: string };
 
-    if (!session || session.expiresAt < new Date()) {
-      // Clear invalid cookie
-      const response = NextResponse.json({ user: null });
-      response.cookies.delete('auth_token');
-      return response;
-    }
-
-    // Find user
+    // الحصول على بيانات المستخدم
     const user = await db.user.findUnique({
-      where: { id: session.userId }
+      where: { id: decoded.userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        role: true,
+        isApproved: true,
+        isBlocked: true,
+        createdAt: true,
+        _count: {
+          select: { apartments: true },
+        },
+      },
     });
 
     if (!user) {
-      return NextResponse.json({ user: null });
+      return NextResponse.json({ user: null }, { status: 401 });
     }
 
-    return NextResponse.json({ 
-      user: {
-        id: user.id,
-        identifier: user.identifier,
-        name: user.name,
-      }
-    });
-  } catch {
-    return NextResponse.json({ user: null });
+    return NextResponse.json({ user });
+  } catch (error) {
+    console.error("Me error:", error);
+    return NextResponse.json({ user: null }, { status: 401 });
   }
 }

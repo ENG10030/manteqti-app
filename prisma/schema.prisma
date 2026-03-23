@@ -1,249 +1,136 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// This is your Prisma schema file
+// Learn more: https://pris.ly/databas
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
+// المستخدمين
 model User {
-  id         String      @id @default(cuid())
-  identifier String      @unique
-  name       String
-  password   String
-  phone      String?
-  email      String?
-  otp        String?
-  otpExpires DateTime?
-  isBlocked  Boolean     @default(false)
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  inquiries  Inquiry[]
-  payments   Payment[]
-  sessions   Session[]
-  likes      Like[]
-  comments   Comment[]
-  sentMessages     Message[]  @relation("SentMessages")
-  receivedMessages Message[]  @relation("ReceivedMessages")
-  blockedRecords   BlockedUser[]
-  editRequests      PropertyEditRequest[]
+  id            String     @id @default(cuid())
+  email         String     @unique
+  name          String
+  password      String
+  phone         String?
+  role          Role       @default(USER)
+  isApproved    Boolean    @default(false)
+  isBlocked     Boolean    @default(false)
+  blockedAt     DateTime?
+  blockReason   String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  apartments    Apartment[]
+  editRequests  EditRequest[]
 }
 
+// الأدوار
+enum Role {
+  USER
+  DEVELOPER
+}
+
+// العقارات
 model Apartment {
-  id              String      @id @default(cuid())
-  title           String
-  price           Int
-  area            String
-  bedrooms        Int
-  bathrooms       Int
-  description     String
-  ownerPhone      String
-  mapLink         String
-  imageUrl        String?
-  images          String?
-  videoUrl        String?
-  videos          String?
-  amenities       String?
-  featured        Boolean     @default(false)
-  type            String
-  status          String      @default("pending")
-  statusChangedAt DateTime?
-  views           Int         @default(0)
-  paymentRef      String?
-  agreementStatus String?
-  createdBy       String?
-  approvedBy      String?
-  approvedAt      DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  inquiries       Inquiry[]
-  likes           Like[]
-  comments        Comment[]
-  editRequests    PropertyEditRequest[]
-  
-  // VIP and featured fields
-  isFeatured      Boolean     @default(false)
-  isVip           Boolean     @default(false)
-  featuredUntil   DateTime?
+  id            String        @id @default(cuid())
+  title         String
+  description   String        @db.Text
+  price         Float
+  area          Float?
+  rooms         Int?
+  bathrooms     Int?
+  city          String
+  neighborhood  String?
+  address       String?
+  type          ApartmentType
+  status        ApartmentStatus @default(PENDING)
+  images        String[]      @default([])
+  isFeatured    Boolean       @default(false)
+  isVip         Boolean       @default(false)
+  views         Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  createdBy     String?
+  user          User?         @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  editRequests  EditRequest[]
 }
 
-model Inquiry {
-  id               String    @id @default(cuid())
-  apartmentId      String
-  userId           String?
-  name             String
-  email            String
-  phone            String
-  message          String
-  lifecycleStatus  String    @default("New")
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  apartment        Apartment @relation(fields: [apartmentId], references: [id])
-  user             User?     @relation(fields: [userId], references: [id])
-  payment          Payment?
+// نوع العقار
+enum ApartmentType {
+  SALE
+  RENT
 }
 
-model Payment {
-  id             String    @id @default(cuid())
-  inquiryId      String    @unique
-  method         String
-  status         String    @default("Pending")
-  inquiryStatus  String    @default("Contacted")
-  amount         Int
-  transactionRef String?
-  paymentLink    String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  inquiry        Inquiry   @relation(fields: [inquiryId], references: [id])
-  user           User?     @relation(fields: [userId], references: [id])
-  userId         String?
+// حالة العقار
+enum ApartmentStatus {
+  PENDING
+  AVAILABLE
+  SOLD
+  RENTED
+  REJECTED
+  BLOCKED
 }
 
-model OtpCode {
-  id        String   @id @default(cuid())
-  code      String
-  email     String
-  createdAt DateTime @default(now())
-  expiresAt DateTime
-}
-
-model OperationLog {
-  id          String   @id @default(cuid())
-  action      String
-  entityType  String
-  entityId    String?
-  userId      String?
-  details     String?
-  ipAddress   String?
-  userAgent   String?
-  createdAt   DateTime @default(now())
-}
-
-model Settings {
-  id                  String   @id @default(cuid())
-  contactFee          Int      @default(50)
-  featuredFee         Int      @default(100)
-  premiumFee          Int      @default(200)
-  saleDisplayFee      Int      @default(100)
-  rentDisplayFee      Int      @default(75)
-  otherServicesFee    Int      @default(50)
-  highlightFee        Int      @default(150)
-  priorityListingFee  Int      @default(200)
-  verifiedListingFee  Int      @default(250)
-  currency            String   @default("ج.م")
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-}
-
-model Session {
-  id           String   @id @default(cuid())
-  userId       String
-  token        String   @unique
-  expiresAt    DateTime
-  ipAddress    String?
-  userAgent    String?
-  createdAt    DateTime @default(now())
-  user         User     @relation(fields: [userId], references: [id])
-}
-
-model SecurityLog {
-  id          String   @id @default(cuid())
-  action      String
-  identifier  String
-  ipAddress   String?
-  userAgent   String?
-  details     String?
-  createdAt   DateTime @default(now())
-}
-
-// Likes system
-model Like {
+// طلبات التعديل
+model EditRequest {
   id          String   @id @default(cuid())
   apartmentId String
-  userId      String
-  createdAt   DateTime @default(now())
   apartment   Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@unique([apartmentId, userId])
-}
-
-// Comments system with approval
-model Comment {
-  id          String   @id @default(cuid())
-  apartmentId String
   userId      String
-  content     String
-  status      String   @default("pending")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  field       String
+  oldValue    String   @db.Text
+  newValue    String   @db.Text
+  status      EditRequestStatus @default(PENDING)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  approvedBy  String?
-  approvedAt  DateTime?
-  apartment   Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// Messaging system between users and developer
-model Message {
-  id           String   @id @default(cuid())
-  senderId     String
-  receiverId   String?
-  content      String
-  isRead       Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  sender       User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
-  receiver     User?    @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+// حالة طلب التعديل
+enum EditRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
-// Blocking system
-model BlockedUser {
-  id          String   @id @default(cuid())
+// الإعدادات
+model Settings {
+  id                      Int      @id @default(1)
+  siteName                String   @default("منطقتي")
+  siteDescription         String?  @db.Text
+  contactEmail            String?
+  contactPhone            String?
+  featuredFee             Float    @default(100)
+  vipFee                  Float    @default(200)
+  commissionRate          Float    @default(5)
+  minWithdrawal           Float    @default(100)
+  maxApartmentsPerUser    Int      @default(10)
+  allowUserRegistration   Boolean  @default(true)
+  requireApproval         Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@id(id)
+}
+
+// طلبات السحب
+model WithdrawalRequest {
+  id          String              @id @default(cuid())
   userId      String
-  reason      String?
-  blockedAt   DateTime @default(now())
-  blockedBy   String?
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount      Float
+  status      WithdrawalStatus    @default(PENDING)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 }
 
-// Password reset system
-model PasswordReset {
-  id        String   @id @default(cuid())
-  email     String
-  token     String   @unique
-  expiresAt DateTime
-  used      Boolean  @default(false)
-  createdAt DateTime @default(now())
-}
-
-// Property edit requests after publishing
-model PropertyEditRequest {
-  id              String   @id @default(cuid())
-  apartmentId     String
-  userId          String
-  
-  editType        String
-  
-  newImages       String?
-  newVideos       String?
-  newPrice        Int?
-  newStatus       String?
-  
-  description     String?
-  
-  status          String   @default("pending")
-  
-  reviewedBy      String?
-  reviewedAt      DateTime?
-  reviewNotes     String?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  apartment       Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+// حالة طلب السحب
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
 }
