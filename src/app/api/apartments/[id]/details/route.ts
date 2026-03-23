@@ -99,8 +99,7 @@ export async function GET(
       imageUrl: apartment.imageUrl,
       images: apartment.images ? JSON.parse(apartment.images) : [],
       amenities: apartment.amenities ? JSON.parse(apartment.amenities) : [],
-      isFeatured: apartment.isFeatured,
-      isVip: apartment.isVip,
+      featured: apartment.featured,
       type: apartment.type as 'rent' | 'sale',
       status: apartment.status || 'available',
       views: apartment.views + 1, // إضافة المشاهدة الجديدة

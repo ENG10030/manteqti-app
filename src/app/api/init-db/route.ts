@@ -40,7 +40,7 @@ export async function GET() {
       data: {
         contactFee: 50,
         featuredFee: 100,
-        vipFee: 200,
+        premiumFee: 200,
         saleDisplayFee: 100,
         rentDisplayFee: 75,
         otherServicesFee: 50,

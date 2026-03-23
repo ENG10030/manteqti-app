@@ -35,6 +35,7 @@ export async function GET() {
           imageUrl: apartmentImages[0],
           images: JSON.stringify([apartmentImages[0], apartmentImages[1]]),
           amenities: JSON.stringify(['مصعد', 'أمن 24 ساعة', 'موقف سيارات']),
+          featured: true,
           isFeatured: true,
           isVip: true,
           type: 'rent',
@@ -54,6 +55,7 @@ export async function GET() {
           imageUrl: apartmentImages[5],
           images: JSON.stringify([apartmentImages[5], apartmentImages[6]]),
           amenities: JSON.stringify(['حديقة خاصة', 'مسبح خاص', 'موقف سيارات', 'أمن']),
+          featured: true,
           isFeatured: true,
           isVip: true,
           type: 'sale',
@@ -73,6 +75,7 @@ export async function GET() {
           imageUrl: apartmentImages[2],
           images: JSON.stringify([apartmentImages[2]]),
           amenities: JSON.stringify(['قريب من المترو', 'تشطيب مودرن']),
+          featured: false,
           type: 'rent',
           status: 'available',
         }
@@ -90,6 +93,7 @@ export async function GET() {
           imageUrl: apartmentImages[3],
           images: JSON.stringify([apartmentImages[3], apartmentImages[4]]),
           amenities: JSON.stringify(['إطلالة بحرية', 'بلكونة كبيرة', 'موقف سيارات']),
+          featured: true,
           isFeatured: true,
           type: 'sale',
           status: 'available',
@@ -108,6 +112,7 @@ export async function GET() {
           imageUrl: apartmentImages[7],
           images: JSON.stringify([apartmentImages[7], apartmentImages[0]]),
           amenities: JSON.stringify(['دوبلكس', 'كمباوند', 'أمن', 'نادي صحي']),
+          featured: false,
           type: 'rent',
           status: 'available',
         }
@@ -125,6 +130,7 @@ export async function GET() {
           imageUrl: apartmentImages[4],
           images: JSON.stringify([apartmentImages[4], apartmentImages[1]]),
           amenities: JSON.stringify(['قريب من الخدمات', 'مصعد', 'أمن']),
+          featured: false,
           type: 'rent',
           status: 'available',
         }
@@ -142,6 +148,7 @@ export async function GET() {
           imageUrl: apartmentImages[6],
           images: JSON.stringify([apartmentImages[6], apartmentImages[7]]),
           amenities: JSON.stringify(['روف خاص', 'جاكوزي', 'تقنيات ذكية', 'مسبح']),
+          featured: true,
           isFeatured: true,
           isVip: true,
           type: 'rent',
@@ -161,6 +168,7 @@ export async function GET() {
           imageUrl: apartmentImages[0],
           images: JSON.stringify([apartmentImages[0], apartmentImages[2]]),
           amenities: JSON.stringify(['جديد', 'تشطيب كامل', 'كمباوند']),
+          featured: false,
           type: 'sale',
           status: 'available',
         }
@@ -174,7 +182,7 @@ export async function GET() {
         id: 'default',
         contactFee: 50,
         featuredFee: 100,
-        vipFee: 200,
+        premiumFee: 200,
       },
       update: {}
     });
