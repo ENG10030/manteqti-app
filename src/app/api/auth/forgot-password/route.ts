@@ -36,12 +36,12 @@ export async function POST(request: NextRequest) {
     const token = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // ساعة واحدة
 
-    // حفظ الرمز في قاعدة البيانات
-    await db.passwordReset.create({
+    // حفظ الرمز في سجل المستخدم مباشرة
+    await db.user.update({
+      where: { id: user.id },
       data: {
-        email: normalizedEmail,
-        token,
-        expiresAt
+        passwordResetToken: token,
+        passwordResetExpires: expiresAt
       }
     });
 
@@ -99,19 +99,6 @@ export async function POST(request: NextRequest) {
       }
     } catch (emailError) {
       console.error('Error sending email:', emailError);
-    }
-
-    // تسجيل العملية
-    try {
-      await db.securityLog.create({
-        data: {
-          action: 'password_reset_request',
-          identifier: normalizedEmail,
-          details: emailSent ? 'Email sent successfully' : 'Token generated'
-        }
-      });
-    } catch {
-      // Ignore logging errors
     }
 
     return NextResponse.json({

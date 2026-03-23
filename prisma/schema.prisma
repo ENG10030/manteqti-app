@@ -13,24 +13,26 @@ datasource db {
 
 // المستخدمين
 model User {
-  id         String      @id @default(cuid())
-  name       String
-  email      String      @unique
-  password   String
-  phone      String?
-  identifier String?     // for phone or other ID
-  otp        String?
-  otpExpires DateTime?   @map("otp_expires")
-  role       String      @default("USER")
-  isApproved Boolean     @default(true)
-  isBlocked  Boolean     @default(false)
-  blockedAt  DateTime?
-  blockReason String?
-  createdAt  DateTime    @default(now()) @map("created_at")
-  updatedAt  DateTime    @updatedAt @map("updated_at")
-  inquiries  Inquiry[]
-  payments   Payment[]
-  apartments Apartment[]
+  id                   String      @id @default(cuid())
+  name                 String
+  email                String      @unique
+  password             String
+  phone                String?
+  identifier           String?     // for phone or other ID
+  otp                  String?
+  otpExpires           DateTime?   @map("otp_expires")
+  role                 String      @default("USER")
+  isApproved           Boolean     @default(true)
+  isBlocked            Boolean     @default(false)
+  blockedAt            DateTime?
+  blockReason          String?
+  passwordResetToken   String?     @map("password_reset_token")      // ✅ جديد
+  passwordResetExpires DateTime?   @map("password_reset_expires")    // ✅ جديد
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
+  inquiries            Inquiry[]
+  payments             Payment[]
+  apartments           Apartment[]
 
   @@map("users")
 }
