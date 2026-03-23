@@ -83,38 +83,4 @@ export async function GET(
     const paidInquiry = apartment.inquiries.find(inq => inq.payment?.status === 'Paid');
     const agreementStatus = paidInquiry?.payment?.inquiryStatus === 'Agreement Reached' || 
                             paidInquiry?.payment?.inquiryStatus === 'Contract Signed'
-      ? paidInquiry.payment.inquiryStatus as 'Agreement Reached' | 'Contract Signed'
-      : null;
-
-    const result = {
-      id: apartment.id,
-      title: apartment.title,
-      price: apartment.price,
-      area: apartment.area,
-      bedrooms: apartment.bedrooms,
-      bathrooms: apartment.bathrooms,
-      description: apartment.description,
-      ownerPhone: hasPaidInquiry ? apartment.ownerPhone : '',
-      mapLink: hasPaidInquiry ? apartment.mapLink : '',
-      imageUrl: apartment.imageUrl,
-      images: apartment.images ? JSON.parse(apartment.images) : [],
-      amenities: apartment.amenities ? JSON.parse(apartment.amenities) : [],
-      featured: apartment.featured,
-      type: apartment.type as 'rent' | 'sale',
-      status: apartment.status || 'available',
-      views: apartment.views + 1, // إضافة المشاهدة الجديدة
-      paymentRef: apartment.paymentRef,
-      agreementStatus,
-      createdAt: apartment.createdAt.toISOString(),
-      inquiries: transformedInquiries
-    };
-
-    return NextResponse.json(result);
-  } catch (error) {
-    console.error('Error fetching apartment details:', error);
-    return NextResponse.json(
-      { error: 'حدث خطأ في جلب البيانات', code: 'INTERNAL_ERROR' },
-      { status: 500 }
-    );
-  }
-}
+      ? paidInquiry.payment.inquiryStatus as 'Agreement Reached' | 'Contract
