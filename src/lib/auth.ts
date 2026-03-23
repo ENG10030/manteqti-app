@@ -1,69 +1,75 @@
-import { NextAuthOptions } from "next-auth"
-import CredentialsProvider from "next-auth/providers/credentials"
-import { db } from "./db"
-import { compare } from "bcryptjs"
+import { db } from "./db";
+import { verify } from "jsonwebtoken";
+import { NextRequest } from "next/server";
 
-export const authOptions: NextAuthOptions = {
-  providers: [
-    CredentialsProvider({
-      name: "credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" }
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  role: "USER" | "DEVELOPER";
+  isApproved: boolean;
+  isBlocked: boolean;
+}
+
+// الحصول على المستخدم الحالي من الطلب
+export async function getCurrentUser(request: NextRequest): Promise<AuthUser | null> {
+  try {
+    const token = request.cookies.get("auth-token")?.value;
+
+    if (!token) return null;
+
+    const decoded = verify(token, JWT_SECRET) as { userId: string };
+
+    const user = await db.user.findUnique({
+      where: { id: decoded.userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        isApproved: true,
+        isBlocked: true,
       },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          return null
-        }
+    });
 
-        const user = await db.user.findUnique({
-          where: { email: credentials.email }
-        })
+    if (!user) return null;
 
-        if (!user || !user.password) {
-          return null
-        }
+    return user as AuthUser;
+  } catch (error) {
+    return null;
+  }
+}
 
-        const isPasswordValid = await compare(credentials.password, user.password)
+// التحقق من صلاحيات المطور
+export async function isDeveloper(request: NextRequest): Promise<boolean> {
+  const user = await getCurrentUser(request);
+  return user?.role === "DEVELOPER";
+}
 
-        if (!isPasswordValid) {
-          return null
-        }
+// التحقق من تسجيل الدخول
+export async function requireAuth(request: NextRequest): Promise<AuthUser> {
+  const user = await getCurrentUser(request);
+  
+  if (!user) {
+    throw new Error("يجب تسجيل الدخول");
+  }
+  
+  if (user.isBlocked) {
+    throw new Error("تم حظر حسابك");
+  }
+  
+  return user;
+}
 
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          isBlocked: user.isBlocked
-        }
-      }
-    })
-  ],
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id
-        token.role = user.role
-        token.isBlocked = user.isBlocked
-      }
-      return token
-    },
-    async session({ session, token }) {
-      if (session.user) {
-        session.user.id = token.id as string
-        session.user.role = token.role as string
-        session.user.isBlocked = token.isBlocked as boolean
-      }
-      return session
-    }
-  },
-  pages: {
-    signIn: "/",
-    error: "/"
-  },
-  session: {
-    strategy: "jwt"
-  },
-  secret: process.env.NEXTAUTH_SECRET
+// التحقق من صلاحيات المطور
+export async function requireDeveloper(request: NextRequest): Promise<AuthUser> {
+  const user = await requireAuth(request);
+  
+  if (user.role !== "DEVELOPER") {
+    throw new Error("غير مصرح لك بهذا الإجراء");
+  }
+  
+  return user;
 }
