@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 model User {
@@ -65,7 +66,7 @@ model Apartment {
   comments        Comment[]
   editRequests    PropertyEditRequest[]
   
-  // حقول VIP والمميز
+  // VIP and featured fields
   isFeatured      Boolean     @default(false)
   isVip           Boolean     @default(false)
   featuredUntil   DateTime?
@@ -160,7 +161,7 @@ model SecurityLog {
   createdAt   DateTime @default(now())
 }
 
-// نظام الإعجابات
+// Likes system
 model Like {
   id          String   @id @default(cuid())
   apartmentId String
@@ -169,16 +170,16 @@ model Like {
   apartment   Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  @@unique([apartmentId, userId]) // مستخدم واحد يمكنه الإعجاب مرة واحدة فقط
+  @@unique([apartmentId, userId])
 }
 
-// نظام التعليقات مع الموافقة
+// Comments system with approval
 model Comment {
   id          String   @id @default(cuid())
   apartmentId String
   userId      String
   content     String
-  status      String   @default("pending") // pending, approved, rejected
+  status      String   @default("pending")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   approvedBy  String?
@@ -187,11 +188,11 @@ model Comment {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// نظام الرسائل بين المستخدمين والمطور
+// Messaging system between users and developer
 model Message {
   id           String   @id @default(cuid())
   senderId     String
-  receiverId   String?  // null للمطور (رسالة للمطور)
+  receiverId   String?
   content      String
   isRead       Boolean  @default(false)
   createdAt    DateTime @default(now())
@@ -199,17 +200,17 @@ model Message {
   receiver     User?    @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
 }
 
-// نظام الحظر
+// Blocking system
 model BlockedUser {
   id          String   @id @default(cuid())
   userId      String
   reason      String?
   blockedAt   DateTime @default(now())
-  blockedBy   String?  // المطور الذي قام بالحظر
+  blockedBy   String?
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// نظام استعادة كلمة المرور
+// Password reset system
 model PasswordReset {
   id        String   @id @default(cuid())
   email     String
@@ -219,31 +220,26 @@ model PasswordReset {
   createdAt DateTime @default(now())
 }
 
-// نظام طلبات تعديل العقارات بعد النشر
+// Property edit requests after publishing
 model PropertyEditRequest {
   id              String   @id @default(cuid())
   apartmentId     String
-  userId          String   // الناشر الذي طلب التعديل
+  userId          String
   
-  // أنواع التعديلات المطلوبة
-  editType        String   // 'images' | 'videos' | 'price' | 'status' | 'multiple'
+  editType        String
   
-  // البيانات الجديدة (حسب نوع التعديل)
-  newImages       String?  // JSON array of new image URLs
-  newVideos       String?  // JSON array of new video URLs
+  newImages       String?
+  newVideos       String?
   newPrice        Int?
   newStatus       String?
   
-  // وصف التعديل
-  description     String?  // سبب التعديل أو ملاحظات
+  description     String?
   
-  // حالة الطلب
-  status          String   @default("pending") // pending, approved, rejected
+  status          String   @default("pending")
   
-  // بيانات المراجعة
-  reviewedBy      String?  // المطور الذي راجع الطلب
+  reviewedBy      String?
   reviewedAt      DateTime?
-  reviewNotes     String?  // ملاحظات المطور عند القبول أو الرفض
+  reviewNotes     String?
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
