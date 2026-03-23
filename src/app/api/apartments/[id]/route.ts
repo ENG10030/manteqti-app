@@ -84,14 +84,15 @@ export async function PUT(
         title: body.title,
         description: body.description,
         price: body.price ? parseFloat(body.price) : undefined,
-        area: body.area,  // ✅ نص وليس رقم
-        bedrooms: body.bedrooms ? parseInt(body.bedrooms) : undefined,  // ✅ bedrooms بدل rooms
+        area: body.area,
+        bedrooms: body.bedrooms ? parseInt(body.bedrooms) : undefined,
         bathrooms: body.bathrooms ? parseInt(body.bathrooms) : undefined,
-        city: body.city,
-        neighborhood: body.neighborhood,
-        address: body.address,
         type: body.type,
         images: body.images,
+        ownerPhone: body.ownerPhone,
+        mapLink: body.mapLink,
+        status: body.status,
+        isFeatured: body.isFeatured,
       },
     });
 
@@ -121,7 +122,7 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await request.json();
-    const { action, isFeatured, isVip } = body;
+    const { action, isFeatured } = body;
 
     const apartment = await db.apartment.findUnique({
       where: { id },
@@ -134,16 +135,13 @@ export async function PATCH(
     let updateData: any = {};
 
     if (action === "approve") {
-      updateData.status = "AVAILABLE";
+      updateData.status = "available";
     } else if (action === "reject") {
-      updateData.status = "REJECTED";
+      updateData.status = "rejected";
     } else if (action === "feature") {
       updateData.isFeatured = isFeatured !== undefined ? isFeatured : true;
-    } else if (action === "vip") {
-      updateData.isVip = isVip !== undefined ? isVip : true;
     } else {
       if (isFeatured !== undefined) updateData.isFeatured = isFeatured;
-      if (isVip !== undefined) updateData.isVip = isVip;
     }
 
     const updatedApartment = await db.apartment.update({
