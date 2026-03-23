@@ -1,34 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
-// جلب طلبات التعديل
-export async function GET(request: NextRequest) {
+// جلب طلب تعديل محدد
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status');
-    const userId = searchParams.get('userId');
-    const apartmentId = searchParams.get('apartmentId');
+    const { id } = await params;
 
-    const where: Record<string, unknown> = {};
-
-    if (status) where.status = status;
-    if (userId) where.userId = userId;
-    if (apartmentId) where.apartmentId = apartmentId;
-
-    const editRequests = await db.propertyEditRequest.findMany({
-      where,
+    const editRequest = await db.propertyEditRequest.findUnique({
+      where: { id },
       include: {
-        apartment: {
-          select: {
-            id: true,
-            title: true,
-            price: true,
-            status: true,
-            images: true,
-            videos: true,
-            type: true,
-          }
-        },
+        apartment: true,
         user: {
           select: {
             id: true,
@@ -37,95 +21,152 @@ export async function GET(request: NextRequest) {
           }
         }
       },
-      orderBy: { createdAt: 'desc' },
     });
 
-    return NextResponse.json(editRequests);
+    if (!editRequest) {
+      return NextResponse.json({ error: 'طلب التعديل غير موجود' }, { status: 404 });
+    }
+
+    return NextResponse.json(editRequest);
   } catch (error) {
-    console.error('Error fetching edit requests:', error);
+    console.error('Error fetching edit request:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }
 
-// إنشاء طلب تعديل جديد
-export async function POST(request: NextRequest) {
+// الموافقة أو الرفض على طلب التعديل
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const { id } = await params;
     const body = await request.json();
 
-    // التحقق من وجود العقار
-    const apartment = await db.apartment.findUnique({
-      where: { id: body.apartmentId },
+    const editRequest = await db.propertyEditRequest.findUnique({
+      where: { id },
+      include: { apartment: true },
     });
 
-    if (!apartment) {
-      return NextResponse.json({ error: 'العقار غير موجود' }, { status: 404 });
+    if (!editRequest) {
+      return NextResponse.json({ error: 'طلب التعديل غير موجود' }, { status: 404 });
     }
 
-    // التحقق من أن العقار موافق عليه (منشور)
-    if (apartment.status !== 'available') {
-      return NextResponse.json({ error: 'لا يمكن طلب تعديل على عقار غير منشور' }, { status: 400 });
+    if (editRequest.status !== 'pending') {
+      return NextResponse.json({ error: 'تم التعامل مع هذا الطلب بالفعل' }, { status: 400 });
     }
 
-    // التحقق من عدم وجود طلب تعديل معلق سابق
-    const existingRequest = await db.propertyEditRequest.findFirst({
-      where: {
-        apartmentId: body.apartmentId,
-        userId: body.userId,
-        status: 'pending',
-      },
-    });
+    if (body.action === 'approve') {
+      // الموافقة على التعديل - تطبيق التغييرات على العقار
+      const updateData: Record<string, unknown> = {};
 
-    if (existingRequest) {
-      return NextResponse.json({ error: 'يوجد طلب تعديل معلق بالفعل على هذا العقار' }, { status: 400 });
-    }
-
-    // تحديد نوع التعديل
-    let editType = 'multiple';
-    const hasImages = body.newImages && body.newImages.length > 0;
-    const hasVideos = body.newVideos && body.newVideos.length > 0;
-    const hasPrice = body.newPrice !== undefined && body.newPrice !== null;
-    const hasStatus = body.newStatus !== undefined && body.newStatus !== null;
-
-    if (hasImages && !hasVideos && !hasPrice && !hasStatus) editType = 'images';
-    else if (hasVideos && !hasImages && !hasPrice && !hasStatus) editType = 'videos';
-    else if (hasPrice && !hasImages && !hasVideos && !hasStatus) editType = 'price';
-    else if (hasStatus && !hasImages && !hasVideos && !hasPrice) editType = 'status';
-
-    const editRequest = await db.propertyEditRequest.create({
-      data: {
-        apartmentId: body.apartmentId,
-        userId: body.userId,
-        editType,
-        newImages: body.newImages ? JSON.stringify(body.newImages) : null,
-        newVideos: body.newVideos ? JSON.stringify(body.newVideos) : null,
-        newPrice: body.newPrice ? parseInt(body.newPrice) : null,
-        newStatus: body.newStatus || null,
-        description: body.description || null,
-        status: 'pending',
-      },
-      include: {
-        apartment: {
-          select: {
-            id: true,
-            title: true,
-          }
-        },
-        user: {
-          select: {
-            id: true,
-            name: true,
-          }
-        }
+      // إضافة الصور الجديدة للصور الموجودة
+      if (editRequest.newImages) {
+        const existingImages = editRequest.apartment.images 
+          ? JSON.parse(editRequest.apartment.images) 
+          : [];
+        const newImages = JSON.parse(editRequest.newImages);
+        updateData.images = JSON.stringify([...existingImages, ...newImages]);
       }
+
+      // إضافة الفيديوهات الجديدة للفيديوهات الموجودة
+      if (editRequest.newVideos) {
+        const existingVideos = editRequest.apartment.videos 
+          ? JSON.parse(editRequest.apartment.videos) 
+          : [];
+        const newVideos = JSON.parse(editRequest.newVideos);
+        updateData.videos = JSON.stringify([...existingVideos, ...newVideos]);
+      }
+
+      // تحديث السعر
+      if (editRequest.newPrice) {
+        updateData.price = editRequest.newPrice;
+      }
+
+      // تحديث الحالة
+      if (editRequest.newStatus) {
+        updateData.status = editRequest.newStatus;
+      }
+
+      // تحديث العقار
+      if (Object.keys(updateData).length > 0) {
+        await db.apartment.update({
+          where: { id: editRequest.apartmentId },
+          data: updateData,
+        });
+      }
+
+      // تحديث حالة طلب التعديل
+      const updatedRequest = await db.propertyEditRequest.update({
+        where: { id },
+        data: {
+          status: 'approved',
+          reviewedBy: body.reviewedBy || 'developer',
+          reviewedAt: new Date(),
+          reviewNotes: body.reviewNotes || null,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        editRequest: updatedRequest,
+        message: 'تم الموافقة على التعديل وتطبيقه بنجاح'
+      });
+
+    } else if (body.action === 'reject') {
+      // رفض التعديل
+      const updatedRequest = await db.propertyEditRequest.update({
+        where: { id },
+        data: {
+          status: 'rejected',
+          reviewedBy: body.reviewedBy || 'developer',
+          reviewedAt: new Date(),
+          reviewNotes: body.reviewNotes || null,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        editRequest: updatedRequest,
+        message: 'تم رفض طلب التعديل'
+      });
+
+    } else {
+      return NextResponse.json({ error: 'إجراء غير صحيح' }, { status: 400 });
+    }
+  } catch (error) {
+    console.error('Error updating edit request:', error);
+    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+  }
+}
+
+// حذف طلب تعديل (للمستخدم فقط إذا كان معلقاً)
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+
+    const editRequest = await db.propertyEditRequest.findUnique({
+      where: { id },
     });
 
-    return NextResponse.json({
-      success: true,
-      editRequest,
-      message: 'تم إرسال طلب التعديل بنجاح. سيتم مراجعته من قبل المطور.'
+    if (!editRequest) {
+      return NextResponse.json({ error: 'طلب التعديل غير موجود' }, { status: 404 });
+    }
+
+    if (editRequest.status !== 'pending') {
+      return NextResponse.json({ error: 'لا يمكن حذف طلب تم التعامل معه' }, { status: 400 });
+    }
+
+    await db.propertyEditRequest.delete({
+      where: { id },
     });
+
+    return NextResponse.json({ success: true, message: 'تم حذف طلب التعديل' });
   } catch (error) {
-    console.error('Error creating edit request:', error);
-    return NextResponse.json({ error: 'حدث خطأ أثناء إرسال طلب التعديل' }, { status: 500 });
+    console.error('Error deleting edit request:', error);
+    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }
