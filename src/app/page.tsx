@@ -3915,6 +3915,17 @@ export default function App() {
         </AnimatePresence>
       </div>
 
+      {/* Floating Action Button - Add Property - Always visible for everyone */}
+      <motion.button
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+        onClick={() => setShowAddModal(true)}
+        className="fixed bottom-6 left-6 z-40 w-16 h-16 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-2xl shadow-emerald-500/40 flex items-center justify-center hover:shadow-emerald-500/60 transition-all"
+        title="إضافة عقار جديد"
+      >
+        <Plus className="h-8 w-8" />
+      </motion.button>
+
       {/* Mobile Menu */}
       <AnimatePresence>
         {showMobileMenu && (
