@@ -21,7 +21,6 @@ export async function GET() {
         email: true,
         role: true,
         isBlocked: true,
-        image: true,
         createdAt: true
       }
     })

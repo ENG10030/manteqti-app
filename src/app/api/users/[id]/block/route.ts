@@ -20,7 +20,7 @@ export async function POST(
 
     const { id: userId } = await params
     const body = await request.json()
-    const { action, reason } = body
+    const { action } = body
 
     const targetUser = await db.user.findUnique({
       where: { id: userId }
@@ -45,38 +45,17 @@ export async function POST(
       await db.user.update({
         where: { id: userId },
         data: {
-          isBlocked: true,
-          blockedAt: new Date(),
-          blockedBy: session.user.id,
-          blockedReason: reason || null
+          isBlocked: true
         }
       })
 
-      // إخفاء جميع عقارات المستخدم
+      // تحديث حالة عقارات المستخدم إلى "مخفي"
       await db.apartment.updateMany({
         where: { createdBy: userId },
         data: {
-          isHidden: true,
-          hiddenAt: new Date()
+          status: "hidden"
         }
       })
-
-      // تسجيل المحتوى المحظور
-      const blockedApartments = await db.apartment.findMany({
-        where: { createdBy: userId }
-      })
-
-      for (const apartment of blockedApartments) {
-        await db.blockedContent.create({
-          data: {
-            userId,
-            apartmentId: apartment.id,
-            blockedBy: session.user.id,
-            action: "hidden",
-            canRestore: true
-          }
-        })
-      }
 
       return NextResponse.json({
         success: true,
@@ -88,16 +67,13 @@ export async function POST(
       await db.user.update({
         where: { id: userId },
         data: {
-          isBlocked: false,
-          blockedAt: null,
-          blockedBy: null,
-          blockedReason: null
+          isBlocked: false
         }
       })
 
       return NextResponse.json({
         success: true,
-        message: "تم إلغاء حظر المستخدم. يمكنك الآن إدارة محتواه من لوحة التحكم."
+        message: "تم إلغاء حظر المستخدم"
       })
 
     } else {
@@ -116,7 +92,7 @@ export async function POST(
   }
 }
 
-// جلب معلومات المستخدم المحظور ومحتواه
+// جلب معلومات المستخدم
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -134,12 +110,7 @@ export async function GET(
     const { id: userId } = await params
 
     const user = await db.user.findUnique({
-      where: { id: userId },
-      include: {
-        apartments: {
-          orderBy: { createdAt: "desc" }
-        }
-      }
+      where: { id: userId }
     })
 
     if (!user) {
@@ -149,20 +120,19 @@ export async function GET(
       )
     }
 
-    const blockedContents = await db.blockedContent.findMany({
-      where: { userId },
-      include: {
-        apartment: true
-      }
+    // جلب عقارات المستخدم
+    const apartments = await db.apartment.findMany({
+      where: { createdBy: userId },
+      orderBy: { createdAt: "desc" }
     })
 
     return NextResponse.json({
       user,
-      blockedContents
+      apartments
     })
 
   } catch (error) {
-    console.error("Get blocked user error:", error)
+    console.error("Get user error:", error)
     return NextResponse.json(
       { error: "حدث خطأ أثناء جلب البيانات" },
       { status: 500 }

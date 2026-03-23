@@ -17,7 +17,8 @@ model User {
   name       String
   password   String
   phone      String?
-  email      String?
+  email      String?   @unique
+  role       String      @default("user") // user, developer, admin
   otp        String?
   otpExpires DateTime?
   isBlocked  Boolean     @default(false)

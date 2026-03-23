@@ -29,11 +29,6 @@ export async function GET(request: NextRequest) {
 
     const users = await db.user.findMany({
       where: whereClause,
-      include: {
-        _count: {
-          select: { apartments: true }
-        }
-      },
       orderBy: {
         createdAt: "desc"
       }
@@ -54,11 +49,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, email, password, phone } = body
+    const { name, email, password, phone, identifier } = body
 
-    if (!email || !password) {
+    if (!email || !password || !identifier) {
       return NextResponse.json(
-        { error: "البريد الإلكتروني وكلمة المرور مطلوبان" },
+        { error: "البريد الإلكتروني وكلمة المرور والمعرف مطلوبون" },
         { status: 400 }
       )
     }
@@ -75,12 +70,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // التحقق من عدم وجود المعرف
+    const existingIdentifier = await db.user.findUnique({
+      where: { identifier }
+    })
+
+    if (existingIdentifier) {
+      return NextResponse.json(
+        { error: "المعرف مستخدم بالفعل" },
+        { status: 400 }
+      )
+    }
+
     // تشفير كلمة المرور
     const hashedPassword = await hash(password, 12)
 
     // إنشاء المستخدم
     const user = await db.user.create({
       data: {
+        identifier,
         name,
         email,
         password: hashedPassword,
