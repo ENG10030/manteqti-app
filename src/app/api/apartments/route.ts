@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { PrismaClient } from '@prisma/client';
 
-// جلب كل العقارات
+// Create Prisma client
+const prisma = new PrismaClient();
+
+// GET - Fetch all apartments
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -23,7 +26,7 @@ export async function GET(request: NextRequest) {
     }
     if (bedrooms) where.bedrooms = { gte: parseInt(bedrooms) };
 
-    const apartments = await db.apartment.findMany({
+    const apartments = await prisma.apartment.findMany({
       where,
       orderBy: [
         { isVip: 'desc' },
@@ -39,12 +42,12 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// إنشاء عقار جديد
+// POST - Create new apartment
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const apartment = await db.apartment.create({
+    const apartment = await prisma.apartment.create({
       data: {
         title: body.title,
         description: body.description || '',
@@ -53,7 +56,7 @@ export async function POST(request: NextRequest) {
         bedrooms: parseInt(body.bedrooms) || 0,
         bathrooms: parseInt(body.bathrooms) || 0,
         type: body.type || 'rent',
-        status: body.status || 'pending', // الافتراضي: في انتظار الموافقة
+        status: body.status || 'pending',
         ownerPhone: body.ownerPhone || '',
         mapLink: body.mapLink || '',
         images: body.images,
@@ -61,7 +64,7 @@ export async function POST(request: NextRequest) {
         amenities: body.amenities,
         isFeatured: body.isFeatured || false,
         isVip: body.isVip || false,
-        createdBy: body.createdBy || null, // من أنشأ العقار
+        createdBy: body.createdBy || null,
       },
     });
 
