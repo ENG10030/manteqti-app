@@ -16,8 +16,14 @@ export async function GET() {
         data: {
           id: SETTINGS_ID,
           contactFee: 50,
-          featuredFee: 100,  // رسوم العقار المميز
-          vipFee: 200,      // رسوم العقار المميز+ VIP
+          featuredFee: 100,
+          premiumFee: 200,
+          saleDisplayFee: 100,
+          rentDisplayFee: 75,
+          otherServicesFee: 50,
+          highlightFee: 150,
+          priorityListingFee: 200,
+          verifiedListingFee: 250,
           currency: 'ج.م'
         }
       });
@@ -37,8 +43,14 @@ export async function PUT(request: NextRequest) {
 
     const updateData = {
       contactFee: data.contactFee ?? 50,
-      featuredFee: data.featuredFee ?? 100,  // رسوم العقار المميز
-      vipFee: data.vipFee ?? 200,            // رسوم العقار المميز+ VIP
+      featuredFee: data.featuredFee ?? 100,
+      premiumFee: data.premiumFee ?? 200,
+      saleDisplayFee: data.saleDisplayFee ?? 100,
+      rentDisplayFee: data.rentDisplayFee ?? 75,
+      otherServicesFee: data.otherServicesFee ?? 50,
+      highlightFee: data.highlightFee ?? 150,
+      priorityListingFee: data.priorityListingFee ?? 200,
+      verifiedListingFee: data.verifiedListingFee ?? 250,
       currency: data.currency ?? 'ج.م'
     };
 

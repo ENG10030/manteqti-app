@@ -28,7 +28,6 @@ model User {
   sessions   Session[]
   likes      Like[]
   comments   Comment[]
-  apartments Apartment[]  @relation("UserApartments")
   sentMessages     Message[]  @relation("SentMessages")
   receivedMessages Message[]  @relation("ReceivedMessages")
   blockedRecords   BlockedUser[]
@@ -50,8 +49,9 @@ model Apartment {
   videoUrl        String?
   videos          String?     // JSON array of video URLs
   amenities       String?     // JSON array of amenities
+  featured        Boolean     @default(false)
   type            String      // 'rent' or 'sale'
-  status          String      @default("pending") // pending, available, hidden, preview, reserved, unavailable, sold, rented
+  status          String      @default("pending") // pending, available, preview, reserved, unavailable, sold, rented
   statusChangedAt DateTime?
   views           Int         @default(0)
   paymentRef      String?
@@ -61,18 +61,15 @@ model Apartment {
   approvedAt      DateTime?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
-  
-  // العقارات المميزة
-  isFeatured      Boolean     @default(false)  // عقار مميز
-  isVip           Boolean     @default(false)  // عقار مميز+ VIP
-  featuredUntil   DateTime?   // تاريخ انتهاء التمييز
-  
-  // العلاقات
   inquiries       Inquiry[]
   likes           Like[]
   comments        Comment[]
   editRequests    PropertyEditRequest[]
-  creator         User?       @relation("UserApartments", fields: [createdBy], references: [id])
+  
+  // VIP والمميز
+  isFeatured      Boolean     @default(false)
+  isVip           Boolean     @default(false)
+  featuredUntil   DateTime?
 }
 
 model Inquiry {
@@ -128,13 +125,19 @@ model OperationLog {
 }
 
 model Settings {
-  id          String   @id @default(cuid())
-  contactFee  Int      @default(50)    // رسوم التواصل
-  featuredFee Int      @default(100)   // رسوم العقار المميز
-  vipFee      Int      @default(200)   // رسوم العقار المميز+ VIP
-  currency    String   @default("ج.م")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  contactFee          Int      @default(50)
+  featuredFee         Int      @default(100)
+  premiumFee          Int      @default(200)
+  saleDisplayFee      Int      @default(100)
+  rentDisplayFee      Int      @default(75)
+  otherServicesFee    Int      @default(50)
+  highlightFee        Int      @default(150)
+  priorityListingFee  Int      @default(200)
+  verifiedListingFee  Int      @default(250)
+  currency            String   @default("ج.م")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 model Session {
