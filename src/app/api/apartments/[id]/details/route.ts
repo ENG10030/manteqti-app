@@ -99,10 +99,10 @@ export async function GET(
       imageUrl: apartment.imageUrl,
       images: apartment.images ? JSON.parse(apartment.images) : [],
       amenities: apartment.amenities ? JSON.parse(apartment.amenities) : [],
-      featured: apartment.featured,
+      isFeatured: apartment.isFeatured,
       type: apartment.type as 'rent' | 'sale',
       status: apartment.status || 'available',
-      views: apartment.views + 1, // إضافة المشاهدة الجديدة
+      views: apartment.views + 1,
       paymentRef: apartment.paymentRef,
       agreementStatus,
       createdAt: apartment.createdAt.toISOString(),
