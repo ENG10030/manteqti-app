@@ -5,17 +5,21 @@ import bcrypt from "bcryptjs";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, email, password, phone } = body;
+    const { name, email, identifier, password, phone } = body;
 
-    if (!name || !email || !password) {
+    // Accept either email or identifier
+    const userEmail = (email || identifier || "").toLowerCase().trim();
+
+    if (!name || !userEmail || !password) {
       return NextResponse.json(
         { error: "الاسم والبريد الإلكتروني وكلمة المرور مطلوبون" },
         { status: 400 }
       );
     }
 
+    // Check if user already exists
     const existingUser = await db.user.findUnique({
-      where: { email: email.toLowerCase() },
+      where: { email: userEmail },
     });
 
     if (existingUser) {
@@ -27,23 +31,29 @@ export async function POST(request: Request) {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Check if this is the developer
+    const isDeveloper = userEmail === "ahmadmamdouh10030@gmail.com";
+
     const user = await db.user.create({
       data: {
         name,
-        email: email.toLowerCase(),
+        email: userEmail,
         password: hashedPassword,
         phone: phone || null,
-        role: "USER",
-        isApproved: false,
+        identifier: userEmail,
+        role: isDeveloper ? "DEVELOPER" : "USER",
+        isApproved: true,
       },
     });
 
     return NextResponse.json({
-      message: "تم إنشاء الحساب بنجاح. يرجى انتظار موافقة الإدارة",
+      message: "تم إنشاء الحساب بنجاح",
       user: {
         id: user.id,
         email: user.email,
         name: user.name,
+        identifier: user.identifier,
+        role: user.role,
       },
     });
   } catch (error) {

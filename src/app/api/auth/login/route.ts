@@ -8,17 +8,21 @@ const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email, password } = body;
+    const { email, identifier, password } = body;
 
-    if (!email || !password) {
+    // Accept either email or identifier
+    const loginIdentifier = (email || identifier || "").toLowerCase().trim();
+
+    if (!loginIdentifier || !password) {
       return NextResponse.json(
         { error: "البريد الإلكتروني وكلمة المرور مطلوبان" },
         { status: 400 }
       );
     }
 
+    // Find user by email
     const user = await db.user.findUnique({
-      where: { email: email.toLowerCase() },
+      where: { email: loginIdentifier },
     });
 
     if (!user) {
@@ -56,6 +60,7 @@ export async function POST(request: Request) {
         id: user.id,
         email: user.email,
         name: user.name,
+        identifier: user.identifier,
         role: user.role,
         isApproved: user.isApproved,
       },

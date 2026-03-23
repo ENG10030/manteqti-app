@@ -7,128 +7,178 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 // المستخدمين
 model User {
-  id            String     @id @default(cuid())
-  email         String     @unique
-  name          String
-  password      String
-  phone         String?
-  role          Role       @default(USER)
-  isApproved    Boolean    @default(false)
-  isBlocked     Boolean    @default(false)
-  blockedAt     DateTime?
-  blockReason   String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  apartments    Apartment[]
-  editRequests  EditRequest[]
-}
+  id         String      @id @default(cuid())
+  name       String
+  email      String      @unique
+  password   String
+  phone      String?
+  identifier String?     // for phone or other ID
+  otp        String?
+  otpExpires DateTime?   @map("otp_expires")
+  role       String      @default("USER")
+  isApproved Boolean     @default(true)
+  isBlocked  Boolean     @default(false)
+  blockedAt  DateTime?
+  blockReason String?
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+  inquiries  Inquiry[]
+  payments   Payment[]
+  apartments Apartment[]
 
-// الأدوار
-enum Role {
-  USER
-  DEVELOPER
+  @@map("users")
 }
 
 // العقارات
 model Apartment {
-  id            String        @id @default(cuid())
-  title         String
-  description   String        @db.Text
-  price         Float
-  area          Float?
-  rooms         Int?
-  bathrooms     Int?
-  city          String
-  neighborhood  String?
-  address       String?
-  type          ApartmentType
-  status        ApartmentStatus @default(PENDING)
-  images        String[]      @default([])
-  isFeatured    Boolean       @default(false)
-  isVip         Boolean       @default(false)
-  views         Int           @default(0)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  createdBy     String?
-  user          User?         @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-  editRequests  EditRequest[]
+  id              String      @id @default(cuid())
+  title           String
+  price           Int
+  area            String
+  bedrooms        Int
+  bathrooms       Int
+  description     String      @db.Text
+  ownerPhone      String      @map("owner_phone")
+  mapLink         String?     @map("map_link") @db.Text
+  imageUrl        String?     @map("image_url") @db.Text
+  images          String?     @db.Text
+  videoUrl        String?     @map("video_url") @db.Text
+  videos          String?     @db.Text
+  amenities       String?     @db.Text
+  isFeatured      Boolean     @default(false)
+  isVip           Boolean     @default(false)
+  type            String
+  status          String      @default("pending")
+  statusChangedAt DateTime?   @map("status_changed_at")
+  views           Int         @default(0)
+  paymentRef      String?     @map("payment_ref")
+  agreementStatus String?     @map("agreement_status")
+  createdBy       String?     @map("created_by")
+  approvedBy      String?     @map("approved_by")
+  approvedAt      DateTime?   @map("approved_at")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+  inquiries       Inquiry[]
+  user            User?       @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([type])
+  @@index([area])
+  @@map("apartments")
 }
 
-// نوع العقار
-enum ApartmentType {
-  SALE
-  RENT
+// الاستفسارات
+model Inquiry {
+  id               String    @id @default(cuid())
+  apartmentId      String    @map("apartment_id")
+  userId           String?   @map("user_id")
+  name             String
+  email            String
+  phone            String
+  message          String    @db.Text
+  lifecycleStatus  String    @default("New") @map("lifecycle_status")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  apartment        Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user             User?     @relation(fields: [userId], references: [id])
+  payment          Payment?
+
+  @@index([apartmentId])
+  @@map("inquiries")
 }
 
-// حالة العقار
-enum ApartmentStatus {
-  PENDING
-  AVAILABLE
-  SOLD
-  RENTED
-  REJECTED
-  BLOCKED
+// المدفوعات
+model Payment {
+  id             String    @id @default(cuid())
+  inquiryId      String    @unique @map("inquiry_id")
+  method         String
+  status         String    @default("Pending")
+  inquiryStatus  String    @default("Contacted") @map("inquiry_status")
+  amount         Int
+  transactionRef String?   @map("transaction_ref")
+  paymentLink    String?   @map("payment_link") @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  inquiry        Inquiry   @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  user           User?     @relation(fields: [userId], references: [id])
+  userId         String?   @map("user_id")
+
+  @@map("payments")
 }
 
-// طلبات التعديل
-model EditRequest {
+// رموز OTP
+model OtpCode {
+  id        String   @id @default(cuid())
+  code      String
+  email     String
+  createdAt DateTime @default(now()) @map("created_at")
+  expiresAt DateTime @map("expires_at")
+
+  @@map("otp_codes")
+}
+
+// سجل العمليات
+model OperationLog {
   id          String   @id @default(cuid())
-  apartmentId String
-  apartment   Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  field       String
-  oldValue    String   @db.Text
-  newValue    String   @db.Text
-  status      EditRequestStatus @default(PENDING)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id")
+  userId      String?  @map("user_id")
+  details     String?  @db.Text
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
 
-// حالة طلب التعديل
-enum EditRequestStatus {
-  PENDING
-  APPROVED
-  REJECTED
+  @@map("operation_logs")
 }
 
 // الإعدادات
 model Settings {
-  id                      Int      @id @default(1)
-  siteName                String   @default("منطقتي")
-  siteDescription         String?  @db.Text
-  contactEmail            String?
-  contactPhone            String?
-  featuredFee             Float    @default(100)
-  vipFee                  Float    @default(200)
-  commissionRate          Float    @default(5)
-  minWithdrawal           Float    @default(100)
-  maxApartmentsPerUser    Int      @default(10)
-  allowUserRegistration   Boolean  @default(true)
-  requireApproval         Boolean  @default(true)
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  contactFee          Int      @default(50) @map("contact_fee")
+  featuredFee         Int      @default(100) @map("featured_fee")
+  premiumFee          Int      @default(200) @map("premium_fee")
+  saleDisplayFee      Int      @default(100) @map("sale_display_fee")
+  rentDisplayFee      Int      @default(75) @map("rent_display_fee")
+  otherServicesFee    Int      @default(50) @map("other_services_fee")
+  highlightFee        Int      @default(150) @map("highlight_fee")
+  priorityListingFee  Int      @default(200) @map("priority_listing_fee")
+  verifiedListingFee  Int      @default(250) @map("verified_listing_fee")
+  currency            String   @default("ج.م")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
 }
 
-// طلبات السحب
-model WithdrawalRequest {
-  id          String              @id @default(cuid())
-  userId      String
-  amount      Float
-  status      WithdrawalStatus    @default(PENDING)
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+// الجلسات
+model Session {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  token        String   @unique
+  expiresAt    DateTime @map("expires_at")
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent") @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("sessions")
 }
 
-// حالة طلب السحب
-enum WithdrawalStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  PAID
+// سجل الأمان
+model SecurityLog {
+  id          String   @id @default(cuid())
+  action      String
+  identifier  String
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent") @db.Text
+  details     String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("security_logs")
 }

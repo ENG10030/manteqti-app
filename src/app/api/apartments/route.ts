@@ -25,21 +25,25 @@ async function getCurrentUser(request: Request) {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const city = searchParams.get("city");
+    const status = searchParams.get("status");
     const type = searchParams.get("type");
-    const minPrice = searchParams.get("minPrice");
-    const maxPrice = searchParams.get("maxPrice");
+    const area = searchParams.get("area");
 
-    const where: any = {
-      status: "AVAILABLE",
-    };
+    const where: any = {};
 
-    if (city) where.city = { contains: city, mode: "insensitive" };
-    if (type) where.type = type;
-    if (minPrice || maxPrice) {
-      where.price = {};
-      if (minPrice) where.price.gte = parseFloat(minPrice);
-      if (maxPrice) where.price.lte = parseFloat(maxPrice);
+    // إذا كان المستخدم عادي، يرى العقارات المتاحة فقط
+    if (status) {
+      where.status = status;
+    } else {
+      where.status = "available";
+    }
+
+    if (type && type !== "all") {
+      where.type = type;
+    }
+
+    if (area && area !== "all") {
+      where.area = area;
     }
 
     // استبعاد عقارات المحظورين
@@ -56,7 +60,7 @@ export async function GET(request: Request) {
       where,
       include: {
         user: {
-          select: { id: true, name: true, phone: true },
+          select: { id: true, name: true, email: true },
         },
       },
       orderBy: [
@@ -66,7 +70,7 @@ export async function GET(request: Request) {
       ],
     });
 
-    return NextResponse.json({ apartments });
+    return NextResponse.json(apartments);
   } catch (error) {
     console.error("Get apartments error:", error);
     return NextResponse.json(
@@ -98,38 +102,39 @@ export async function POST(request: Request) {
       description,
       price,
       area,
-      rooms,
+      bedrooms,
       bathrooms,
-      city,
-      neighborhood,
-      address,
+      ownerPhone,
+      mapLink,
       type,
       images,
+      videos,
     } = body;
 
-    if (!title || !price || !city || !type) {
+    if (!title || !price || !area || !ownerPhone) {
       return NextResponse.json(
         { error: "البيانات الأساسية مطلوبة" },
         { status: 400 }
       );
     }
 
-    const status = user.role === "DEVELOPER" ? "AVAILABLE" : "PENDING";
+    // المطور ينشر مباشرة، المستخدم العادي يرسل للمراجعة
+    const status = user.role === "DEVELOPER" ? "available" : "pending";
 
     const apartment = await db.apartment.create({
       data: {
         title,
         description: description || "",
-        price: parseFloat(price),
-        area: area ? parseFloat(area) : null,
-        rooms: rooms ? parseInt(rooms) : null,
-        bathrooms: bathrooms ? parseInt(bathrooms) : null,
-        city,
-        neighborhood: neighborhood || "",
-        address: address || "",
-        type,
+        price: parseInt(price),
+        area,
+        bedrooms: parseInt(bedrooms) || 1,
+        bathrooms: parseInt(bathrooms) || 1,
+        ownerPhone,
+        mapLink: mapLink || null,
+        type: type || "rent",
         status,
-        images: images || [],
+        images: images || null,
+        videos: videos || null,
         createdBy: user.id,
         isFeatured: false,
         isVip: false,
