@@ -6,9 +6,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
-  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 model User {
@@ -17,8 +16,7 @@ model User {
   name       String
   password   String
   phone      String?
-  email      String?   @unique
-  role       String      @default("user") // user, developer, admin
+  email      String?
   otp        String?
   otpExpires DateTime?
   isBlocked  Boolean     @default(false)
