@@ -4,7 +4,6 @@ import { verify } from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
-// التحقق من صلاحيات المطور
 async function isDeveloper(request: Request) {
   const cookieHeader = request.headers.get("cookie");
   const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
@@ -33,7 +32,6 @@ export async function GET() {
     let settings = await db.settings.findFirst();
 
     if (!settings) {
-      // إنشاء إعدادات افتراضية
       settings = await db.settings.create({
         data: {
           siteName: "منطقتي",
@@ -61,7 +59,7 @@ export async function GET() {
   }
 }
 
-// PUT - تحديث الإعدادات (مطور فقط)
+// PUT - تحديث الإعدادات
 export async function PUT(request: Request) {
   try {
     if (!(await isDeveloper(request))) {

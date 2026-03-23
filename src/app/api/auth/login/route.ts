@@ -17,7 +17,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // البحث عن المستخدم
     const user = await db.user.findUnique({
       where: { email: email.toLowerCase() },
     });
@@ -29,7 +28,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // التحقق من كلمة المرور
     const isValidPassword = await bcrypt.compare(password, user.password);
 
     if (!isValidPassword) {
@@ -39,7 +37,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // التحقق من حالة الحظر
     if (user.isBlocked) {
       return NextResponse.json(
         { error: "تم حظر حسابك. يرجى التواصل مع الإدارة" },
@@ -47,14 +44,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // إنشاء token
     const token = sign(
       { userId: user.id, email: user.email, role: user.role },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    // إنشاء response مع cookie
     const response = NextResponse.json({
       message: "تم تسجيل الدخول بنجاح",
       user: {
@@ -66,12 +61,11 @@ export async function POST(request: Request) {
       },
     });
 
-    // تعيين cookie
     response.cookies.set("auth-token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7, // 7 أيام
+      maxAge: 60 * 60 * 24 * 7,
       path: "/",
     });
 

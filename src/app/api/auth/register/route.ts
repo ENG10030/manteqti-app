@@ -14,7 +14,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // التحقق من عدم وجود المستخدم مسبقاً
     const existingUser = await db.user.findUnique({
       where: { email: email.toLowerCase() },
     });
@@ -26,10 +25,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // تشفير كلمة المرور
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // إنشاء المستخدم
     const user = await db.user.create({
       data: {
         name,
@@ -37,7 +34,7 @@ export async function POST(request: Request) {
         password: hashedPassword,
         phone: phone || null,
         role: "USER",
-        isApproved: false, // يحتاج موافقة المطور
+        isApproved: false,
       },
     });
 

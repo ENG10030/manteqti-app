@@ -4,7 +4,6 @@ import { verify } from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
-// التحقق من المستخدم
 async function getCurrentUser(request: Request) {
   const cookieHeader = request.headers.get("cookie");
   const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
@@ -30,8 +29,6 @@ export async function GET(request: Request) {
     const type = searchParams.get("type");
     const minPrice = searchParams.get("minPrice");
     const maxPrice = searchParams.get("maxPrice");
-    const isFeatured = searchParams.get("featured");
-    const isVip = searchParams.get("vip");
 
     const where: any = {
       status: "AVAILABLE",
@@ -44,10 +41,8 @@ export async function GET(request: Request) {
       if (minPrice) where.price.gte = parseFloat(minPrice);
       if (maxPrice) where.price.lte = parseFloat(maxPrice);
     }
-    if (isFeatured === "true") where.isFeatured = true;
-    if (isVip === "true") where.isVip = true;
 
-    // استبعاد عقارات المستخدمين المحظورين
+    // استبعاد عقارات المحظورين
     const blockedUsers = await db.user.findMany({
       where: { isBlocked: true },
       select: { id: true },
@@ -119,8 +114,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // المطور: العقار متاح مباشرة
-    // المستخدم: العقار معلق للمراجعة
     const status = user.role === "DEVELOPER" ? "AVAILABLE" : "PENDING";
 
     const apartment = await db.apartment.create({

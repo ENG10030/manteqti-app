@@ -4,7 +4,6 @@ import { verify } from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
-// التحقق من المستخدم
 async function getCurrentUser(request: Request) {
   const cookieHeader = request.headers.get("cookie");
   const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
@@ -43,11 +42,6 @@ export async function GET(
       return NextResponse.json({ error: "العقار غير موجود" }, { status: 404 });
     }
 
-    // التحقق من أن المستخدم غير محظور
-    if (apartment.user?.isBlocked) {
-      return NextResponse.json({ error: "العقار غير متاح" }, { status: 404 });
-    }
-
     return NextResponse.json({ apartment });
   } catch (error) {
     console.error("Get apartment error:", error);
@@ -80,7 +74,6 @@ export async function PUT(
       return NextResponse.json({ error: "العقار غير موجود" }, { status: 404 });
     }
 
-    // التحقق من الملكية أو صلاحية المطور
     if (apartment.createdBy !== user.id && user.role !== "DEVELOPER") {
       return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
     }
@@ -149,7 +142,6 @@ export async function PATCH(
     } else if (action === "vip") {
       updateData.isVip = isVip !== undefined ? isVip : true;
     } else {
-      // تحديث مباشر للحقول
       if (isFeatured !== undefined) updateData.isFeatured = isFeatured;
       if (isVip !== undefined) updateData.isVip = isVip;
     }
@@ -193,7 +185,6 @@ export async function DELETE(
       return NextResponse.json({ error: "العقار غير موجود" }, { status: 404 });
     }
 
-    // التحقق من الملكية أو صلاحية المطور
     if (apartment.createdBy !== user.id && user.role !== "DEVELOPER") {
       return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
     }

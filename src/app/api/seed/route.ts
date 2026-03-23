@@ -2,10 +2,8 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 
-// API لإنشاء بيانات تجريبية
 export async function GET() {
   try {
-    // التحقق من وجود مطور
     const existingDeveloper = await db.user.findFirst({
       where: { role: "DEVELOPER" },
     });
@@ -21,7 +19,6 @@ export async function GET() {
       });
     }
 
-    // إنشاء المطور
     const hashedPassword = await bcrypt.hash("admin123", 10);
     const developer = await db.user.create({
       data: {
@@ -33,7 +30,6 @@ export async function GET() {
       },
     });
 
-    // إنشاء مستخدم تجريبي
     const userPassword = await bcrypt.hash("user123", 10);
     const user = await db.user.create({
       data: {
@@ -45,7 +41,6 @@ export async function GET() {
       },
     });
 
-    // إنشاء إعدادات افتراضية
     await db.settings.create({
       data: {
         siteName: "منطقتي",
@@ -62,12 +57,11 @@ export async function GET() {
       },
     });
 
-    // إنشاء عقارات تجريبية
     const apartments = await Promise.all([
       db.apartment.create({
         data: {
           title: "شقة فاخرة في حي النخيل",
-          description: "شقة فاخرة بمساحة 200 متر مربع، 3 غرف نوم، 2 حمام، مطبخ مجهز بالكامل",
+          description: "شقة فاخرة بمساحة 200 متر مربع، 3 غرف نوم، 2 حمام",
           price: 450000,
           area: 200,
           rooms: 3,
@@ -86,7 +80,7 @@ export async function GET() {
       db.apartment.create({
         data: {
           title: "فيلا حديثة في حي الملقا",
-          description: "فيلا حديثة بمساحة 400 متر مربع، 5 غرف نوم، 4 حمامات، حديقة خاصة ومسبح",
+          description: "فيلا حديثة بمساحة 400 متر مربع، 5 غرف نوم، 4 حمامات",
           price: 1500000,
           area: 400,
           rooms: 5,
@@ -100,25 +94,6 @@ export async function GET() {
           isVip: true,
           createdBy: developer.id,
           images: ["https://images.unsplash.com/photo-1613490493576-7fde63acd811?w=800"],
-        },
-      }),
-      db.apartment.create({
-        data: {
-          title: "شقة للإيجار في حي العليا",
-          description: "شقة للإيجار بمساحة 150 متر، غرفتين نوم، حمام، قريبة من الخدمات",
-          price: 3000,
-          area: 150,
-          rooms: 2,
-          bathrooms: 1,
-          city: "الرياض",
-          neighborhood: "حي العليا",
-          address: "شارع العليا، عمارة 8",
-          type: "RENT",
-          status: "AVAILABLE",
-          isFeatured: false,
-          isVip: false,
-          createdBy: user.id,
-          images: ["https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800"],
         },
       }),
     ]);

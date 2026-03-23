@@ -16,7 +16,7 @@ export interface AuthUser {
   isBlocked: boolean;
 }
 
-// NextAuth Options - للمكتبة القديمة
+// NextAuth Options
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({

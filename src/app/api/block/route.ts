@@ -4,7 +4,6 @@ import { verify } from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
-// التحقق من صلاحيات المطور
 async function isDeveloper(request: Request) {
   const cookieHeader = request.headers.get("cookie");
   const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
@@ -27,7 +26,7 @@ async function isDeveloper(request: Request) {
   }
 }
 
-// GET - جلب قائمة المستخدمين المحظورين
+// GET - جلب المحظورين
 export async function GET(request: Request) {
   try {
     if (!(await isDeveloper(request))) {
@@ -59,7 +58,7 @@ export async function GET(request: Request) {
   }
 }
 
-// POST - حظر/إلغاء حظر مستخدم
+// POST - حظر/إلغاء حظر
 export async function POST(request: Request) {
   try {
     if (!(await isDeveloper(request))) {
@@ -77,7 +76,6 @@ export async function POST(request: Request) {
     }
 
     if (action === "block") {
-      // حظر المستخدم
       const user = await db.user.update({
         where: { id: userId },
         data: {
@@ -87,7 +85,6 @@ export async function POST(request: Request) {
         },
       });
 
-      // إخفاء جميع عقارات المستخدم
       await db.apartment.updateMany({
         where: { createdBy: userId },
         data: { status: "BLOCKED" },
@@ -98,7 +95,6 @@ export async function POST(request: Request) {
         user: { id: user.id, name: user.name, email: user.email },
       });
     } else if (action === "unblock") {
-      // إلغاء حظر المستخدم
       const user = await db.user.update({
         where: { id: userId },
         data: {
@@ -108,14 +104,13 @@ export async function POST(request: Request) {
         },
       });
 
-      // إعادة عقاراته إلى الحالة المعلقة
       await db.apartment.updateMany({
         where: { createdBy: userId, status: "BLOCKED" },
         data: { status: "PENDING" },
       });
 
       return NextResponse.json({
-        message: "تم إلغاء حظر المستخدم. عقاراته في انتظار المراجعة",
+        message: "تم إلغاء حظر المستخدم",
         user: { id: user.id, name: user.name, email: user.email },
       });
     } else {

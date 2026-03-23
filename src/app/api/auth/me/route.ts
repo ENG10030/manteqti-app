@@ -6,7 +6,6 @@ const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 export async function GET(request: Request) {
   try {
-    // الحصول على token من cookie
     const cookieHeader = request.headers.get("cookie");
     const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
     const token = cookies.get("auth-token");
@@ -15,10 +14,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ user: null }, { status: 401 });
     }
 
-    // التحقق من token
     const decoded = verify(token, JWT_SECRET) as { userId: string };
 
-    // الحصول على بيانات المستخدم
     const user = await db.user.findUnique({
       where: { id: decoded.userId },
       select: {

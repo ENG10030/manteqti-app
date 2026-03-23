@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// Rate limiting بسيط باستخدام الذاكرة
+// Rate limiting بسيط
 const rateLimit = new Map<string, { count: number; lastRequest: number }>();
-const RATE_LIMIT_WINDOW = 60 * 1000; // دقيقة واحدة
-const RATE_LIMIT_MAX = 100; // حد أقصى 100 طلب في الدقيقة
+const RATE_LIMIT_WINDOW = 60 * 1000;
+const RATE_LIMIT_MAX = 100;
 
 export function middleware(request: NextRequest) {
   const response = NextResponse.next();
 
-  // إضافة headers أمنية
+  // Headers أمنية
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("X-XSS-Protection", "1; mode=block");
@@ -42,13 +42,6 @@ export function middleware(request: NextRequest) {
     response.headers.set("Access-Control-Allow-Origin", "*");
     response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
     response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  }
-
-  // حماية مسارات المطور
-  if (request.nextUrl.pathname.startsWith("/api/settings") ||
-      request.nextUrl.pathname.startsWith("/api/block") ||
-      request.nextUrl.pathname.startsWith("/api/users")) {
-    // يتم التحقق من الصلاحيات داخل الـ API نفسه
   }
 
   return response;
