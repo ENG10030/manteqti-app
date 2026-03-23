@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
 
-// حذف محتوى المستخدم المحظور
+// حذف عقار
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -21,8 +21,7 @@ export async function DELETE(
     const { id: apartmentId } = await params
 
     const apartment = await db.apartment.findUnique({
-      where: { id: apartmentId },
-      include: { creator: true }
+      where: { id: apartmentId }
     })
 
     if (!apartment) {
@@ -31,19 +30,6 @@ export async function DELETE(
         { status: 404 }
       )
     }
-
-    // التحقق من أن المستخدم محظور
-    if (!apartment.creator.isBlocked) {
-      return NextResponse.json(
-        { error: "هذا الإجراء متاح فقط للمستخدمين المحظورين" },
-        { status: 400 }
-      )
-    }
-
-    // حذف سجل المحتوى المحظور أولاً
-    await db.blockedContent.deleteMany({
-      where: { apartmentId }
-    })
 
     // حذف العقار
     await db.apartment.delete({

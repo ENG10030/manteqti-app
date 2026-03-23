@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
 
-// إخفاء / إظهار محتوى المستخدم المحظور
+// إخفاء / إظهار عقار
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -23,8 +23,7 @@ export async function POST(
     const { action } = body // "hide" or "show"
 
     const apartment = await db.apartment.findUnique({
-      where: { id: apartmentId },
-      include: { creator: true }
+      where: { id: apartmentId }
     })
 
     if (!apartment) {
@@ -34,35 +33,11 @@ export async function POST(
       )
     }
 
-    // التحقق من أن المستخدم محظور
-    if (!apartment.creator.isBlocked) {
-      return NextResponse.json(
-        { error: "هذا الإجراء متاح فقط للمستخدمين المحظورين" },
-        { status: 400 }
-      )
-    }
-
     if (action === "hide") {
       const updatedApartment = await db.apartment.update({
         where: { id: apartmentId },
         data: {
-          isHidden: true,
-          hiddenAt: new Date()
-        }
-      })
-
-      // تحديث أو إنشاء سجل المحتوى المحظور
-      await db.blockedContent.upsert({
-        where: { apartmentId },
-        create: {
-          userId: apartment.createdBy,
-          apartmentId: apartment.id,
-          blockedBy: session.user.id,
-          action: "hidden",
-          canRestore: true
-        },
-        update: {
-          action: "hidden"
+          status: "hidden"
         }
       })
 
@@ -76,16 +51,7 @@ export async function POST(
       const updatedApartment = await db.apartment.update({
         where: { id: apartmentId },
         data: {
-          isHidden: false,
-          hiddenAt: null
-        }
-      })
-
-      // تحديث سجل المحتوى المحظور
-      await db.blockedContent.updateMany({
-        where: { apartmentId },
-        data: {
-          action: "visible"
+          status: "approved"
         }
       })
 

@@ -22,7 +22,7 @@ export async function POST(
     const body = await request.json()
     const { action, featuredType } = body 
     // action: "feature" or "unfeature"
-    // featuredType: "featured" or "featured_plus"
+    // featuredType: "featured" or "vip"
 
     const apartment = await db.apartment.findUnique({
       where: { id: apartmentId }
@@ -36,24 +36,17 @@ export async function POST(
     }
 
     if (action === "feature") {
-      if (!featuredType || !["featured", "featured_plus"].includes(featuredType)) {
-        return NextResponse.json(
-          { error: "نوع التمييز غير صالح. يجب أن يكون 'featured' أو 'featured_plus'" },
-          { status: 400 }
-        )
-      }
-
+      const isVip = featuredType === "vip"
+      
       const updatedApartment = await db.apartment.update({
         where: { id: apartmentId },
         data: {
           isFeatured: true,
-          featuredType: featuredType,
-          featuredBy: session.user.id,
-          featuredAt: new Date()
+          isVip: isVip
         }
       })
 
-      const typeLabel = featuredType === "featured_plus" ? "المميز+" : "المميز"
+      const typeLabel = isVip ? "VIP" : "مميز"
       
       return NextResponse.json({
         success: true,
@@ -66,9 +59,7 @@ export async function POST(
         where: { id: apartmentId },
         data: {
           isFeatured: false,
-          featuredType: null,
-          featuredBy: null,
-          featuredAt: null
+          isVip: false
         }
       })
 

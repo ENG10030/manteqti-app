@@ -294,7 +294,7 @@ export default function App() {
   const [chatLoading, setChatLoading] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [confirmDialog, setConfirmDialog] = useState<{
-    isOpen: boolean; title: string; message: string; onConfirm: () => void; type: 'danger' | 'warning' | 'info'; loading?: boolean;
+    isOpen: boolean; title: string; message: string; onConfirm: () => void; type: 'danger' | 'warning' | 'info'; loading?: boolean; confirmText?: string; cancelText?: string;
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
   const [aiAction, setAiAction] = useState<string | null>(null);
   const [aiResponse, setAiResponse] = useState<string>('');

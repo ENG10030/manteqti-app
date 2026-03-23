@@ -19,15 +19,6 @@ export async function GET() {
       where: {
         createdBy: session.user.id
       },
-      include: {
-        creator: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        }
-      },
       orderBy: {
         createdAt: "desc"
       }

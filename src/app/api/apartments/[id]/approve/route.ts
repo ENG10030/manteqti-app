@@ -23,8 +23,7 @@ export async function POST(
     const { action } = body // "approve" or "reject"
 
     const apartment = await db.apartment.findUnique({
-      where: { id: apartmentId },
-      include: { creator: true }
+      where: { id: apartmentId }
     })
 
     if (!apartment) {
