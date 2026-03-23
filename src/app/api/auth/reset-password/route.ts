@@ -17,28 +17,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'الرمز غير موجود' }, { status: 400 });
     }
 
-    // البحث عن الرمز
-    const resetRecord = await db.passwordReset.findUnique({
-      where: { token }
+    // البحث عن المستخدم بالرمز
+    const user = await db.user.findFirst({
+      where: { passwordResetToken: token }
     });
 
-    if (!resetRecord) {
+    if (!user) {
       return NextResponse.json({ error: 'الرمز غير صالح' }, { status: 400 });
     }
 
     // التحقق من انتهاء الصلاحية
-    if (resetRecord.expiresAt < new Date()) {
+    if (!user.passwordResetExpires || user.passwordResetExpires < new Date()) {
       return NextResponse.json({ error: 'انتهت صلاحية الرمز' }, { status: 400 });
-    }
-
-    // التحقق من استخدام الرمز
-    if (resetRecord.used) {
-      return NextResponse.json({ error: 'تم استخدام هذا الرمز من قبل' }, { status: 400 });
     }
 
     return NextResponse.json({
       success: true,
-      email: resetRecord.email
+      email: user.email
     });
 
   } catch (error) {
@@ -66,63 +61,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' }, { status: 400 });
     }
 
-    // البحث عن الرمز
-    const resetRecord = await db.passwordReset.findUnique({
-      where: { token }
+    // البحث عن المستخدم بالرمز
+    const user = await db.user.findFirst({
+      where: { passwordResetToken: token }
     });
 
-    if (!resetRecord) {
+    if (!user) {
       return NextResponse.json({ error: 'الرمز غير صالح' }, { status: 400 });
     }
 
     // التحقق من انتهاء الصلاحية
-    if (resetRecord.expiresAt < new Date()) {
+    if (!user.passwordResetExpires || user.passwordResetExpires < new Date()) {
       return NextResponse.json({ error: 'انتهت صلاحية الرمز' }, { status: 400 });
     }
 
-    // التحقق من استخدام الرمز
-    if (resetRecord.used) {
-      return NextResponse.json({ error: 'تم استخدام هذا الرمز من قبل' }, { status: 400 });
-    }
-
-    // البحث عن المستخدم
-    const user = await db.user.findFirst({
-      where: {
-        OR: [
-          { email: resetRecord.email },
-          { identifier: resetRecord.email }
-        ]
-      }
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: 'المستخدم غير موجود' }, { status: 400 });
-    }
-
-    // تحديث كلمة المرور
+    // تحديث كلمة المرور ومسح رمز الاستعادة
     const hashedPassword = hashPassword(newPassword);
     await db.user.update({
       where: { id: user.id },
-      data: { password: hashedPassword }
-    });
-
-    // تحديد الرمز كمستخدم
-    await db.passwordReset.update({
-      where: { id: resetRecord.id },
-      data: { used: true }
+      data: { 
+        password: hashedPassword,
+        passwordResetToken: null,
+        passwordResetExpires: null
+      }
     });
 
     // حذف جميع جلسات المستخدم (إجبار تسجيل الدخول مرة أخرى)
-    await db.session.deleteMany({
-      where: { userId: user.id }
-    });
+    try {
+      await db.session.deleteMany({
+        where: { userId: user.id }
+      });
+    } catch {
+      // Ignore if sessions table doesn't exist
+    }
 
     // تسجيل العملية
     try {
       await db.securityLog.create({
         data: {
           action: 'password_reset_success',
-          identifier: user.identifier,
+          identifier: user.email,
           details: 'Password reset successfully'
         }
       });
