@@ -84,8 +84,8 @@ export async function PUT(
         title: body.title,
         description: body.description,
         price: body.price ? parseFloat(body.price) : undefined,
-        area: body.area ? parseFloat(body.area) : undefined,
-        rooms: body.rooms ? parseInt(body.rooms) : undefined,
+        area: body.area,  // ✅ نص وليس رقم
+        bedrooms: body.bedrooms ? parseInt(body.bedrooms) : undefined,  // ✅ bedrooms بدل rooms
         bathrooms: body.bathrooms ? parseInt(body.bathrooms) : undefined,
         city: body.city,
         neighborhood: body.neighborhood,
