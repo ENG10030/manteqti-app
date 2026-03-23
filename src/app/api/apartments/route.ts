@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { PrismaClient } from '@prisma/client';
 
-// GET - Fetch apartments
+// Create Prisma client
+const prisma = new PrismaClient();
+
+// GET - Fetch all apartments
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -10,23 +13,6 @@ export async function GET(request: NextRequest) {
     const minPrice = searchParams.get('minPrice');
     const maxPrice = searchParams.get('maxPrice');
     const bedrooms = searchParams.get('bedrooms');
-    const userId = searchParams.get('userId');
-    const my = searchParams.get('my');
-    const showHidden = searchParams.get('showHidden'); // للمطور لعرض المحذوفات
-
-    // إذا كان الطلب للحصول على عقارات المستخدم الحالي
-    if (my === 'true') {
-      if (!userId) {
-        return NextResponse.json({ error: 'مطلوب تسجيل الدخول' }, { status: 401 });
-      }
-      
-      const myApartments = await db.apartment.findMany({
-        where: { createdBy: userId },
-        orderBy: { createdAt: 'desc' },
-      });
-      
-      return NextResponse.json(myApartments);
-    }
 
     const where: Record<string, unknown> = {};
 
@@ -40,24 +26,7 @@ export async function GET(request: NextRequest) {
     }
     if (bedrooms) where.bedrooms = { gte: parseInt(bedrooms) };
 
-    // إخفاء عقارات المستخدمين المحظورين (ما لم يكن المطور)
-    if (showHidden !== 'true') {
-      // جلب قائمة المستخدمين المحظورين
-      const blockedUsers = await db.blockedUser.findMany({
-        select: { userId: true }
-      });
-      const blockedUserIds = blockedUsers.map(b => b.userId);
-      
-      // استبعاد عقارات المحظورين
-      if (blockedUserIds.length > 0) {
-        where.NOT = {
-          createdBy: { in: blockedUserIds }
-        };
-      }
-    }
-
-    // الترتيب: VIP أولاً، ثم المميز، ثم الأحدث
-    const apartments = await db.apartment.findMany({
+    const apartments = await prisma.apartment.findMany({
       where,
       orderBy: [
         { isVip: 'desc' },
@@ -78,37 +47,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    // التحقق من حالة الحظر إذا كان هناك مستخدم
-    if (body.createdBy) {
-      const user = await db.user.findUnique({
-        where: { id: body.createdBy }
-      });
-
-      if (user?.isBlocked) {
-        return NextResponse.json({ 
-          error: 'تم حظر حسابك. لا يمكنك إضافة عقارات جديدة.',
-          blocked: true
-        }, { status: 403 });
-      }
-      
-      // التحقق من وجود حظر في جدول BlockedUser
-      const blockedRecord = await db.blockedUser.findFirst({
-        where: { userId: body.createdBy }
-      });
-      
-      if (blockedRecord) {
-        return NextResponse.json({ 
-          error: 'تم حظر حسابك. لا يمكنك إضافة عقارات جديدة.',
-          blocked: true
-        }, { status: 403 });
-      }
-    }
-
-    // تحديد الحالة الافتراضية بناءً على المطور
-    const isDeveloperRequest = body.isDeveloper === true;
-    const defaultStatus = isDeveloperRequest ? 'available' : 'pending';
-
-    const apartment = await db.apartment.create({
+    const apartment = await prisma.apartment.create({
       data: {
         title: body.title,
         description: body.description || '',
@@ -117,7 +56,7 @@ export async function POST(request: NextRequest) {
         bedrooms: parseInt(body.bedrooms) || 0,
         bathrooms: parseInt(body.bathrooms) || 0,
         type: body.type || 'rent',
-        status: body.status || defaultStatus,
+        status: body.status || 'pending',
         ownerPhone: body.ownerPhone || '',
         mapLink: body.mapLink || '',
         images: body.images,
@@ -126,16 +65,13 @@ export async function POST(request: NextRequest) {
         isFeatured: body.isFeatured || false,
         isVip: body.isVip || false,
         createdBy: body.createdBy || null,
-        // إذا كان المطور، سجل الموافقة تلقائياً
-        approvedBy: isDeveloperRequest ? 'developer' : null,
-        approvedAt: isDeveloperRequest ? new Date() : null,
       },
     });
 
     return NextResponse.json({
       success: true,
       apartment,
-      message: apartment.status === 'pending' 
+      message: body.status === 'pending' 
         ? 'تم إرسال العقار للمراجعة' 
         : 'تم إضافة العقار بنجاح'
     });

@@ -27,9 +27,6 @@ export async function GET(request: NextRequest) {
             title: true,
             price: true,
             status: true,
-            type: true,
-            images: true,
-            videos: true,
           }
         },
         user: {
@@ -40,15 +37,13 @@ export async function GET(request: NextRequest) {
           }
         }
       },
-      orderBy: {
-        createdAt: 'desc'
-      }
+      orderBy: { createdAt: 'desc' }
     });
 
     return NextResponse.json(editRequests);
   } catch (error) {
     console.error('Error fetching edit requests:', error);
-    return NextResponse.json({ error: 'حدث خطأ في جلب طلبات التعديل' }, { status: 500 });
+    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }
 
@@ -56,49 +51,34 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { apartmentId, userId, newImages, newVideos, newPrice, newStatus, description } = body;
 
-    if (!apartmentId || !userId) {
-      return NextResponse.json({ error: 'معرف العقار والمستخدم مطلوبان' }, { status: 400 });
+    // التحقق من البيانات المطلوبة
+    if (!body.apartmentId || !body.userId || !body.editType) {
+      return NextResponse.json({ 
+        error: 'بيانات ناقصة - apartmentId, userId, editType مطلوبة' 
+      }, { status: 400 });
     }
 
     // التحقق من وجود العقار
     const apartment = await db.apartment.findUnique({
-      where: { id: apartmentId }
+      where: { id: body.apartmentId }
     });
 
     if (!apartment) {
       return NextResponse.json({ error: 'العقار غير موجود' }, { status: 404 });
     }
 
-    // التحقق من أن المستخدم هو صاحب العقار
-    if (apartment.createdBy !== userId) {
-      return NextResponse.json({ error: 'يمكن فقط صاحب العقار طلب التعديل' }, { status: 403 });
-    }
-
-    // تحديد نوع التعديل
-    let editType = 'multiple';
-    if (newImages?.length > 0 && !newVideos && !newPrice && !newStatus) {
-      editType = 'images';
-    } else if (newVideos?.length > 0 && !newImages && !newPrice && !newStatus) {
-      editType = 'videos';
-    } else if (newPrice && !newImages && !newVideos && !newStatus) {
-      editType = 'price';
-    } else if (newStatus && !newImages && !newVideos && !newPrice) {
-      editType = 'status';
-    }
-
     // إنشاء طلب التعديل
     const editRequest = await db.propertyEditRequest.create({
       data: {
-        apartmentId,
-        userId,
-        editType,
-        newImages: newImages?.length > 0 ? JSON.stringify(newImages) : null,
-        newVideos: newVideos?.length > 0 ? JSON.stringify(newVideos) : null,
-        newPrice: newPrice || null,
-        newStatus: newStatus || null,
-        description: description || null,
+        apartmentId: body.apartmentId,
+        userId: body.userId,
+        editType: body.editType,
+        newImages: body.newImages ? JSON.stringify(body.newImages) : null,
+        newVideos: body.newVideos ? JSON.stringify(body.newVideos) : null,
+        newPrice: body.newPrice || null,
+        newStatus: body.newStatus || null,
+        description: body.description || null,
         status: 'pending',
       },
       include: {
@@ -106,15 +86,12 @@ export async function POST(request: NextRequest) {
           select: {
             id: true,
             title: true,
-            price: true,
-            status: true,
           }
         },
         user: {
           select: {
             id: true,
             name: true,
-            identifier: true,
           }
         }
       }
@@ -127,6 +104,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error creating edit request:', error);
-    return NextResponse.json({ error: 'حدث خطأ في إنشاء طلب التعديل' }, { status: 500 });
+    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }
