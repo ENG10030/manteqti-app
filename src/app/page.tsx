@@ -53,7 +53,7 @@ interface Apartment {
   videoUrl?: string;
   videos?: string[];
   amenities?: string[];
-  featured?: boolean;
+  isfeatured?: boolean;
   type: 'rent' | 'sale';
   status: string;
   paymentRef?: string;
@@ -1956,7 +1956,7 @@ export default function App() {
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                     {/* Badges */}
                     <div className="absolute top-3 right-3 flex gap-2">
-                      { apartment.isFeatured, && (
+                      { apartment.isFeatured && (
                         <span className="px-2 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 text-white text-xs font-medium flex items-center gap-1">
                           <Star className="h-3 w-3" /> مميز
                         </span>
