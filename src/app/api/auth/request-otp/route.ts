@@ -26,15 +26,21 @@ export async function POST(request: NextRequest) {
     const otp = generateOTP();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Check if user exists
-    let user = await db.user.findUnique({
-      where: { identifier }
+    // Determine if identifier is email or phone
+    const isEmail = identifier.includes('@');
+    const normalizedIdentifier = identifier.toLowerCase().trim();
+
+    // Check if user exists (search by email or identifier)
+    let user = await db.user.findFirst({
+      where: isEmail 
+        ? { email: normalizedIdentifier }
+        : { identifier: normalizedIdentifier }
     });
 
     if (user) {
       // Update existing user with OTP
       user = await db.user.update({
-        where: { identifier },
+        where: { id: user.id },
         data: {
           otp,
           otpExpires
@@ -47,7 +53,8 @@ export async function POST(request: NextRequest) {
       
       user = await db.user.create({
         data: {
-          identifier,
+          email: isEmail ? normalizedIdentifier : `${normalizedIdentifier}@temp.placeholder`,
+          identifier: isEmail ? normalizedIdentifier : normalizedIdentifier,
           name: identifier.split('@')[0] || 'User',
           password: hashedPassword,
           otp,
