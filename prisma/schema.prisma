@@ -199,5 +199,7 @@ model OperationLog {
   entityId   String?
   details    String?
   userId     String?
+  ipAddress  String?
+  userAgent  String?
   createdAt  DateTime @default(now())
 }

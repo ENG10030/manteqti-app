@@ -15,7 +15,7 @@ export async function GET() {
     
     // البحث بالبريد الإلكتروني (حقل فريد)
     const existingAdmin = await db.user.findUnique({
-      where: { email: DEVELOPER_EMAIL }
+      where: { identifier: DEVELOPER_EMAIL }
     });
 
     if (existingAdmin) {

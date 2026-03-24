@@ -33,9 +33,6 @@ export async function GET(request: NextRequest) {
         include: {
           sender: {
             select: { id: true, name: true, identifier: true }
-          },
-          receiver: {
-            select: { id: true, name: true, identifier: true }
           }
         },
         orderBy: { createdAt: 'desc' }
