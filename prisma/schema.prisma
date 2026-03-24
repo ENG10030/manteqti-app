@@ -19,6 +19,7 @@ model User {
   password              String
   role                  String    @default("user")
   isBlocked             Boolean   @default(false)
+  isApproved            Boolean   @default(true)
   passwordResetToken    String?
   passwordResetExpires  DateTime?
   createdAt             DateTime  @default(now())
