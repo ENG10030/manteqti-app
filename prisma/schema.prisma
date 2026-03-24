@@ -18,7 +18,7 @@ model User {
   email                String      @unique
   password             String
   phone                String?
-  identifier           String?     // for phone or other ID
+  identifier           String?
   otp                  String?
   otpExpires           DateTime?   @map("otp_expires")
   role                 String      @default("USER")
@@ -26,13 +26,14 @@ model User {
   isBlocked            Boolean     @default(false)
   blockedAt            DateTime?
   blockReason          String?
-  passwordResetToken   String?     @map("password_reset_token")      // ✅ جديد
-  passwordResetExpires DateTime?   @map("password_reset_expires")    // ✅ جديد
+  passwordResetToken   String?     @map("password_reset_token")
+  passwordResetExpires DateTime?   @map("password_reset_expires")
   createdAt            DateTime    @default(now()) @map("created_at")
   updatedAt            DateTime    @updatedAt @map("updated_at")
   inquiries            Inquiry[]
   payments             Payment[]
   apartments           Apartment[]
+  comments             Comment[]
 
   @@map("users")
 }
@@ -67,6 +68,7 @@ model Apartment {
   createdAt       DateTime    @default(now()) @map("created_at")
   updatedAt       DateTime    @updatedAt @map("updated_at")
   inquiries       Inquiry[]
+  comments        Comment[]
   user            User?       @relation(fields: [createdBy], references: [id], onDelete: Cascade)
 
   @@index([status])
@@ -105,11 +107,11 @@ model Payment {
   amount         Int
   transactionRef String?   @map("transaction_ref")
   paymentLink    String?   @map("payment_link") @db.Text
+  userId         String?   @map("user_id")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
   inquiry        Inquiry   @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
   user           User?     @relation(fields: [userId], references: [id])
-  userId         String?   @map("user_id")
 
   @@map("payments")
 }
@@ -127,15 +129,15 @@ model OtpCode {
 
 // سجل العمليات
 model OperationLog {
-  id          String   @id @default(cuid())
-  action      String
-  entityType  String   @map("entity_type")
-  entityId    String?  @map("entity_id")
-  userId      String?  @map("user_id")
-  details     String?  @db.Text
-  ipAddress   String?  @map("ip_address")
-  userAgent   String?  @map("user_agent") @db.Text
-  createdAt   DateTime @default(now()) @map("created_at")
+  id         String   @id @default(cuid())
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  userId     String?  @map("user_id")
+  details    String?  @db.Text
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent") @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
 
   @@map("operation_logs")
 }
@@ -161,26 +163,46 @@ model Settings {
 
 // الجلسات
 model Session {
-  id           String   @id @default(cuid())
-  userId       String   @map("user_id")
-  token        String   @unique
-  expiresAt    DateTime @map("expires_at")
-  ipAddress    String?  @map("ip_address")
-  userAgent    String?  @map("user_agent") @db.Text
-  createdAt    DateTime @default(now()) @map("created_at")
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent") @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@map("sessions")
 }
 
 // سجل الأمان
 model SecurityLog {
-  id          String   @id @default(cuid())
-  action      String
-  identifier  String
-  ipAddress   String?  @map("ip_address")
-  userAgent   String?  @map("user_agent") @db.Text
-  details     String?  @db.Text
-  createdAt   DateTime @default(now()) @map("created_at")
+  id         String   @id @default(cuid())
+  action     String
+  identifier String
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent") @db.Text
+  details    String?  @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
 
   @@map("security_logs")
+}
+
+// التعليقات
+model Comment {
+  id          String    @id @default(cuid())
+  apartmentId String    @map("apartment_id")
+  userId      String    @map("user_id")
+  content     String    @db.Text
+  status      String    @default("pending")
+  approvedBy  String?   @map("approved_by")
+  approvedAt  DateTime? @map("approved_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  
+  apartment   Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@index([apartmentId])
+  @@index([status])
+  @@map("comments")
 }
