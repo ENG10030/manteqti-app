@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     // إذا كان المطور يعلق
     if (isDeveloper || userId === 'developer') {
       // البحث عن مستخدم المطور أو إنشاؤه
-      let developerUser = await db.user.findUnique({
+      let developerUser = await db.user.findFirst({
         where: { identifier: 'developer' }
       });
 
@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
         // إنشاء مستخدم للمطور
         developerUser = await db.user.create({
           data: {
+            email: 'developer@manteqti.app',
             identifier: 'developer',
             name: 'المطور',
             password: 'developer_internal'
