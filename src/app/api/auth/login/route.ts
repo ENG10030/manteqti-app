@@ -20,9 +20,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Find user by email
+    // Find user by identifier
     const user = await db.user.findUnique({
-      where: { email: loginIdentifier },
+      where: { identifier: loginIdentifier },
     });
 
     if (!user) {
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     }
 
     const token = sign(
-      { userId: user.id, email: user.email, role: user.role },
+      { userId: user.id, identifier: user.identifier, role: user.role },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -62,7 +62,6 @@ export async function POST(request: Request) {
         name: user.name,
         identifier: user.identifier,
         role: user.role,
-        isApproved: user.isApproved,
       },
     });
 
