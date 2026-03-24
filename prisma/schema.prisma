@@ -35,6 +35,7 @@ model User {
   apartments           Apartment[]
   comments             Comment[]
   editRequests         PropertyEditRequest[]
+  likes                Like[]
 
   @@map("users")
 }
@@ -71,6 +72,7 @@ model Apartment {
   inquiries       Inquiry[]
   comments        Comment[]
   editRequests    PropertyEditRequest[]
+  likes           Like[]
   user            User?                @relation(fields: [createdBy], references: [id], onDelete: Cascade)
 
   @@index([status])
@@ -233,4 +235,20 @@ model PropertyEditRequest {
   @@index([apartmentId])
   @@index([status])
   @@map("property_edit_requests")
+}
+
+// الإعجابات
+model Like {
+  id          String    @id @default(cuid())
+  apartmentId String    @map("apartment_id")
+  userId      String    @map("user_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  
+  apartment   Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@unique([apartmentId, userId])
+  @@index([apartmentId])
+  @@index([userId])
+  @@map("likes")
 }
