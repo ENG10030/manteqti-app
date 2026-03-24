@@ -1,16 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import ZAI from 'z-ai-web-dev-sdk';
 
 // Store conversations in memory (use database in production)
 const conversations = new Map<string, Array<{ role: 'assistant' | 'user'; content: string }>>();
 
-let zaiInstance: Awaited<ReturnType<typeof ZAI.create>> | null = null;
+// Check if we're in development environment with SDK available
+let zaiInstance: any = null;
+let ZAI_AVAILABLE = false;
 
 async function getZAI() {
-  if (!zaiInstance) {
+  if (zaiInstance) return zaiInstance;
+  
+  try {
+    // Dynamic import to avoid build errors when SDK is not available
+    const ZAI = (await import('z-ai-web-dev-sdk')).default;
     zaiInstance = await ZAI.create();
+    ZAI_AVAILABLE = true;
+    return zaiInstance;
+  } catch (e) {
+    console.log('ZAI SDK not available, using fallback responses');
+    ZAI_AVAILABLE = false;
+    return null;
   }
-  return zaiInstance;
 }
 
 // System prompt for real estate assistant
@@ -97,8 +107,10 @@ function getFallbackReply(message: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  let body: any = null;
+  
   try {
-    const body = await request.json();
+    body = await request.json();
     const { sessionId, message } = body;
 
     if (!message || !message.trim()) {
@@ -111,6 +123,16 @@ export async function POST(request: NextRequest) {
     // Try to use AI SDK
     try {
       const zai = await getZAI();
+
+      if (!zai || !ZAI_AVAILABLE) {
+        // Use fallback response when SDK is not available
+        const fallbackReply = getFallbackReply(message);
+        return NextResponse.json({
+          success: true,
+          response: fallbackReply,
+          fallback: true
+        });
+      }
 
       // Get or create conversation history
       let history = conversations.get(sessionId) || [
@@ -207,6 +229,3 @@ export async function DELETE(request: NextRequest) {
   
   return NextResponse.json({ success: true, message: 'Conversation cleared' });
 }
-
-// Handle body access in catch block
-let body: any = null;
