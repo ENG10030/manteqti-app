@@ -41,31 +41,32 @@ model User {
 }
 
 model Apartment {
-  id          String   @id @default(cuid())
-  title       String
-  price       Int
-  area        String
-  bedrooms    Int
-  bathrooms   Int
-  description String
-  ownerPhone  String
-  mapLink     String?
-  imageUrl    String?
-  images      String?
-  videoUrl    String?
-  videos      String?
-  amenities   String?
-  isFeatured  Boolean  @default(false)
-  isVip       Boolean  @default(false)
-  type        String   @default("rent")
-  status      String   @default("pending")
-  paymentRef  String?
-  createdBy   String?
-  approvedBy  String?
-  approvedAt  DateTime?
-  views       Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String    @id @default(cuid())
+  title            String
+  price            Int
+  area             String
+  bedrooms         Int
+  bathrooms        Int
+  description      String
+  ownerPhone       String
+  mapLink          String?
+  imageUrl         String?
+  images           String?
+  videoUrl         String?
+  videos           String?
+  amenities        String?
+  isFeatured       Boolean   @default(false)
+  isVip            Boolean   @default(false)
+  type             String    @default("rent")
+  status           String    @default("pending")
+  statusChangedAt  DateTime?
+  paymentRef       String?
+  createdBy        String?
+  approvedBy       String?
+  approvedAt       DateTime?
+  views            Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
   
   user          User?         @relation(fields: [createdBy], references: [id], onDelete: Cascade)
   inquiries     Inquiry[]
