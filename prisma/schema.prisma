@@ -89,6 +89,7 @@ model Payment {
   inquiryStatus  String   @default("new")
   amount         Int
   transactionRef String?
+  paymentLink    String?
   userId         String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
