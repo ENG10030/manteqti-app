@@ -36,6 +36,8 @@ model User {
   comments             Comment[]
   editRequests         PropertyEditRequest[]
   likes                Like[]
+  sentMessages         Message[]            @relation("SentMessages")
+  receivedMessages     Message[]            @relation("ReceivedMessages")
 
   @@map("users")
 }
@@ -251,4 +253,21 @@ model Like {
   @@index([apartmentId])
   @@index([userId])
   @@map("likes")
+}
+
+// الرسائل
+model Message {
+  id         String    @id @default(cuid())
+  senderId   String    @map("sender_id")
+  receiverId String?   @map("receiver_id")
+  content    String    @db.Text
+  isRead     Boolean   @default(false) @map("is_read")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  
+  sender     User      @relation("SentMessages", fields: [senderId], references: [id])
+  receiver   User?     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@map("messages")
 }
