@@ -2476,6 +2476,956 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Auth Modal */}
+      <AnimatePresence>
+        {showAuth && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowAuth(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                  {authStep === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}
+                </h2>
+                <button onClick={() => setShowAuth(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                  <X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} />
+                </button>
+              </div>
+              
+              <form onSubmit={authStep === 'login' ? handleLogin : handleRegister} className="space-y-4">
+                {authStep === 'register' && (
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الاسم</label>
+                    <input type="text" value={authName} onChange={(e) => setAuthName(e.target.value)}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-violet-500`}
+                      placeholder="أدخل اسمك" required />
+                  </div>
+                )}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>البريد الإلكتروني أو رقم الهاتف</label>
+                  <input type="text" value={authIdentifier} onChange={(e) => setAuthIdentifier(e.target.value)}
+                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-violet-500`}
+                    placeholder="example@email.com" required />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>كلمة المرور</label>
+                  <input type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)}
+                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-violet-500`}
+                    placeholder="••••••••" required />
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="rememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500" />
+                  <label htmlFor="rememberMe" className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>تذكرني</label>
+                </div>
+                
+                <button type="submit" disabled={authLoading}
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium disabled:opacity-50">
+                  {authLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : authStep === 'login' ? 'دخول' : 'تسجيل'}
+                </button>
+              </form>
+              
+              <div className="mt-4 text-center">
+                <button onClick={() => setAuthStep(authStep === 'login' ? 'register' : 'login')}
+                  className={`text-sm ${darkMode ? 'text-violet-400' : 'text-violet-600'} hover:underline`}>
+                  {authStep === 'login' ? 'ليس لديك حساب؟ سجل الآن' : 'لديك حساب؟ سجل دخولك'}
+                </button>
+              </div>
+              
+              {authStep === 'login' && (
+                <div className="mt-2 text-center">
+                  <button onClick={() => { setShowAuth(false); setShowForgotPassword(true); }}
+                    className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'} hover:underline`}>
+                    نسيت كلمة المرور؟
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Developer Login Modal */}
+      <AnimatePresence>
+        {showDevLogin && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowDevLogin(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                  <Lock className="h-6 w-6 text-amber-500" />
+                  دخول المطور
+                </h2>
+                <button onClick={() => setShowDevLogin(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                  <X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} />
+                </button>
+              </div>
+              
+              <form onSubmit={handleDevLogin} className="space-y-4">
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>البريد الإلكتروني</label>
+                  <input type="email" value={devEmail} onChange={(e) => setDevEmail(e.target.value)}
+                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-amber-500`}
+                    placeholder="developer@example.com" required />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>كلمة المرور</label>
+                  <input type="password" value={devPassword} onChange={(e) => setDevPassword(e.target.value)}
+                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-amber-500`}
+                    placeholder="••••••••" required />
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="devRememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500" />
+                  <label htmlFor="devRememberMe" className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>تذكرني</label>
+                </div>
+                
+                <button type="submit" disabled={devLoading}
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium disabled:opacity-50">
+                  {devLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'دخول'}
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Add Apartment Modal */}
+      <AnimatePresence>
+        {showAddModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowAddModal(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>إضافة شقة جديدة</h2>
+                <button onClick={() => setShowAddModal(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                  <X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} />
+                </button>
+              </div>
+              
+              <form onSubmit={(e) => { e.preventDefault(); handleAddApartment(); }} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>عنوان الشقة *</label>
+                    <input type="text" value={aptForm.title} onChange={(e) => setAptForm({ ...aptForm, title: e.target.value })}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-emerald-500`}
+                      placeholder="شقة فاخرة في مدينة نصر" required />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>السعر *</label>
+                    <input type="number" value={aptForm.price} onChange={(e) => setAptForm({ ...aptForm, price: e.target.value })}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-emerald-500`}
+                      placeholder="5000" required />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>المنطقة *</label>
+                    <select value={aptForm.area} onChange={(e) => setAptForm({ ...aptForm, area: e.target.value })}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-emerald-500`} required>
+                      <option value="">اختر المنطقة</option>
+                      {egyptianAreas.map(area => <option key={area} value={area}>{area}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>غرف النوم</label>
+                    <select value={aptForm.bedrooms} onChange={(e) => setAptForm({ ...aptForm, bedrooms: e.target.value })}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-emerald-500`}>
+                      {[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحمامات</label>
+                    <select value={aptForm.bathrooms} onChange={(e) => setAptForm({ ...aptForm, bathrooms: e.target.value })}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-emerald-500`}>
+                      {[1,2,3,4].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>النوع</label>
+                    <select value={aptForm.type} onChange={(e) => setAptForm({ ...aptForm, type: e.target.value as 'rent' | 'sale' })}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-emerald-500`}>
+                      <option value="rent">إيجار</option>
+                      <option value="sale">بيع</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رقم الهاتف *</label>
+                    <input type="tel" value={aptForm.ownerPhone} onChange={(e) => setAptForm({ ...aptForm, ownerPhone: e.target.value })}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-emerald-500`}
+                      placeholder="01xxxxxxxxx" required />
+                  </div>
+                  <div className="col-span-2">
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الوصف *</label>
+                    <textarea value={aptForm.description} onChange={(e) => setAptForm({ ...aptForm, description: e.target.value })}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-emerald-500`}
+                      rows={3} placeholder="وصف تفصيلي للشقة..." required />
+                  </div>
+                  <div className="col-span-2">
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رابط الخريطة (اختياري)</label>
+                    <input type="url" value={aptForm.mapLink} onChange={(e) => setAptForm({ ...aptForm, mapLink: e.target.value })}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-emerald-500`}
+                      placeholder="https://maps.google.com/..." />
+                  </div>
+                  
+                  {/* Images Upload */}
+                  <div className="col-span-2">
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      <ImageIcon className="h-4 w-4 inline ml-1" />
+                      صور الشقة
+                    </label>
+                    <FileUpload type="image" value={imageUrls} onChange={setImageUrls} maxFiles={10} />
+                  </div>
+                  
+                  {/* Videos Upload */}
+                  <div className="col-span-2">
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      <Video className="h-4 w-4 inline ml-1" />
+                      فيديوهات الشقة (اختياري)
+                    </label>
+                    <FileUpload type="video" value={videoUrls} onChange={setVideoUrls} maxFiles={3} />
+                  </div>
+                </div>
+                
+                <div className="flex gap-3 mt-6">
+                  <button type="button" onClick={() => setShowAddModal(false)}
+                    className={`flex-1 py-3 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+                    إلغاء
+                  </button>
+                  <button type="submit" disabled={aptSubmitting}
+                    className="flex-1 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 transition-all">
+                    {aptSubmitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : isDeveloper ? 'نشر الشقة' : 'إرسال للمراجعة'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Apartment Details Modal */}
+      <AnimatePresence>
+        {selectedApartment && !editApartment && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => { setSelectedApartment(null); setCurrentImageIndex(0); }}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+              
+              {/* Image Gallery */}
+              <div className="relative h-72 md:h-96">
+                <img src={selectedApartment.images?.[currentImageIndex] || selectedApartment.imageUrl || '/generated-images/apt1.png'}
+                  alt={selectedApartment.title}
+                  className="w-full h-full object-cover" />
+                
+                {selectedApartment.images && selectedApartment.images.length > 1 && (
+                  <>
+                    <button onClick={(e) => { e.stopPropagation(); setCurrentImageIndex(i => i > 0 ? i - 1 : selectedApartment.images!.length - 1); }}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/50 text-white hover:bg-black/70">
+                      <ChevronRight className="h-6 w-6" />
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); setCurrentImageIndex(i => i < selectedApartment.images!.length - 1 ? i + 1 : 0); }}
+                      className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/50 text-white hover:bg-black/70">
+                      <ChevronLeft className="h-6 w-6" />
+                    </button>
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+                      {selectedApartment.images.map((_, i) => (
+                        <button key={i} onClick={(e) => { e.stopPropagation(); setCurrentImageIndex(i); }}
+                          className={`w-2 h-2 rounded-full ${i === currentImageIndex ? 'bg-white' : 'bg-white/50'}`} />
+                      ))}
+                    </div>
+                  </>
+                )}
+                
+                {/* Close button */}
+                <button onClick={() => { setSelectedApartment(null); setCurrentImageIndex(0); }}
+                  className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70">
+                  <X className="h-5 w-5" />
+                </button>
+                
+                {/* Badges */}
+                <div className="absolute top-4 left-4 flex gap-2">
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium text-white ${
+                    selectedApartment.type === 'rent' ? 'bg-emerald-500' : 'bg-blue-500'
+                  }`}>
+                    {selectedApartment.type === 'rent' ? 'للإيجار' : 'للبيع'}
+                  </span>
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusConfig[selectedApartment.status]?.bgColor} ${statusConfig[selectedApartment.status]?.color}`}>
+                    {statusConfig[selectedApartment.status]?.label}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="p-6">
+                <h2 className={`text-2xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{selectedApartment.title}</h2>
+                
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="flex items-center gap-1">
+                    <MapPin className="h-5 w-5 text-violet-500" />
+                    <span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.area}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Bed className="h-5 w-5 text-violet-500" />
+                    <span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.bedrooms} غرف</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Bath className="h-5 w-5 text-violet-500" />
+                    <span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.bathrooms} حمام</span>
+                  </div>
+                </div>
+                
+                <p className={`text-3xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent mb-4`}>
+                  {selectedApartment.price.toLocaleString()} ج.م
+                  {selectedApartment.type === 'rent' && <span className="text-sm text-slate-500"> /شهر</span>}
+                </p>
+                
+                <p className={`mb-6 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{selectedApartment.description}</p>
+                
+                {/* Contact Info */}
+                {hasPaidForApartment(selectedApartment.id) || isDeveloper ? (
+                  <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
+                    <h3 className={`font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>بيانات التواصل</h3>
+                    <div className="flex items-center gap-2">
+                      <Phone className="h-5 w-5 text-emerald-500" />
+                      <a href={`tel:${selectedApartment.ownerPhone}`} className="text-emerald-600 font-medium hover:underline">
+                        {selectedApartment.ownerPhone}
+                      </a>
+                    </div>
+                    {selectedApartment.mapLink && (
+                      <a href={selectedApartment.mapLink} target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 mt-2 text-violet-600 hover:underline">
+                        <ExternalLink className="h-4 w-4" />
+                        عرض على الخريطة
+                      </a>
+                    )}
+                  </div>
+                ) : (
+                  <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-amber-900/20 border border-amber-700' : 'bg-amber-50 border border-amber-200'}`}>
+                    <div className="flex items-center gap-3">
+                      <Lock className="h-6 w-6 text-amber-500" />
+                      <div>
+                        <p className={`font-medium ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>بيانات التواصل محجوبة</p>
+                        <p className={`text-sm ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>
+                          ادفع {CONTACT_FEE} ج.م للحصول على بيانات التواصل
+                        </p>
+                      </div>
+                    </div>
+                    <button onClick={() => setPaymentApartment(selectedApartment)}
+                      className="mt-3 w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium">
+                      <CreditCard className="h-4 w-4 inline ml-2" />
+                      طلب بيانات التواصل
+                    </button>
+                  </div>
+                )}
+                
+                {/* Actions */}
+                <div className="flex gap-3">
+                  <button onClick={() => toggleFavorite(selectedApartment.id)}
+                    className={`flex-1 py-3 rounded-xl font-medium flex items-center justify-center gap-2 ${
+                      favorites.includes(selectedApartment.id) 
+                        ? 'bg-red-500 text-white' 
+                        : darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}>
+                    <Heart className={`h-5 w-5 ${favorites.includes(selectedApartment.id) ? 'fill-white' : ''}`} />
+                    {favorites.includes(selectedApartment.id) ? 'في المفضلة' : 'أضف للمفضلة'}
+                  </button>
+                  {isDeveloper && (
+                    <>
+                      <button onClick={() => setEditApartment(selectedApartment)}
+                        className={`py-3 px-4 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+                        تعديل
+                      </button>
+                      <button onClick={() => handleDeleteApartment(selectedApartment.id)}
+                        className="py-3 px-4 rounded-xl bg-red-500/10 text-red-500 font-medium hover:bg-red-500/20">
+                        حذف
+                      </button>
+                    </>
+                  )}
+                </div>
+                
+                {/* Comments Section */}
+                <div className={`mt-6 pt-6 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                  <h3 className={`font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                    <MessageCircle className="h-5 w-5 text-violet-500" />
+                    التعليقات
+                  </h3>
+                  
+                  {/* Add Comment */}
+                  <div className="flex gap-2 mb-4">
+                    <input type="text" value={newComment} onChange={(e) => setNewComment(e.target.value)}
+                      placeholder="اكتب تعليقاً..."
+                      className={`flex-1 px-4 py-2 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'}`} />
+                    <button onClick={() => addComment(selectedApartment.id)} disabled={commentLoading}
+                      className="px-4 py-2 rounded-xl bg-violet-600 text-white disabled:opacity-50">
+                      {commentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  
+                  {/* Comments List */}
+                  <div className="space-y-3">
+                    {comments.filter(c => c.apartmentId === selectedApartment.id).map(comment => (
+                      <div key={comment.id} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{comment.user.name}</span>
+                          <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                            {new Date(comment.createdAt).toLocaleDateString('ar-EG')}
+                          </span>
+                        </div>
+                        <p className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{comment.content}</p>
+                      </div>
+                    ))}
+                    {comments.filter(c => c.apartmentId === selectedApartment.id).length === 0 && (
+                      <p className={`text-center py-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>لا توجد تعليقات بعد</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Chat Modal */}
+      <AnimatePresence>
+        {showChat && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => { setShowChat(false); setChatMessages([]); }}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-lg h-[80vh] rounded-2xl flex flex-col ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+              
+              {/* Header */}
+              <div className={`p-4 border-b ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-purple-700 flex items-center justify-center">
+                      <Brain className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <h2 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>المساعد الذكي</h2>
+                      <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>منطقتي - اسألني عن العقارات</p>
+                    </div>
+                  </div>
+                  <button onClick={() => { setShowChat(false); setChatMessages([]); }}
+                    className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                    <X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} />
+                  </button>
+                </div>
+              </div>
+              
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {chatMessages.length === 0 && (
+                  <div className="text-center py-8">
+                    <Brain className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
+                    <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>مرحباً! كيف يمكنني مساعدتك؟</p>
+                  </div>
+                )}
+                {chatMessages.map((msg, i) => (
+                  <div key={i} className={`flex ${msg.role === 'user' ? 'justify-start' : 'justify-end'}`}>
+                    <div className={`max-w-[80%] p-3 rounded-2xl ${
+                      msg.role === 'user' 
+                        ? 'bg-violet-600 text-white rounded-tr-none' 
+                        : darkMode ? 'bg-slate-700 text-white rounded-tl-none' : 'bg-slate-100 text-slate-900 rounded-tl-none'
+                    }`}>
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                    </div>
+                  </div>
+                ))}
+                {chatLoading && (
+                  <div className="flex justify-end">
+                    <div className={`p-3 rounded-2xl ${darkMode ? 'bg-slate-700' : 'bg-slate-100'} rounded-tl-none`}>
+                      <Loader2 className="h-5 w-5 animate-spin text-violet-500" />
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Input */}
+              <div className={`p-4 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="flex gap-2">
+                  <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)}
+                    placeholder="اكتب رسالتك..."
+                    className={`flex-1 px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} focus:outline-none focus:ring-2 focus:ring-violet-500`} />
+                  <button type="submit" disabled={!chatInput.trim() || chatLoading}
+                    className="px-4 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white disabled:opacity-50">
+                    <Send className="h-5 w-5" />
+                  </button>
+                </form>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Developer Panel Modal */}
+      <AnimatePresence>
+        {showDevPanel && isDeveloper && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowDevPanel(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-6xl max-h-[90vh] overflow-hidden rounded-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl flex flex-col`}>
+              
+              {/* Header */}
+              <div className={`p-4 border-b ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                <div className="flex items-center justify-between">
+                  <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                    <ShieldCheck className="h-6 w-6 text-amber-500" />
+                    لوحة تحكم المطور
+                  </h2>
+                  <button onClick={() => setShowDevPanel(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                    <X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} />
+                  </button>
+                </div>
+                
+                {/* Tabs */}
+                <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
+                  {[
+                    { id: 'stats', icon: BarChart3, label: 'الإحصائيات' },
+                    { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length },
+                    { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length },
+                    { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length },
+                    { id: 'messages', icon: MessageCircle, label: 'الرسائل' },
+                    { id: 'settings', icon: Settings, label: 'الإعدادات' }
+                  ].map(tab => (
+                    <button key={tab.id} onClick={() => setDevTab(tab.id as any)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-all ${
+                        devTab === tab.id 
+                          ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white' 
+                          : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}>
+                      <tab.icon className="h-4 w-4" />
+                      {tab.label}
+                      {tab.count !== undefined && tab.count > 0 && (
+                        <span className={`px-2 py-0.5 rounded-full text-xs ${devTab === tab.id ? 'bg-white/20' : 'bg-amber-500 text-white'}`}>
+                          {tab.count}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-4">
+                {/* Stats Tab */}
+                {devTab === 'stats' && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                      <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>إجمالي العقارات</p>
+                      <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{allApartments.length}</p>
+                    </div>
+                    <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                      <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>قيد المراجعة</p>
+                      <p className={`text-2xl font-bold text-amber-500`}>{pendingApartments.length}</p>
+                    </div>
+                    <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                      <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>الاستفسارات</p>
+                      <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{inquiries.length}</p>
+                    </div>
+                    <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                      <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>المدفوعات</p>
+                      <p className={`text-2xl font-bold text-emerald-500`}>{payments.filter(p => p.status === 'Paid').length}</p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Pending Tab */}
+                {devTab === 'pending' && (
+                  <div className="space-y-4">
+                    {pendingApartments.length === 0 ? (
+                      <div className="text-center py-12">
+                        <CheckCircle2 className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
+                        <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد عقارات قيد المراجعة</p>
+                      </div>
+                    ) : (
+                      pendingApartments.map(apt => (
+                        <div key={apt.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                          <div className="flex gap-4">
+                            <img src={apt.imageUrl || apt.images?.[0] || '/generated-images/apt1.png'} 
+                              alt={apt.title} className="w-32 h-24 object-cover rounded-lg" />
+                            <div className="flex-1">
+                              <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
+                              <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {apt.area} • {apt.price.toLocaleString()} ج.م • {apt.type === 'rent' ? 'إيجار' : 'بيع'}
+                              </p>
+                              <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                                أُرسلت: {new Date(apt.createdAt).toLocaleDateString('ar-EG')}
+                              </p>
+                            </div>
+                            <div className="flex gap-2">
+                              <button onClick={() => handleApproveApartment(apt.id)}
+                                className="px-4 py-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600">
+                                موافقة
+                              </button>
+                              <button onClick={() => handleRejectApartment(apt.id)}
+                                className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600">
+                                رفض
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+                
+                {/* Apartments Tab */}
+                {devTab === 'apartments' && (
+                  <div className="space-y-4">
+                    {allApartments.slice(0, 20).map(apt => (
+                      <div key={apt.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'} flex items-center justify-between`}>
+                        <div className="flex items-center gap-3">
+                          <img src={apt.imageUrl || apt.images?.[0] || '/generated-images/apt1.png'} 
+                            alt={apt.title} className="w-16 h-12 object-cover rounded" />
+                          <div>
+                            <h3 className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
+                            <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                              {apt.price.toLocaleString()} ج.م • {statusConfig[apt.status]?.label}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <select value={apt.status} onChange={(e) => handleUpdateStatus(apt.id, e.target.value)}
+                            className={`px-3 py-1 rounded-lg text-sm ${darkMode ? 'bg-slate-600 text-white' : 'bg-white border border-slate-200'}`}>
+                            <option value="available">متاح</option>
+                            <option value="reserved">محجوز</option>
+                            <option value="sold">تم البيع</option>
+                            <option value="rented">تم التأجير</option>
+                            <option value="unavailable">غير متاح</option>
+                          </select>
+                          <button onClick={() => handleDeleteApartment(apt.id)}
+                            className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Payments Tab */}
+                {devTab === 'payments' && (
+                  <div className="space-y-4">
+                    {payments.length === 0 ? (
+                      <div className="text-center py-12">
+                        <CreditCard className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
+                        <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد مدفوعات</p>
+                      </div>
+                    ) : (
+                      payments.map(payment => (
+                        <div key={payment.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                                {payment.amount} ج.م - {payment.method}
+                              </p>
+                              <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {payment.inquiry?.name} • {new Date(payment.createdAt).toLocaleDateString('ar-EG')}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-1 rounded-full text-xs ${
+                                payment.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' :
+                                payment.status === 'Pending' ? 'bg-amber-100 text-amber-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>
+                                {payment.status === 'Paid' ? 'مدفوع' : payment.status === 'Pending' ? 'قيد الانتظار' : 'مرفوض'}
+                              </span>
+                              {payment.status === 'Pending' && (
+                                <div className="flex gap-1">
+                                  <button onClick={() => handleConfirmPayment(payment.id)}
+                                    className="p-1 rounded bg-emerald-500 text-white">
+                                    <Check className="h-4 w-4" />
+                                  </button>
+                                  <button onClick={() => handleRejectPayment(payment.id)}
+                                    className="p-1 rounded bg-red-500 text-white">
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+                
+                {/* Messages Tab */}
+                {devTab === 'messages' && (
+                  <div className="space-y-4">
+                    {messages.length === 0 ? (
+                      <div className="text-center py-12">
+                        <MessageCircle className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
+                        <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد رسائل</p>
+                      </div>
+                    ) : (
+                      messages.map(msg => (
+                        <div key={msg.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className={`font-medium ${darkMode ? 'text-violet-400' : 'text-violet-600'}`}>
+                              {msg.sender?.name || 'مستخدم'}
+                            </span>
+                            <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                              {new Date(msg.createdAt).toLocaleString('ar-EG')}
+                            </span>
+                          </div>
+                          <p className={darkMode ? 'text-slate-200' : 'text-slate-700'}>{msg.content}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+                
+                {/* Settings Tab */}
+                {devTab === 'settings' && (
+                  <div className="space-y-6 max-w-lg">
+                    <div>
+                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                        رسوم بيانات التواصل (ج.م)
+                      </label>
+                      <input type="number" value={settings.contactFee} 
+                        onChange={(e) => setSettings({ ...settings, contactFee: parseInt(e.target.value) || 0 })}
+                        className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                    </div>
+                    <button onClick={() => updateSettings(settings)}
+                      disabled={settingsLoading}
+                      className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium disabled:opacity-50">
+                      {settingsLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'حفظ الإعدادات'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Apartment Modal */}
+      <AnimatePresence>
+        {editApartment && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setEditApartment(null)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>تعديل الشقة</h2>
+                <button onClick={() => setEditApartment(null)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                  <X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} />
+                </button>
+              </div>
+              
+              <form onSubmit={handleEditApartment} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>عنوان الشقة</label>
+                    <input type="text" value={editApartment.title} onChange={(e) => setEditApartment({ ...editApartment, title: e.target.value })}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'}`} />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>السعر</label>
+                    <input type="number" value={editApartment.price} onChange={(e) => setEditApartment({ ...editApartment, price: parseInt(e.target.value) })}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'}`} />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>المنطقة</label>
+                    <select value={editApartment.area} onChange={(e) => setEditApartment({ ...editApartment, area: e.target.value })}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'}`}>
+                      {egyptianAreas.map(area => <option key={area} value={area}>{area}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>غرف النوم</label>
+                    <select value={editApartment.bedrooms} onChange={(e) => setEditApartment({ ...editApartment, bedrooms: parseInt(e.target.value) })}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'}`}>
+                      {[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحمامات</label>
+                    <select value={editApartment.bathrooms} onChange={(e) => setEditApartment({ ...editApartment, bathrooms: parseInt(e.target.value) })}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'}`}>
+                      {[1,2,3,4].map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الوصف</label>
+                    <textarea value={editApartment.description} onChange={(e) => setEditApartment({ ...editApartment, description: e.target.value })}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'}`}
+                      rows={3} />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رقم الهاتف</label>
+                    <input type="tel" value={editApartment.ownerPhone} onChange={(e) => setEditApartment({ ...editApartment, ownerPhone: e.target.value })}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'}`} />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحالة</label>
+                    <select value={editApartment.status} onChange={(e) => setEditApartment({ ...editApartment, status: e.target.value })}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'}`}>
+                      <option value="available">متاح</option>
+                      <option value="reserved">محجوز</option>
+                      <option value="unavailable">غير متاح</option>
+                      <option value="sold">تم البيع</option>
+                      <option value="rented">تم التأجير</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <div className="flex gap-3 mt-6">
+                  <button type="button" onClick={() => setEditApartment(null)}
+                    className={`flex-1 py-3 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}>
+                    إلغاء
+                  </button>
+                  <button type="submit" disabled={editSubmitting}
+                    className="flex-1 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-violet-600 to-purple-700 disabled:opacity-50">
+                    {editSubmitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'حفظ التعديلات'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Payment Modal */}
+      <AnimatePresence>
+        {paymentApartment && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setPaymentApartment(null)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>طلب بيانات التواصل</h2>
+                <button onClick={() => setPaymentApartment(null)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                  <X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} />
+                </button>
+              </div>
+              
+              <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>المبلغ المطلوب:</p>
+                <p className="text-2xl font-bold text-emerald-500">{CONTACT_FEE} ج.م</p>
+              </div>
+              
+              <div className="space-y-3 mb-6">
+                <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>اختر طريقة الدفع:</p>
+                {['فودافون كاش', 'أورنج كاش', 'اتصالات كاش', 'تحويل بنكي'].map(method => (
+                  <button key={method} onClick={() => setPaymentMethod(method)}
+                    className={`w-full p-4 rounded-xl border-2 text-right transition-all ${
+                      paymentMethod === method 
+                        ? 'border-emerald-500 bg-emerald-50' 
+                        : darkMode ? 'border-slate-600 hover:border-slate-500' : 'border-slate-200 hover:border-slate-300'
+                    }`}>
+                    {method}
+                  </button>
+                ))}
+              </div>
+              
+              <button onClick={() => handlePayment()} disabled={!paymentMethod || paymentSubmitting}
+                className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium disabled:opacity-50">
+                {paymentSubmitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'تأكيد الطلب'}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Forgot Password Modal */}
+      <AnimatePresence>
+        {showForgotPassword && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowForgotPassword(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>استعادة كلمة المرور</h2>
+                <button onClick={() => setShowForgotPassword(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                  <X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} />
+                </button>
+              </div>
+              
+              {forgotSuccess ? (
+                <div className="text-center py-4">
+                  <CheckCircle2 className="h-16 w-16 mx-auto mb-4 text-emerald-500" />
+                  <p className={darkMode ? 'text-slate-300' : 'text-slate-600'}>تم إرسال رابط استعادة كلمة المرور لبريدك الإلكتروني</p>
+                </div>
+              ) : (
+                <form onSubmit={handleForgotPassword} className="space-y-4">
+                  <div>
+                    <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>البريد الإلكتروني</label>
+                    <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)}
+                      className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'}`}
+                      placeholder="example@email.com" required />
+                  </div>
+                  <button type="submit" disabled={forgotLoading}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium disabled:opacity-50">
+                    {forgotLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'إرسال رابط الاستعادة'}
+                  </button>
+                </form>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Reset Password Modal */}
+      <AnimatePresence>
+        {showResetPassword && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowResetPassword(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>كلمة المرور الجديدة</h2>
+                <button onClick={() => setShowResetPassword(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
+                  <X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} />
+                </button>
+              </div>
+              
+              <form onSubmit={handleResetPassword} className="space-y-4">
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>كلمة المرور الجديدة</label>
+                  <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'}`}
+                    required />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>تأكيد كلمة المرور</label>
+                  <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                    className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'}`}
+                    required />
+                </div>
+                <button type="submit" disabled={resetLoading}
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium disabled:opacity-50">
+                  {resetLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'تغيير كلمة المرور'}
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
