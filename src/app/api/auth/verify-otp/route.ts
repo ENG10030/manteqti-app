@@ -10,8 +10,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Identifier and code are required' }, { status: 400 });
     }
 
-    const user = await db.user.findUnique({
-      where: { identifier }
+    // Determine if identifier is email or phone
+    const isEmail = identifier.includes('@');
+    const normalizedIdentifier = identifier.toLowerCase().trim();
+
+    // Find user by email or identifier
+    const user = await db.user.findFirst({
+      where: isEmail 
+        ? { email: normalizedIdentifier }
+        : { identifier: normalizedIdentifier }
     });
 
     if (!user) {
@@ -28,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     // Update user name if provided and clear OTP
     const updatedUser = await db.user.update({
-      where: { identifier },
+      where: { id: user.id },
       data: {
         name: name || user.name,
         otp: null,
