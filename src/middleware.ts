@@ -17,7 +17,9 @@ export function middleware(request: NextRequest) {
 
   // Rate limiting للـ API
   if (request.nextUrl.pathname.startsWith("/api")) {
-    const ip = request.ip || request.headers.get("x-forwarded-for") || "unknown";
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
+               request.headers.get("x-real-ip") || 
+               "unknown";
     const key = `rate-limit-${ip}`;
     const now = Date.now();
 
