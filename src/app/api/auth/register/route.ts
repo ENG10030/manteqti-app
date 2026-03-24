@@ -17,9 +17,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if user already exists
+    // Check if user already exists by identifier
     const existingUser = await db.user.findUnique({
-      where: { email: userEmail },
+      where: { identifier: userEmail },
     });
 
     if (existingUser) {

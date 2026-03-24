@@ -86,22 +86,15 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    // حذف جميع جلسات المستخدم (إجبار تسجيل الدخول مرة أخرى)
+    // تسجيل العملية في OperationLog
     try {
-      await db.session.deleteMany({
-        where: { userId: user.id }
-      });
-    } catch {
-      // Ignore if sessions table doesn't exist
-    }
-
-    // تسجيل العملية
-    try {
-      await db.securityLog.create({
+      await db.operationLog.create({
         data: {
           action: 'password_reset_success',
-          identifier: user.email,
-          details: 'Password reset successfully'
+          entityType: 'user',
+          entityId: user.id,
+          details: 'Password reset successfully',
+          userId: user.id
         }
       });
     } catch {
