@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
 
     // التحقق من عدم وجود المستخدم (باستخدام email - حقل فريد)
     const existingUser = await db.user.findUnique({
-      where: { email: email.toLowerCase().trim() }
+      where: { identifier: email.toLowerCase().trim() }
     })
 
     if (existingUser) {
