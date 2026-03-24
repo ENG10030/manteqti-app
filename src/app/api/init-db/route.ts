@@ -9,47 +9,52 @@ function hashPassword(password: string): string {
 
 export async function GET() {
   try {
-    // التحقق من وجود مستخدم المطور (باستخدام identifier)
+    // التحقق من وجود مستخدم المطور
     const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
     const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || 'admin123';
     
+    // البحث بالبريد الإلكتروني (حقل فريد)
     const existingAdmin = await db.user.findUnique({
-      where: { identifier: DEVELOPER_EMAIL }
+      where: { email: DEVELOPER_EMAIL }
     });
 
     if (existingAdmin) {
       return NextResponse.json({ 
         message: 'قاعدة البيانات تمت تهيئتها مسبقاً',
-        admin: { identifier: existingAdmin.identifier, name: existingAdmin.name }
+        admin: { email: existingAdmin.email, name: existingAdmin.name }
       });
     }
 
     // إنشاء مستخدم المطور
     const admin = await db.user.create({
       data: {
+        email: DEVELOPER_EMAIL,
         identifier: DEVELOPER_EMAIL,
         name: 'المطور - أحمد',
-        email: DEVELOPER_EMAIL,
         phone: '+201234567890',
         password: hashPassword(DEVELOPER_PASSWORD),
+        role: 'DEVELOPER',
       }
     });
 
     // إنشاء إعدادات افتراضية
-    await db.settings.create({
-      data: {
-        contactFee: 50,
-        featuredFee: 100,
-        premiumFee: 200,
-        saleDisplayFee: 100,
-        rentDisplayFee: 75,
-        otherServicesFee: 50,
-        highlightFee: 150,
-        priorityListingFee: 200,
-        verifiedListingFee: 250,
-        currency: 'ج.م',
-      }
-    });
+    const existingSettings = await db.settings.findFirst();
+    if (!existingSettings) {
+      await db.settings.create({
+        data: {
+          contactFee: 50,
+          featuredFee: 100,
+          premiumFee: 200,
+          saleDisplayFee: 100,
+          rentDisplayFee: 75,
+          otherServicesFee: 50,
+          highlightFee: 150,
+          priorityListingFee: 200,
+          verifiedListingFee: 250,
+          currency: 'ج.م',
+        }
+      });
+    }
 
     // إنشاء عقارات تجريبية
     const apartments = await Promise.all([
@@ -58,7 +63,7 @@ export async function GET() {
           title: 'شقة فاخرة في مدينة نصر',
           description: 'شقة واسعة ومشرقة مع إطلالة رائعة.',
           price: 850000,
-          area: '180',
+          area: 'مدينة نصر',
           bedrooms: 3,
           bathrooms: 2,
           type: 'sale',
@@ -69,6 +74,7 @@ export async function GET() {
           amenities: JSON.stringify(['مصعد', 'أمن', 'جراج']),
           isFeatured: true,
           isVip: true,
+          createdBy: admin.id,
         }
       }),
       db.apartment.create({
@@ -76,7 +82,7 @@ export async function GET() {
           title: 'استوديو مفروش للإيجار',
           description: 'استوديو مفشف بالكامل قريب من المترو.',
           price: 3500,
-          area: '65',
+          area: 'التجمع الخامس',
           bedrooms: 1,
           bathrooms: 1,
           type: 'rent',
@@ -87,6 +93,7 @@ export async function GET() {
           amenities: JSON.stringify(['مفروش', 'تكييف']),
           isFeatured: true,
           isVip: false,
+          createdBy: admin.id,
         }
       }),
       db.apartment.create({
@@ -94,7 +101,7 @@ export async function GET() {
           title: 'فيلا بحديقة خاصة',
           description: 'فيلا فاخرة مع مسبح خاص.',
           price: 3500000,
-          area: '350',
+          area: 'الشيخ زايد',
           bedrooms: 5,
           bathrooms: 4,
           type: 'sale',
@@ -105,6 +112,7 @@ export async function GET() {
           amenities: JSON.stringify(['مسبح', 'حديقة', 'جراج']),
           isFeatured: false,
           isVip: true,
+          createdBy: admin.id,
         }
       }),
     ]);
@@ -113,8 +121,8 @@ export async function GET() {
       success: true,
       message: 'تم تهيئة قاعدة البيانات بنجاح!',
       adminCredentials: {
-        email: 'ahmadmamdouh10030@gmail.com',
-        password: 'admin123'
+        email: DEVELOPER_EMAIL,
+        password: DEVELOPER_PASSWORD
       },
       apartmentsCount: apartments.length
     });
