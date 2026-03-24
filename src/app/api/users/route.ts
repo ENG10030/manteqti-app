@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
     
-    if (!session?.user || session.user.role !== "developer") {
+    if (!session?.user || session.user.role !== "DEVELOPER") {
       return NextResponse.json(
         { error: "غير مصرح لك بهذا الإجراء" },
         { status: 403 }
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const blocked = searchParams.get("blocked")
 
-    let whereClause: Record<string, unknown> = {}
+    const whereClause: Record<string, unknown> = {}
 
     if (blocked === "true") {
       whereClause.isBlocked = true
@@ -31,6 +31,18 @@ export async function GET(request: NextRequest) {
       where: whereClause,
       orderBy: {
         createdAt: "desc"
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        identifier: true,
+        role: true,
+        isBlocked: true,
+        blockedAt: true,
+        blockReason: true,
+        createdAt: true,
       }
     })
 
@@ -51,16 +63,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { name, email, password, phone, identifier } = body
 
-    if (!email || !password || !identifier) {
+    if (!email || !password) {
       return NextResponse.json(
-        { error: "البريد الإلكتروني وكلمة المرور والمعرف مطلوبون" },
+        { error: "البريد الإلكتروني وكلمة المرور مطلوبان" },
         { status: 400 }
       )
     }
 
-    // التحقق من عدم وجود المستخدم
+    // التحقق من عدم وجود المستخدم (باستخدام email - حقل فريد)
     const existingUser = await db.user.findUnique({
-      where: { email }
+      where: { email: email.toLowerCase().trim() }
     })
 
     if (existingUser) {
@@ -70,16 +82,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // التحقق من عدم وجود المعرف
-    const existingIdentifier = await db.user.findUnique({
-      where: { identifier }
-    })
+    // التحقق من عدم وجود المعرف (باستخدام findFirst - ليس فريد)
+    if (identifier) {
+      const existingIdentifier = await db.user.findFirst({
+        where: { identifier: identifier.toLowerCase().trim() }
+      })
 
-    if (existingIdentifier) {
-      return NextResponse.json(
-        { error: "المعرف مستخدم بالفعل" },
-        { status: 400 }
-      )
+      if (existingIdentifier) {
+        return NextResponse.json(
+          { error: "المعرف مستخدم بالفعل" },
+          { status: 400 }
+        )
+      }
     }
 
     // تشفير كلمة المرور
@@ -88,12 +102,12 @@ export async function POST(request: NextRequest) {
     // إنشاء المستخدم
     const user = await db.user.create({
       data: {
-        identifier,
-        name,
-        email,
+        identifier: identifier?.toLowerCase().trim() || email.toLowerCase().trim(),
+        name: name || email.split('@')[0],
+        email: email.toLowerCase().trim(),
         password: hashedPassword,
-        phone,
-        role: "user"
+        phone: phone || null,
+        role: "USER"
       }
     })
 
