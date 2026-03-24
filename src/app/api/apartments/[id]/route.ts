@@ -93,6 +93,7 @@ export async function PUT(
         mapLink: body.mapLink,
         status: body.status,
         isFeatured: body.isFeatured,
+        isVip: body.isVip,
       },
     });
 
