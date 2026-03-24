@@ -2168,9 +2168,6 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
-  );
-}
 
       {/* My Pending Apartments Modal - For regular users */}
       <AnimatePresence>
