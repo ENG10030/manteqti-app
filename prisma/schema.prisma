@@ -11,16 +11,18 @@ datasource db {
 }
 
 model User {
-  id         String   @id @default(cuid())
-  identifier String   @unique
-  name       String
-  email      String?
-  phone      String?
-  password   String
-  role       String   @default("user")
-  isBlocked  Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id                    String    @id @default(cuid())
+  identifier            String    @unique
+  name                  String
+  email                 String?
+  phone                 String?
+  password              String
+  role                  String    @default("user")
+  isBlocked             Boolean   @default(false)
+  passwordResetToken    String?
+  passwordResetExpires  DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
   
   apartments    Apartment[]
   inquiries     Inquiry[]
