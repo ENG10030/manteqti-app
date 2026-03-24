@@ -1,273 +1,189 @@
-// This is your Prisma schema file
-// Learn more: https://pris.ly/databas
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_DATABASE_URL")
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
-// المستخدمين
 model User {
-  id                   String               @id @default(cuid())
-  name                 String
-  email                String               @unique
-  password             String
-  phone                String?
-  identifier           String?
-  otp                  String?
-  otpExpires           DateTime?            @map("otp_expires")
-  role                 String               @default("USER")
-  isApproved           Boolean              @default(true)
-  isBlocked            Boolean              @default(false)
-  blockedAt            DateTime?
-  blockReason          String?
-  passwordResetToken   String?              @map("password_reset_token")
-  passwordResetExpires DateTime?            @map("password_reset_expires")
-  createdAt            DateTime             @default(now()) @map("created_at")
-  updatedAt            DateTime             @updatedAt @map("updated_at")
-  inquiries            Inquiry[]
-  payments             Payment[]
-  apartments           Apartment[]
-  comments             Comment[]
-  editRequests         PropertyEditRequest[]
-  likes                Like[]
-  sentMessages         Message[]            @relation("SentMessages")
-  receivedMessages     Message[]            @relation("ReceivedMessages")
-
-  @@map("users")
+  id         String   @id @default(cuid())
+  identifier String   @unique
+  name       String
+  password   String
+  role       String   @default("user")
+  isBlocked  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  
+  apartments    Apartment[]
+  inquiries     Inquiry[]
+  payments      Payment[]
+  likes         Like[]
+  comments      Comment[]
+  messages      Message[]
+  editRequests  PropertyEditRequest[]
+  blockedUsers  BlockedUser[]  @relation("BlockedUserRelation")
+  blockedBy     BlockedUser[]  @relation("BlockedByRelation")
 }
 
-// العقارات
 model Apartment {
-  id              String               @id @default(cuid())
-  title           String
-  price           Int
-  area            String
-  bedrooms        Int
-  bathrooms       Int
-  description     String               @db.Text
-  ownerPhone      String               @map("owner_phone")
-  mapLink         String?              @map("map_link") @db.Text
-  imageUrl        String?              @map("image_url") @db.Text
-  images          String?              @db.Text
-  videoUrl        String?              @map("video_url") @db.Text
-  videos          String?              @db.Text
-  amenities       String?              @db.Text
-  isFeatured      Boolean              @default(false)
-  isVip           Boolean              @default(false)
-  type            String
-  status          String               @default("pending")
-  statusChangedAt DateTime?            @map("status_changed_at")
-  views           Int                  @default(0)
-  paymentRef      String?              @map("payment_ref")
-  agreementStatus String?              @map("agreement_status")
-  createdBy       String?              @map("created_by")
-  approvedBy      String?              @map("approved_by")
-  approvedAt      DateTime?            @map("approved_at")
-  createdAt       DateTime             @default(now()) @map("created_at")
-  updatedAt       DateTime             @updatedAt @map("updated_at")
-  inquiries       Inquiry[]
-  comments        Comment[]
-  editRequests    PropertyEditRequest[]
-  likes           Like[]
-  user            User?                @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-
-  @@index([status])
-  @@index([type])
-  @@index([area])
-  @@map("apartments")
+  id          String   @id @default(cuid())
+  title       String
+  price       Int
+  area        String
+  bedrooms    Int
+  bathrooms   Int
+  description String
+  ownerPhone  String
+  mapLink     String?
+  imageUrl    String?
+  images      String?
+  videoUrl    String?
+  videos      String?
+  amenities   String?
+  isFeatured  Boolean  @default(false)
+  type        String   @default("rent")
+  status      String   @default("pending")
+  paymentRef  String?
+  createdBy   String?
+  approvedBy  String?
+  approvedAt  DateTime?
+  views       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  user          User?         @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  inquiries     Inquiry[]
+  likes         Like[]
+  comments      Comment[]
+  editRequests  PropertyEditRequest[]
 }
 
-// الاستفسارات
 model Inquiry {
-  id               String    @id @default(cuid())
-  apartmentId      String    @map("apartment_id")
-  userId           String?   @map("user_id")
-  name             String
-  email            String
-  phone            String
-  message          String    @db.Text
-  lifecycleStatus  String    @default("New") @map("lifecycle_status")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
-  apartment        Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
-  user             User?     @relation(fields: [userId], references: [id])
-  payment          Payment?
-
-  @@index([apartmentId])
-  @@map("inquiries")
+  id              String   @id @default(cuid())
+  apartmentId     String
+  userId          String?
+  name            String
+  email           String
+  phone           String
+  message         String
+  lifecycleStatus String   @default("new")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  payment   Payment?
 }
 
-// المدفوعات
 model Payment {
-  id             String    @id @default(cuid())
-  inquiryId      String    @unique @map("inquiry_id")
+  id             String   @id @default(cuid())
+  inquiryId      String   @unique
   method         String
-  status         String    @default("Pending")
-  inquiryStatus  String    @default("Contacted") @map("inquiry_status")
+  status         String   @default("Pending")
+  inquiryStatus  String   @default("new")
   amount         Int
-  transactionRef String?   @map("transaction_ref")
-  paymentLink    String?   @map("payment_link") @db.Text
-  userId         String?   @map("user_id")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
-  inquiry        Inquiry   @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
-  user           User?     @relation(fields: [userId], references: [id])
-
-  @@map("payments")
-}
-
-// رموز OTP
-model OtpCode {
-  id        String   @id @default(cuid())
-  code      String
-  email     String
-  createdAt DateTime @default(now()) @map("created_at")
-  expiresAt DateTime @map("expires_at")
-
-  @@map("otp_codes")
-}
-
-// سجل العمليات
-model OperationLog {
-  id         String   @id @default(cuid())
-  action     String
-  entityType String   @map("entity_type")
-  entityId   String?  @map("entity_id")
-  userId     String?  @map("user_id")
-  details    String?  @db.Text
-  ipAddress  String?  @map("ip_address")
-  userAgent  String?  @map("user_agent") @db.Text
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  @@map("operation_logs")
-}
-
-// الإعدادات
-model Settings {
-  id                  String   @id @default(cuid())
-  contactFee          Int      @default(50) @map("contact_fee")
-  featuredFee         Int      @default(100) @map("featured_fee")
-  premiumFee          Int      @default(200) @map("premium_fee")
-  saleDisplayFee      Int      @default(100) @map("sale_display_fee")
-  rentDisplayFee      Int      @default(75) @map("rent_display_fee")
-  otherServicesFee    Int      @default(50) @map("other_services_fee")
-  highlightFee        Int      @default(150) @map("highlight_fee")
-  priorityListingFee  Int      @default(200) @map("priority_listing_fee")
-  verifiedListingFee  Int      @default(250) @map("verified_listing_fee")
-  currency            String   @default("ج.م")
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
-
-  @@map("settings")
-}
-
-// الجلسات
-model Session {
-  id        String   @id @default(cuid())
-  userId    String   @map("user_id")
-  token     String   @unique
-  expiresAt DateTime @map("expires_at")
-  ipAddress String?  @map("ip_address")
-  userAgent String?  @map("user_agent") @db.Text
-  createdAt DateTime @default(now()) @map("created_at")
-
-  @@map("sessions")
-}
-
-// سجل الأمان
-model SecurityLog {
-  id         String   @id @default(cuid())
-  action     String
-  identifier String
-  ipAddress  String?  @map("ip_address")
-  userAgent  String?  @map("user_agent") @db.Text
-  details    String?  @db.Text
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  @@map("security_logs")
-}
-
-// التعليقات
-model Comment {
-  id          String    @id @default(cuid())
-  apartmentId String    @map("apartment_id")
-  userId      String    @map("user_id")
-  content     String    @db.Text
-  status      String    @default("pending")
-  approvedBy  String?   @map("approved_by")
-  approvedAt  DateTime? @map("approved_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  transactionRef String?
+  userId         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
   
-  apartment   Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
-  user        User      @relation(fields: [userId], references: [id])
-
-  @@index([apartmentId])
-  @@index([status])
-  @@map("comments")
+  inquiry Inquiry @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
-// طلبات تعديل العقارات
-model PropertyEditRequest {
-  id           String    @id @default(cuid())
-  apartmentId  String    @map("apartment_id")
-  userId       String    @map("user_id")
-  editType     String    @map("edit_type")
-  newImages    String?   @map("new_images") @db.Text
-  newVideos    String?   @map("new_videos") @db.Text
-  newPrice     Int?      @map("new_price")
-  newStatus    String?   @map("new_status")
-  description  String?   @db.Text
-  status       String    @default("pending")
-  reviewedBy   String?   @map("reviewed_by")
-  reviewedAt   DateTime? @map("reviewed_at")
-  reviewNotes  String?   @map("review_notes") @db.Text
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  
-  apartment    Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
-  user         User      @relation(fields: [userId], references: [id])
-
-  @@index([apartmentId])
-  @@index([status])
-  @@map("property_edit_requests")
-}
-
-// الإعجابات
 model Like {
-  id          String    @id @default(cuid())
-  apartmentId String    @map("apartment_id")
-  userId      String    @map("user_id")
-  createdAt   DateTime  @default(now()) @map("created_at")
+  id          String   @id @default(cuid())
+  apartmentId String
+  userId      String
+  createdAt   DateTime @default(now())
   
-  apartment   Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
-  user        User      @relation(fields: [userId], references: [id])
-
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
   @@unique([apartmentId, userId])
-  @@index([apartmentId])
-  @@index([userId])
-  @@map("likes")
 }
 
-// الرسائل
+model Comment {
+  id          String   @id @default(cuid())
+  apartmentId String
+  userId      String
+  content     String
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
 model Message {
   id         String    @id @default(cuid())
-  senderId   String    @map("sender_id")
-  receiverId String?   @map("receiver_id")
-  content    String    @db.Text
-  isRead     Boolean   @default(false) @map("is_read")
-  createdAt  DateTime  @default(now()) @map("created_at")
+  senderId   String
+  receiverId String?
+  content    String
+  isRead     Boolean   @default(false)
+  createdAt  DateTime  @default(now())
   
-  sender     User      @relation("SentMessages", fields: [senderId], references: [id])
-  receiver   User?     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  sender User  @relation(fields: [senderId], references: [id], onDelete: Cascade)
+}
 
-  @@index([senderId])
-  @@index([receiverId])
-  @@map("messages")
+model PropertyEditRequest {
+  id           String   @id @default(cuid())
+  apartmentId  String
+  userId       String
+  editType     String   @default("update")
+  newImages    String?
+  newVideos    String?
+  newPrice     Int?
+  newStatus    String?
+  description  String?
+  status       String   @default("pending")
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  reviewNotes  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BlockedUser {
+  id        String   @id @default(cuid())
+  userId    String
+  reason    String?
+  blockedAt DateTime @default(now())
+  
+  user    User  @relation("BlockedUserRelation", fields: [userId], references: [id], onDelete: Cascade)
+  blocked User? @relation("BlockedByRelation", fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Settings {
+  id                  String   @id @default(cuid())
+  contactFee          Int      @default(50)
+  featuredFee         Int      @default(100)
+  premiumFee          Int      @default(200)
+  saleDisplayFee      Int      @default(100)
+  rentDisplayFee      Int      @default(75)
+  otherServicesFee    Int      @default(50)
+  highlightFee        Int      @default(150)
+  priorityListingFee  Int      @default(200)
+  verifiedListingFee  Int      @default(250)
+  currency            String   @default("ج.م")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model OperationLog {
+  id        String   @id @default(cuid())
+  action    String
+  details   String?
+  userId    String?
+  createdAt DateTime @default(now())
 }
