@@ -9,7 +9,7 @@ async function main() {
 
   // التحقق من وجود المطور
   const existingDeveloper = await prisma.user.findUnique({
-    where: { email: developerEmail }
+    where: { identifier: developerEmail }
   })
 
   if (existingDeveloper) {
@@ -23,13 +23,14 @@ async function main() {
   const developer = await prisma.user.create({
     data: {
       name: 'المطور',
-      email: developerEmail,
+      identifier: developerEmail,
       password: hashedPassword,
-      role: 'developer'
+      role: 'developer',
+      isBlocked: false
     }
   })
 
-  console.log('تم إنشاء حساب المطور:', developer.email)
+  console.log('تم إنشاء حساب المطور:', developer.identifier)
 }
 
 main()
