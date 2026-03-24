@@ -68,7 +68,8 @@ export async function POST(request: NextRequest) {
             email: 'developer@manteqti.app',
             identifier: 'developer',
             name: 'المطور',
-            password: 'developer_internal'
+            password: 'developer_internal',
+            isApproved: true
           }
         });
       }
@@ -83,8 +84,6 @@ export async function POST(request: NextRequest) {
         userId: finalUserId,
         content,
         status: commentStatus,
-        approvedBy: isDeveloper ? 'developer' : null,
-        approvedAt: isDeveloper ? new Date() : null,
       },
       include: {
         user: {
