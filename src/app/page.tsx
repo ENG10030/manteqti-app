@@ -378,13 +378,18 @@ export default function App() {
   const fetchApartments = async (retryCount = 0) => {
     try {
       setLoading(true);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
       const res = await fetch('/api/apartments', {
-        signal: AbortSignal.timeout(10000) // 10 second timeout
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
+      
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to fetch');
       // Process apartments to convert JSON strings to arrays
-      const processedData = data.map(processApartment);
+      const processedData = Array.isArray(data) ? data.map(processApartment) : [];
       setApartments(processedData);
       setAllApartments(processedData);
       setError(null);
@@ -395,7 +400,9 @@ export default function App() {
       if (retryCount < 3) {
         setTimeout(() => fetchApartments(retryCount + 1), 1000 * (retryCount + 1));
       } else {
-        setError('حدث خطأ في تحميل البيانات. يرجى تحديث الصفحة.');
+        // If all retries fail, just show empty state instead of error
+        setApartments([]);
+        setAllApartments([]);
         setLoading(false);
       }
     }
