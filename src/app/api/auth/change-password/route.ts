@@ -22,9 +22,9 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Find user by email (identifier is email)
+    // Find user by identifier
     const user = await db.user.findUnique({
-      where: { email: identifier }  // ✅ استخدام email بدلاً من identifier
+      where: { identifier: identifier }
     });
 
     if (!user) {
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     // Update password
     const hashedNewPassword = hashPassword(newPassword);
     await db.user.update({
-      where: { id: user.id },  // ✅ استخدام id بدلاً من identifier
+      where: { id: user.id },
       data: { password: hashedNewPassword }
     });
 
