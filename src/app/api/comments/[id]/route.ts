@@ -9,24 +9,15 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { status, approvedBy } = body;
+    const { status } = body;
 
     if (!status || !['approved', 'rejected'].includes(status)) {
       return NextResponse.json({ error: 'حالة غير صالحة' }, { status: 400 });
     }
 
-    const updateData: Record<string, unknown> = {
-      status,
-    };
-
-    if (status === 'approved') {
-      updateData.approvedBy = approvedBy || 'developer';
-      updateData.approvedAt = new Date();
-    }
-
     const comment = await db.comment.update({
       where: { id },
-      data: updateData,
+      data: { status },
       include: {
         user: {
           select: {

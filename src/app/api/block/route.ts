@@ -68,14 +68,17 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { userId, action, reason } = body;
 
-    if (!userId || !action) {
+    if (!userId) {
       return NextResponse.json(
-        { error: "معرف المستخدم والإجراء مطلوبان" },
+        { error: "معرف المستخدم مطلوب" },
         { status: 400 }
       );
     }
 
-    if (action === "block") {
+    // إذا لم يتم تحديد action، يكون الإجراء الافتراضي هو الحظر
+    const finalAction = action || "block";
+
+    if (finalAction === "block") {
       const user = await db.user.update({
         where: { id: userId },
         data: {
@@ -85,16 +88,18 @@ export async function POST(request: Request) {
         },
       });
 
+      // تحديث حالة عقارات المستخدم إلى مخفية
       await db.apartment.updateMany({
         where: { createdBy: userId },
-        data: { status: "BLOCKED" },
+        data: { status: "hidden" },
       });
 
       return NextResponse.json({
+        success: true,
         message: "تم حظر المستخدم وإخفاء عقاراته",
         user: { id: user.id, name: user.name, email: user.email },
       });
-    } else if (action === "unblock") {
+    } else if (finalAction === "unblock") {
       const user = await db.user.update({
         where: { id: userId },
         data: {
@@ -104,12 +109,14 @@ export async function POST(request: Request) {
         },
       });
 
+      // إعادة عقارات المستخدم للمراجعة
       await db.apartment.updateMany({
-        where: { createdBy: userId, status: "BLOCKED" },
-        data: { status: "PENDING" },
+        where: { createdBy: userId, status: "hidden" },
+        data: { status: "pending" },
       });
 
       return NextResponse.json({
+        success: true,
         message: "تم إلغاء حظر المستخدم",
         user: { id: user.id, name: user.name, email: user.email },
       });
@@ -120,6 +127,52 @@ export async function POST(request: Request) {
     console.error("Block/unblock error:", error);
     return NextResponse.json(
       { error: "حدث خطأ أثناء تنفيذ العملية" },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE - إلغاء حظر مستخدم
+export async function DELETE(request: Request) {
+  try {
+    if (!(await isDeveloper(request))) {
+      return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get("userId");
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: "معرف المستخدم مطلوب" },
+        { status: 400 }
+      );
+    }
+
+    const user = await db.user.update({
+      where: { id: userId },
+      data: {
+        isBlocked: false,
+        blockedAt: null,
+        blockReason: null,
+      },
+    });
+
+    // إعادة عقارات المستخدم للمراجعة
+    await db.apartment.updateMany({
+      where: { createdBy: userId, status: "hidden" },
+      data: { status: "pending" },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "تم إلغاء حظر المستخدم",
+      user: { id: user.id, name: user.name, email: user.email },
+    });
+  } catch (error) {
+    console.error("Unblock error:", error);
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء إلغاء الحظر" },
       { status: 500 }
     );
   }

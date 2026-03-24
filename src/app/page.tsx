@@ -34,7 +34,8 @@ const statusConfig: Record<string, { label: string; color: string; bgColor: stri
   'unavailable': { label: 'غير متاح', color: 'text-red-600', bgColor: 'bg-red-100', dotColor: 'bg-red-400' },
   'sold': { label: 'تم البيع', color: 'text-purple-600', bgColor: 'bg-purple-100', dotColor: 'bg-purple-400' },
   'rented': { label: 'تم التأجير', color: 'text-violet-600', bgColor: 'bg-violet-100', dotColor: 'bg-violet-400' },
-  'rejected': { label: 'مرفوض', color: 'text-red-700', bgColor: 'bg-red-200', dotColor: 'bg-red-500' }
+  'rejected': { label: 'مرفوض', color: 'text-red-700', bgColor: 'bg-red-200', dotColor: 'bg-red-500' },
+  'hidden': { label: 'مخفي', color: 'text-gray-600', bgColor: 'bg-gray-200', dotColor: 'bg-gray-400' }
 };
 
 // Interfaces
@@ -54,6 +55,7 @@ interface Apartment {
   videos?: string[];
   amenities?: string[];
   isFeatured?: boolean;
+  isVip?: boolean;
   type: 'rent' | 'sale';
   status: string;
   paymentRef?: string;
@@ -1977,8 +1979,13 @@ export default function App() {
                       alt={apartment.title}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                     {/* Badges */}
-                    <div className="absolute top-3 right-3 flex gap-2">
-                      { apartment.isFeatured && (
+                    <div className="absolute top-3 right-3 flex gap-2 flex-wrap">
+                      { apartment.isVip && (
+                        <span className="px-2 py-1 rounded-lg bg-gradient-to-r from-purple-500 to-pink-600 text-white text-xs font-medium flex items-center gap-1">
+                          <Diamond className="h-3 w-3" /> VIP
+                        </span>
+                      )}
+                      { apartment.isFeatured && !apartment.isVip && (
                         <span className="px-2 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 text-white text-xs font-medium flex items-center gap-1">
                           <Star className="h-3 w-3" /> مميز
                         </span>
