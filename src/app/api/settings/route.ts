@@ -34,17 +34,16 @@ export async function GET() {
     if (!settings) {
       settings = await db.settings.create({
         data: {
-          siteName: "منطقتي",
-          siteDescription: "منصة عقارية متكاملة",
-          contactEmail: "info@manteqti.com",
-          contactPhone: "+966500000000",
+          contactFee: 50,
           featuredFee: 100,
-          vipFee: 200,
-          commissionRate: 5,
-          minWithdrawal: 100,
-          maxApartmentsPerUser: 10,
-          allowUserRegistration: true,
-          requireApproval: true,
+          premiumFee: 200,
+          saleDisplayFee: 100,
+          rentDisplayFee: 75,
+          otherServicesFee: 50,
+          highlightFee: 150,
+          priorityListingFee: 200,
+          verifiedListingFee: 250,
+          currency: "ج.م",
         },
       });
     }
@@ -73,34 +72,32 @@ export async function PUT(request: Request) {
     if (!settings) {
       settings = await db.settings.create({
         data: {
-          siteName: body.siteName || "منطقتي",
-          siteDescription: body.siteDescription || "",
-          contactEmail: body.contactEmail || "",
-          contactPhone: body.contactPhone || "",
+          contactFee: body.contactFee || 50,
           featuredFee: body.featuredFee || 100,
-          vipFee: body.vipFee || 200,
-          commissionRate: body.commissionRate || 5,
-          minWithdrawal: body.minWithdrawal || 100,
-          maxApartmentsPerUser: body.maxApartmentsPerUser || 10,
-          allowUserRegistration: body.allowUserRegistration ?? true,
-          requireApproval: body.requireApproval ?? true,
+          premiumFee: body.premiumFee || 200,
+          saleDisplayFee: body.saleDisplayFee || 100,
+          rentDisplayFee: body.rentDisplayFee || 75,
+          otherServicesFee: body.otherServicesFee || 50,
+          highlightFee: body.highlightFee || 150,
+          priorityListingFee: body.priorityListingFee || 200,
+          verifiedListingFee: body.verifiedListingFee || 250,
+          currency: body.currency || "ج.م",
         },
       });
     } else {
       settings = await db.settings.update({
         where: { id: settings.id },
         data: {
-          siteName: body.siteName,
-          siteDescription: body.siteDescription,
-          contactEmail: body.contactEmail,
-          contactPhone: body.contactPhone,
+          contactFee: body.contactFee,
           featuredFee: body.featuredFee,
-          vipFee: body.vipFee,
-          commissionRate: body.commissionRate,
-          minWithdrawal: body.minWithdrawal,
-          maxApartmentsPerUser: body.maxApartmentsPerUser,
-          allowUserRegistration: body.allowUserRegistration,
-          requireApproval: body.requireApproval,
+          premiumFee: body.premiumFee,
+          saleDisplayFee: body.saleDisplayFee,
+          rentDisplayFee: body.rentDisplayFee,
+          otherServicesFee: body.otherServicesFee,
+          highlightFee: body.highlightFee,
+          priorityListingFee: body.priorityListingFee,
+          verifiedListingFee: body.verifiedListingFee,
+          currency: body.currency,
         },
       });
     }
