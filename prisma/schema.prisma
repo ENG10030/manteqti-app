@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider  = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 model User {
@@ -37,7 +38,6 @@ model User {
   messages      Message[]
   editRequests  PropertyEditRequest[]
   blockedUsers  BlockedUser[]  @relation("BlockedUserRelation")
-  blockedBy     BlockedUser[]  @relation("BlockedByRelation")
 }
 
 model Apartment {
@@ -172,8 +172,7 @@ model BlockedUser {
   reason    String?
   blockedAt DateTime @default(now())
   
-  user    User  @relation("BlockedUserRelation", fields: [userId], references: [id], onDelete: Cascade)
-  blocked User? @relation("BlockedByRelation", fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation("BlockedUserRelation", fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Settings {

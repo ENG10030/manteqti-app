@@ -13,7 +13,7 @@ export async function GET() {
     const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
     const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || 'admin123';
     
-    // البحث بالبريد الإلكتروني (حقل فريد)
+    // البحث بالمعرف (حقل فريد)
     const existingAdmin = await db.user.findUnique({
       where: { identifier: DEVELOPER_EMAIL }
     });
