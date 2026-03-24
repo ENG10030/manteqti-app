@@ -47,6 +47,7 @@ model Apartment {
   videos      String?
   amenities   String?
   isFeatured  Boolean  @default(false)
+  isVip       Boolean  @default(false)
   type        String   @default("rent")
   status      String   @default("pending")
   paymentRef  String?
