@@ -285,8 +285,10 @@ export default function App() {
     try {
       const res = await fetch('/api/payments');
       const data = await res.json();
-      const paidIds = data.filter((p: Payment) => p.userId === currentUser?.id && p.status === 'Paid').map((p: Payment) => p.inquiry?.apartmentId).filter(Boolean);
-      setUserPaidApartments(paidIds);
+      if (Array.isArray(data)) {
+        const paidIds = data.filter((p: Payment) => p.userId === currentUser?.id && p.status === 'Paid').map((p: Payment) => p.inquiry?.apartmentId).filter(Boolean);
+        setUserPaidApartments(paidIds);
+      }
     } catch {}
   };
 
@@ -295,7 +297,9 @@ export default function App() {
     try {
       const res = await fetch('/api/apartments?status=pending');
       const data = await res.json();
-      setMyPendingApartments(data.filter((apt: Apartment) => apt.createdBy === currentUser.id));
+      if (Array.isArray(data)) {
+        setMyPendingApartments(data.filter((apt: Apartment) => apt.createdBy === currentUser.id));
+      }
     } catch {}
   };
 
@@ -305,7 +309,8 @@ export default function App() {
     try {
       const [inqRes, payRes] = await Promise.all([fetch('/api/inquiries'), fetch('/api/payments')]);
       const [inqData, payData] = await Promise.all([inqRes.json(), payRes.json()]);
-      setInquiries(inqData); setPayments(payData);
+      setInquiries(Array.isArray(inqData) ? inqData : []); 
+      setPayments(Array.isArray(payData) ? payData : []);
     } catch {}
   };
 
@@ -356,7 +361,7 @@ export default function App() {
     try {
       const res = await fetch('/api/logs?limit=50');
       const data = await res.json();
-      setOperationLogs(data);
+      setOperationLogs(Array.isArray(data) ? data : []);
     } catch {}
   };
 
@@ -365,12 +370,14 @@ export default function App() {
     try {
       const res = await fetch('/api/edit-requests');
       const data = await res.json();
-      const processedData = data.map((req: any) => ({
-        ...req,
-        newImages: req.newImages ? parseJsonArray(req.newImages) : [],
-        newVideos: req.newVideos ? parseJsonArray(req.newVideos) : [],
-      }));
-      setEditRequests(processedData);
+      if (Array.isArray(data)) {
+        const processedData = data.map((req: any) => ({
+          ...req,
+          newImages: req.newImages ? parseJsonArray(req.newImages) : [],
+          newVideos: req.newVideos ? parseJsonArray(req.newVideos) : [],
+        }));
+        setEditRequests(processedData);
+      }
     } catch {}
   };
 
@@ -459,26 +466,44 @@ export default function App() {
     try {
       const res = await fetch(`/api/likes?userId=${currentUser.id}`);
       const data = await res.json();
-      setLikes(data);
-      setFavorites(data.map((l: any) => l.apartmentId));
+      if (Array.isArray(data)) {
+        setLikes(data);
+        setFavorites(data.map((l: any) => l.apartmentId));
+      }
     } catch {}
   };
 
   const fetchAllLikes = async () => {
-    try { const res = await fetch('/api/likes'); setLikes(await res.json()); } catch {}
+    try { 
+      const res = await fetch('/api/likes'); 
+      const data = await res.json();
+      setLikes(Array.isArray(data) ? data : []); 
+    } catch {}
   };
 
   const fetchComments = async (apartmentId: string) => {
-    try { const res = await fetch(`/api/comments?apartmentId=${apartmentId}&status=approved`); setComments(await res.json()); } catch {}
+    try { 
+      const res = await fetch(`/api/comments?apartmentId=${apartmentId}&status=approved`); 
+      const data = await res.json();
+      setComments(Array.isArray(data) ? data : []); 
+    } catch {}
   };
 
   const fetchAllComments = async () => {
-    try { const res = await fetch('/api/comments'); setComments(await res.json()); } catch {}
+    try { 
+      const res = await fetch('/api/comments'); 
+      const data = await res.json();
+      setComments(Array.isArray(data) ? data : []); 
+    } catch {}
   };
 
   const fetchMessages = async () => {
     if (!currentUser) return;
-    try { const res = await fetch(`/api/messages?userId=${currentUser.id}&isDeveloper=${isDeveloper}`); setMessages(await res.json()); } catch {}
+    try { 
+      const res = await fetch(`/api/messages?userId=${currentUser.id}&isDeveloper=${isDeveloper}`); 
+      const data = await res.json();
+      setMessages(Array.isArray(data) ? data : []); 
+    } catch {}
   };
 
   const fetchBlockedUsers = async () => {
@@ -488,14 +513,16 @@ export default function App() {
       // API returns { blockedUsers: [...] }, need to handle both formats
       const users = data.blockedUsers || data;
       // Transform data to include userId field and user object for consistent access
-      const transformedUsers = users.map((u: any) => ({
-        id: u.id,
-        userId: u.id,
-        reason: u.blockReason || u.reason,
-        blockedAt: u.blockedAt,
-        user: { id: u.id, name: u.name, identifier: u.email }
-      }));
-      setBlockedUsers(transformedUsers); 
+      if (Array.isArray(users)) {
+        const transformedUsers = users.map((u: any) => ({
+          id: u.id,
+          userId: u.id,
+          reason: u.blockReason || u.reason,
+          blockedAt: u.blockedAt,
+          user: { id: u.id, name: u.name, identifier: u.email }
+        }));
+        setBlockedUsers(transformedUsers);
+      }
     } catch {}
   };
 
