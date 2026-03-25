@@ -26,13 +26,39 @@ async function isDeveloper(request: Request) {
   }
 }
 
-// GET - جلب المحظورين
+// GET - جلب المحظورين أو جميع المستخدمين
 export async function GET(request: Request) {
   try {
     if (!(await isDeveloper(request))) {
       return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
     }
 
+    const { searchParams } = new URL(request.url);
+    const getAll = searchParams.get("all");
+
+    // إذا كان all=true، جلب جميع المستخدمين
+    if (getAll === "true") {
+      const users = await db.user.findMany({
+        where: { role: { not: "DEVELOPER" } },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          identifier: true,
+          isBlocked: true,
+          blockedAt: true,
+          blockReason: true,
+          createdAt: true,
+          _count: {
+            select: { apartments: true },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      return NextResponse.json({ users });
+    }
+
+    // وإلا جلب المحظورين فقط
     const blockedUsers = await db.user.findMany({
       where: { isBlocked: true },
       select: {

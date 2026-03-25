@@ -28,15 +28,18 @@ export async function GET(request: Request) {
     const status = searchParams.get("status");
     const type = searchParams.get("type");
     const area = searchParams.get("area");
+    const user = await getCurrentUser(request);
+    const isDeveloper = user?.role === "DEVELOPER";
 
     const where: any = {};
 
-    // إذا كان المستخدم عادي، يرى العقارات المتاحة فقط
+    // المطور يرى جميع العقارات، المستخدم العادي يرى العقارات المتاحة والموافق عليها فقط
     if (status) {
       where.status = status;
-    } else {
-      where.status = "available";
+    } else if (!isDeveloper) {
+      where.status = { in: ["available", "reserved", "sold", "rented"] };
     }
+    // المطور يرى كل الحالات (لا نضيف شرط للحالة)
 
     if (type && type !== "all") {
       where.type = type;
@@ -46,14 +49,16 @@ export async function GET(request: Request) {
       where.area = area;
     }
 
-    // استبعاد عقارات المحظورين
-    const blockedUsers = await db.user.findMany({
-      where: { isBlocked: true },
-      select: { id: true },
-    });
-    const blockedIds = blockedUsers.map((u) => u.id);
-    if (blockedIds.length > 0) {
-      where.createdBy = { notIn: blockedIds };
+    // استبعاد عقارات المحظورين للمستخدمين العاديين
+    if (!isDeveloper) {
+      const blockedUsers = await db.user.findMany({
+        where: { isBlocked: true },
+        select: { id: true },
+      });
+      const blockedIds = blockedUsers.map((u) => u.id);
+      if (blockedIds.length > 0) {
+        where.createdBy = { notIn: blockedIds };
+      }
     }
 
     const apartments = await db.apartment.findMany({
