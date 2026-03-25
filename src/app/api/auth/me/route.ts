@@ -11,7 +11,8 @@ export async function GET(request: Request) {
     const token = cookies.get("auth-token");
 
     if (!token) {
-      return NextResponse.json({ user: null }, { status: 401 });
+      // إرجاع user: null بدون خطأ - هذا طبيعي للمستخدمين غير المسجلين
+      return NextResponse.json({ user: null });
     }
 
     const decoded = verify(token, JWT_SECRET) as { userId: string };
@@ -26,6 +27,7 @@ export async function GET(request: Request) {
         role: true,
         isApproved: true,
         isBlocked: true,
+        identifier: true,
         createdAt: true,
         _count: {
           select: { apartments: true },
@@ -34,12 +36,12 @@ export async function GET(request: Request) {
     });
 
     if (!user) {
-      return NextResponse.json({ user: null }, { status: 401 });
+      return NextResponse.json({ user: null });
     }
 
     return NextResponse.json({ user });
   } catch (error) {
-    console.error("Me error:", error);
-    return NextResponse.json({ user: null }, { status: 401 });
+    // أي خطأ في التحقق يعني أن المستخدم غير مسجل
+    return NextResponse.json({ user: null });
   }
 }

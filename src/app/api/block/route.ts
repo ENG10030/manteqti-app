@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+const DEVELOPER_EMAIL = "ahmadmamdouh10030@gmail.com";
 
 async function isDeveloper(request: Request) {
   const cookieHeader = request.headers.get("cookie");
@@ -12,15 +13,17 @@ async function isDeveloper(request: Request) {
   if (!token) return false;
 
   try {
-    const decoded = verify(token, JWT_SECRET) as { userId: string; role: string };
-    if (decoded.role !== "DEVELOPER") return false;
+    const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
+    
+    // التحقق من دور DEVELOPER أو بريد المطور
+    if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
 
     const user = await db.user.findUnique({
       where: { id: decoded.userId },
-      select: { role: true },
+      select: { role: true, identifier: true },
     });
 
-    return user?.role === "DEVELOPER";
+    return user?.role === "DEVELOPER" || user?.identifier === DEVELOPER_EMAIL;
   } catch {
     return false;
   }
