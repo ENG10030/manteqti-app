@@ -1,9 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Store conversations in memory
+// Store conversations in memory (use database in production)
 const conversations = new Map<string, Array<{ role: 'assistant' | 'user'; content: string }>>();
 
-// Fallback responses
+// Check if we're in development environment with SDK available
+let zaiInstance: any = null;
+let ZAI_AVAILABLE = false;
+
+async function getZAI() {
+  if (zaiInstance) return zaiInstance;
+  
+  try {
+    // Dynamic import to avoid build errors when SDK is not available
+    const ZAI = (await import('z-ai-web-dev-sdk')).default;
+    zaiInstance = await ZAI.create();
+    ZAI_AVAILABLE = true;
+    return zaiInstance;
+  } catch (e) {
+    console.log('ZAI SDK not available, using fallback responses');
+    ZAI_AVAILABLE = false;
+    return null;
+  }
+}
+
+// System prompt for real estate assistant
+const SYSTEM_PROMPT = `أنت مساعد ذكي متخصص في العقارات والشقق في مصر. اسمك "منطقتي".
+
+مهمتك مساعدة المستخدمين في:
+- البحث عن الشقق المناسبة لاحتياجاتهم
+- الإجابة على أسئلة حول الأسعار والمناطق
+- تقديم نصائح حول الإيجار والشراء
+- شرح تفاصيل العقارات والمميزات
+- مساعدة في التواصل مع المالكين
+
+قواعد مهمة:
+1. أجب باللغة العربية دائماً
+2. كن ودوداً ومحترفاً
+3. قدم معلومات مفيدة ومختصرة
+4. إذا سُئلت عن شيء خارج نطاق العقارات، وجه المحادثة بلطف نحو مجال تخصصك
+5. استخدم الرموز التعبيرية لجعل الردود أكثر تفاعلاً`;
+
+// Fallback responses for when AI is unavailable
 const fallbackResponses: { keywords: string[]; reply: string }[] = [
   {
     keywords: ['مرحبا', 'اهلا', 'السلام', 'صباح', 'مساء'],
@@ -70,9 +107,11 @@ function getFallbackReply(message: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  let body: any = null;
+  
   try {
-    const body = await request.json();
-    const { message } = body;
+    body = await request.json();
+    const { sessionId, message } = body;
 
     if (!message || !message.trim()) {
       return NextResponse.json({ 
@@ -81,17 +120,101 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const reply = getFallbackReply(message);
+    // Try to use AI SDK
+    try {
+      const zai = await getZAI();
+
+      if (!zai || !ZAI_AVAILABLE) {
+        // Use fallback response when SDK is not available
+        const fallbackReply = getFallbackReply(message);
+        return NextResponse.json({
+          success: true,
+          response: fallbackReply,
+          fallback: true
+        });
+      }
+
+      // Get or create conversation history
+      let history = conversations.get(sessionId) || [
+        {
+          role: 'assistant' as const,
+          content: SYSTEM_PROMPT
+        }
+      ];
+
+      // Add user message
+      history.push({
+        role: 'user',
+        content: message
+      });
+
+      // Get completion with timeout
+      const completionPromise = zai.chat.completions.create({
+        messages: history,
+        thinking: { type: 'disabled' }
+      });
+
+      // 15 second timeout
+      const timeoutPromise = new Promise<null>((_, reject) => {
+        setTimeout(() => reject(new Error('AI timeout')), 15000);
+      });
+
+      const completion = await Promise.race([completionPromise, timeoutPromise]);
+
+      if (!completion) {
+        throw new Error('Empty completion');
+      }
+
+      const aiResponse = completion.choices[0]?.message?.content;
+
+      if (!aiResponse) {
+        throw new Error('Empty response from AI');
+      }
+
+      // Add AI response to history
+      history.push({
+        role: 'assistant',
+        content: aiResponse
+      });
+
+      // Keep only last 20 messages to avoid token limits
+      if (history.length > 20) {
+        history = [history[0], ...history.slice(-19)];
+      }
+
+      // Save updated history
+      conversations.set(sessionId, history);
+
+      return NextResponse.json({
+        success: true,
+        response: aiResponse,
+        messageCount: history.length - 1
+      });
+
+    } catch (aiError) {
+      console.error('AI error, using fallback:', aiError);
+      
+      // Use fallback response
+      const fallbackReply = getFallbackReply(message);
+      
+      return NextResponse.json({
+        success: true,
+        response: fallbackReply,
+        fallback: true
+      });
+    }
+
+  } catch (error) {
+    console.error('Chat error:', error);
+    
+    // Return fallback instead of error
+    const message = typeof body === 'object' && body?.message ? body.message : '';
+    const fallbackReply = getFallbackReply(message);
     
     return NextResponse.json({
       success: true,
-      response: reply
-    });
-
-  } catch {
-    return NextResponse.json({
-      success: true,
-      response: defaultReply
+      response: fallbackReply,
+      fallback: true
     });
   }
 }
