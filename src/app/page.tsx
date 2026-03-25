@@ -286,7 +286,7 @@ export default function App() {
       const res = await fetch('/api/payments');
       const data = await res.json();
       if (Array.isArray(data)) {
-        const paidIds = data.filter((p: Payment) => p.userId === currentUser?.id && p.status === 'Paid').map((p: Payment) => p.inquiry?.apartmentId).filter(Boolean);
+        const paidIds = data.filter((p: Payment) => p.userId === currentUser?.id && p.status === 'Paid').map((p: Payment) => p.inquiry?.apartmentId).filter((id): id is string => Boolean(id));
         setUserPaidApartments(paidIds);
       }
     } catch {}
