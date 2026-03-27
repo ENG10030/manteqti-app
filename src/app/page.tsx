@@ -655,7 +655,28 @@ export default function App() {
   };
 
   const handleAddApartment = async (confirmed: boolean = false) => {
-    if (!currentUser && !isDeveloper) { setConfirmDialog({ isOpen: true, title: 'تسجيل الدخول مطلوب', message: 'يجب تسجيل الدخول أولاً لنشر عقارك', confirmText: 'تسجيل الدخول', cancelText: 'إلغاء', onConfirm: () => { setShowAddModal(false); setShowAuth(true); setConfirmDialog({ ...confirmDialog, isOpen: false }); }, type: 'info' }); return; }
+    if (!currentUser && !isDeveloper) {
+      // التحقق من البيانات أولاً
+      if (!aptForm.title || !aptForm.price || !aptForm.area || !aptForm.description || !aptForm.ownerPhone) {
+        addToast('يرجى ملء جميع الحقول المطلوبة', 'error');
+        return;
+      }
+      // عرض تسجيل الدخول مع الاحتفاظ بالبيانات
+      setConfirmDialog({
+        isOpen: true,
+        title: 'تسجيل الدخول مطلوب',
+        message: 'لقد أدخلت جميع بيانات الشقة بنجاح!\n\nقم بتسجيل الدخول أو إنشاء حساب جديد لإرسال شقتك للمراجعة.',
+        confirmText: 'تسجيل الدخول',
+        cancelText: 'إلغاء',
+        onConfirm: () => {
+          setShowAddModal(false);
+          setShowAuth(true);
+          setConfirmDialog({ ...confirmDialog, isOpen: false });
+        },
+        type: 'info'
+      });
+      return;
+    }
     if (!confirmed) {
       if (!aptForm.title || !aptForm.price || !aptForm.area || !aptForm.description || !aptForm.ownerPhone) { addToast('يرجى ملء جميع الحقول المطلوبة', 'error'); return; }
       setConfirmDialog({ isOpen: true, title: isDeveloper ? 'إضافة شقة جديدة' : 'إرسال شقة للمراجعة', message: isDeveloper ? 'هل أنت متأكد من إضافة هذه الشقة؟' : 'سيتم إرسال الشقة للمراجعة', confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm: () => handleAddApartment(true), type: 'info' }); return;
@@ -1106,7 +1127,7 @@ ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام.
                 {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </motion.button>
 
-              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => { if (currentUser || isDeveloper) { setShowAddModal(true); } else { setShowAuth(true); } }} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium shadow-lg shadow-emerald-500/30">
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium shadow-lg shadow-emerald-500/30">
                 <Building2 className="h-5 w-5" /><span>إضافة شقة</span>
               </motion.button>
 
@@ -1205,9 +1226,11 @@ ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام.
                   <div className="p-4">
                     <h3 className={`text-lg font-bold mb-2 line-clamp-1 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apartment.title}</h3>
                     {/* السعر في الأعلى */}
-                    <div className="mb-3">
+                    <div className="mb-2">
                       <p className="text-2xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent">{apartment.price.toLocaleString()} ج.م{apartment.type === 'rent' && <span className={`text-sm font-normal ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}> /شهر</span>}</p>
                     </div>
+                    {/* وصف الشقة */}
+                    <p className={`text-sm mb-3 line-clamp-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apartment.description}</p>
                     {/* تفاصيل الشقة */}
                     <div className={`p-3 rounded-xl mb-3 ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50'}`}>
                       <div className="grid grid-cols-2 gap-2 text-sm">
@@ -1280,7 +1303,7 @@ ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام.
                 <button onClick={() => setShowMobileMenu(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
               </div>
               <div className="space-y-3">
-                <button onClick={() => { if (currentUser || isDeveloper) { setShowAddModal(true); } else { setShowAuth(true); } setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white"><Building2 className="h-5 w-5" />إضافة شقة</button>
+                <button onClick={() => { setShowAddModal(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white"><Building2 className="h-5 w-5" />إضافة شقة</button>
                 <button onClick={() => { setShowChat(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><Brain className="h-5 w-5" />المساعد الذكي</button>
                 {isDeveloper ? (
                   <>
@@ -1422,7 +1445,7 @@ ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام.
               </div>
               <div className="flex gap-3 mt-6">
                 <button type="button" onClick={() => setShowAddModal(false)} className={`flex-1 py-3 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>إلغاء</button>
-                <button type="submit" disabled={aptSubmitting} className="flex-1 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50">{aptSubmitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : isDeveloper ? 'نشر الشقة' : currentUser ? 'إرسال للمراجعة' : 'تسجيل الدخول للنشر'}</button>
+                <button type="submit" disabled={aptSubmitting} className="flex-1 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50">{aptSubmitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : isDeveloper ? 'نشر الشقة' : 'إرسال للمراجعة'}</button>
               </div>
             </form>
           </motion.div>
