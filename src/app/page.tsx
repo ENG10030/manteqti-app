@@ -1445,7 +1445,7 @@ ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام.
               </div>
               <div className="flex gap-3 mt-6">
                 <button type="button" onClick={() => setShowAddModal(false)} className={`flex-1 py-3 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>إلغاء</button>
-                <button type="submit" disabled={aptSubmitting} className="flex-1 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50">{aptSubmitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : isDeveloper ? 'نشر الشقة' : 'إرسال للمراجعة'}</button>
+                <button type="submit" disabled={aptSubmitting} className="flex-1 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50">{aptSubmitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : isDeveloper ? 'نشر الشقة' : currentUser ? 'إرسال للمراجعة' : 'تسجيل الدخول'}</button>
               </div>
             </form>
           </motion.div>
