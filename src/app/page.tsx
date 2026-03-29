@@ -19,7 +19,7 @@ import { FileUpload } from '@/components/file-upload';
 
 // Developer credentials
 const DEVELOPER_EMAIL = 'ahmadmamdouh10030@gmail.com';
-const DEVELOPER_PASSWORD = 'admin123';
+
 const CONTACT_FEE = 50;
 
 // Status configuration
@@ -585,17 +585,36 @@ export default function App() {
   const pendingApartments = allApartments.filter(apt => apt.status === 'pending');
 
   // Handlers
-  const handleDevLogin = async (e: React.FormEvent) => {
+ const handleDevLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setDevLoading(true);
-    if (devEmail === DEVELOPER_EMAIL && devPassword === DEVELOPER_PASSWORD) {
-      setIsDeveloper(true); setShowDevLogin(false);
-      if (rememberMe) { localStorage.setItem('manteqti_dev_email', devEmail); localStorage.setItem('manteqti_dev_remember', 'true'); }
-      else { localStorage.removeItem('manteqti_dev_email'); localStorage.removeItem('manteqti_dev_remember'); }
-      setDevPassword('');
-      addToast('مرحباً بك في لوحة تحكم المطور!', 'success');
-      fetchDevData();
-    } else addToast('بيانات الدخول غير صحيحة', 'error');
+    try {
+      const res = await fetch('/api/auth/dev-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: devEmail, password: devPassword })
+      });
+      const data = await res.json();
+      
+      if (res.ok && data.success) {
+        setIsDeveloper(true);
+        setShowDevLogin(false);
+        if (rememberMe) {
+          localStorage.setItem('manteqti_dev_email', devEmail);
+          localStorage.setItem('manteqti_dev_remember', 'true');
+        } else {
+          localStorage.removeItem('manteqti_dev_email');
+          localStorage.removeItem('manteqti_dev_remember');
+        }
+        setDevPassword('');
+        addToast('مرحباً بك في لوحة تحكم المطور!', 'success');
+        fetchDevData();
+      } else {
+        addToast(data.error || 'بيانات الدخول غير صحيحة', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الاتصال', 'error');
+    }
     setDevLoading(false);
   };
 
@@ -1307,14 +1326,21 @@ ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام.
                 <button onClick={() => { setShowChat(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><Brain className="h-5 w-5" />المساعد الذكي</button>
                 {isDeveloper ? (
                   <>
-                    <button onClick={() => { setShowDevPanel(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white"><ShieldCheck className="h-5 w-5" />لوحة المطور{pendingApartments.length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-white/20 text-xs">{pendingApartments.length}</span>}</button>
-                    <button onClick={() => { handleLogout(); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-red-400' : 'bg-slate-100 text-red-500'}`}><LogOut className="h-5 w-5" />تسجيل الخروج</button>
-                  </>
-                ) : currentUser ? (
-                  <button onClick={() => { handleLogout(); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-red-400' : 'bg-slate-100 text-red-500'}`}><LogOut className="h-5 w-5" />تسجيل الخروج</button>
-                ) : (
-                  <button onClick={() => { setShowAuth(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white"><User className="h-5 w-5" />تسجيل الدخول</button>
-                )}
+        <button onClick={() => { setShowDevPanel(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white"><ShieldCheck className="h-5 w-5" />لوحة المطور{pendingApartments.length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-white/20 text-xs">{pendingApartments.length}</span>}</button>
+    <button onClick={() => { setShowMessages(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'} relative`}><MessageCircle className="h-5 w-5" />الرسائل{messages.filter(m => !m.isRead).length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-red-500 text-white text-xs">{messages.filter(m => !m.isRead).length}</span>}</button>
+    <button onClick={() => { handleLogout(); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-red-400' : 'bg-slate-100 text-red-500'}`}><LogOut className="h-5 w-5" />تسجيل الخروج</button>
+  </>
+) : currentUser ? (
+  <>
+    <button onClick={() => { fetchMyPendingApartments(); setShowMyPending(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><User className="h-5 w-5" />حسابي{myPendingApartments.length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-amber-500 text-white text-xs">{myPendingApartments.length}</span>}</button>
+    <button onClick={() => { handleLogout(); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-red-400' : 'bg-slate-100 text-red-500'}`}><LogOut className="h-5 w-5" />تسجيل الخروج</button>
+  </>
+) : (
+  <>
+    <button onClick={() => { setShowAuth(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white"><User className="h-5 w-5" />تسجيل الدخول</button>
+    <button onClick={() => { setShowDevLogin(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-amber-900/30 text-amber-400' : 'bg-amber-50 text-amber-600'}`}><Lock className="h-5 w-5" />دخول المطور</button>
+  </>
+)}
                 <button onClick={() => setDarkMode(!darkMode)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-amber-400' : 'bg-slate-100 text-slate-700'}`}>{darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}{darkMode ? 'الوضع النهاري' : 'الوضع الليلي'}</button>
               </div>
             </div>
