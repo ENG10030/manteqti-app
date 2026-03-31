@@ -1921,30 +1921,31 @@ ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام.
                       <input type="password" placeholder="تأكيد كلمة المرور" value={devPasswordChange.confirm} onChange={(e) => setDevPasswordChange({ ...devPasswordChange, confirm: e.target.value })} className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 placeholder-slate-400'}`} />
                     </div>
                     <button onClick={async () => {
-  if (!devPasswordChange.current || !devPasswordChange.new || !devPasswordChange.confirm) { addToast('جميع الحقول مطلوبة', 'error'); return; }
-  if (devPasswordChange.new !== devPasswordChange.confirm) { addToast('كلمتا المرور غير متطابقتين', 'error'); return; }
-  if (devPasswordChange.new.length < 6) { addToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'error'); return; }
-  try {
-    const res = await fetch('/api/auth/change-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        identifier: DEVELOPER_EMAIL,
-        currentPassword: devPasswordChange.current,
-        newPassword: devPasswordChange.new
-      })
-    });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      addToast('تم تغيير كلمة المرور بنجاح!', 'success');
-      setDevPasswordChange({ current: '', new: '', confirm: '' });
-    } else {
-      addToast(data.error || 'كلمة المرور الحالية غير صحيحة', 'error');
-    }
-  } catch {
-    addToast('حدث خطأ في تغيير كلمة المرور', 'error');
-  }
-}}
+                    <button onClick={async () => {
+                      if (!devPasswordChange.current || !devPasswordChange.new || !devPasswordChange.confirm) { addToast('جميع الحقول مطلوبة', 'error'); return; }
+                      if (devPasswordChange.new !== devPasswordChange.confirm) { addToast('كلمتا المرور غير متطابقتين', 'error'); return; }
+                      if (devPasswordChange.new.length < 6) { addToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'error'); return; }
+                      try {
+                        const res = await fetch('/api/auth/change-password', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            identifier: DEVELOPER_EMAIL,
+                            currentPassword: devPasswordChange.current,
+                            newPassword: devPasswordChange.new
+                          })
+                        });
+                        const data = await res.json();
+                        if (res.ok && data.success) {
+                          addToast('تم تغيير كلمة المرور بنجاح!', 'success');
+                          setDevPasswordChange({ current: '', new: '', confirm: '' });
+                        } else {
+                          addToast(data.error || 'كلمة المرور الحالية غير صحيحة', 'error');
+                        }
+                      } catch {
+                        addToast('حدث خطأ في تغيير كلمة المرور', 'error');
+                      }
+                    }} className="mt-3 px-6 py-2 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white font-medium text-sm">تغيير كلمة المرور</button>
                     }} className="mt-3 px-6 py-2 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white font-medium text-sm">تغيير كلمة المرور</button>
                   </div>
                   <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
