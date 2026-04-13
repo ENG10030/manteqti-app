@@ -1,66 +1,81 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { db } from '@/lib/db';
+import { sign } from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 export async function POST(request: NextRequest) {
   try {
-    const { identifier, code, name } = await request.json();
+    const { identifier, otp, code } = await request.json();
 
-    if (!identifier || !code) {
-      return NextResponse.json({ error: 'Identifier and code are required' }, { status: 400 });
+    // Accept either 'otp' or 'code' field
+    const otpCode = otp || code;
+
+    if (!identifier || !otpCode) {
+      return NextResponse.json({ error: 'البريد الإلكتروني والرمز مطلوبان' }, { status: 400 });
     }
 
-    // Determine if identifier is email or phone
-    const isEmail = identifier.includes('@');
     const normalizedIdentifier = identifier.toLowerCase().trim();
 
-    // Find user by email or identifier
+    // Find user by identifier
     const user = await db.user.findFirst({
-      where: isEmail 
-        ? { email: normalizedIdentifier }
-        : { identifier: normalizedIdentifier }
+      where: {
+        OR: [
+          { identifier: normalizedIdentifier },
+          { email: normalizedIdentifier }
+        ]
+      }
     });
 
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      return NextResponse.json({ error: 'المستخدم غير موجود' }, { status: 404 });
     }
 
-    if (user.otp !== code) {
-      return NextResponse.json({ error: 'Invalid OTP code' }, { status: 400 });
+    if (user.otp !== otpCode) {
+      return NextResponse.json({ error: 'رمز التأكيد غير صحيح' }, { status: 400 });
     }
 
     if (!user.otpExpires || user.otpExpires < new Date()) {
-      return NextResponse.json({ error: 'OTP has expired' }, { status: 400 });
+      return NextResponse.json({ error: 'انتهت صلاحية الرمز' }, { status: 400 });
     }
 
-    // Update user name if provided and clear OTP
+    // Clear OTP after successful verification
     const updatedUser = await db.user.update({
       where: { id: user.id },
       data: {
-        name: name || user.name,
         otp: null,
         otpExpires: null
       }
     });
 
-    // Set cookie
-    const cookieStore = await cookies();
-    cookieStore.set('userId', user.id, {
+    // Generate JWT token and set auth-token cookie (same as login)
+    const token = sign(
+      { userId: updatedUser.id, identifier: updatedUser.identifier, role: updatedUser.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    const response = NextResponse.json({
+      user: {
+        id: updatedUser.id,
+        identifier: updatedUser.identifier,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role
+      }
+    });
+
+    response.cookies.set('auth-token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 30 // 30 days
+      maxAge: 60 * 60 * 24 * 7,
+      path: '/',
     });
 
-    return NextResponse.json({ 
-      user: { 
-        id: updatedUser.id, 
-        identifier: updatedUser.identifier, 
-        name: updatedUser.name 
-      } 
-    });
+    return response;
   } catch (error) {
     console.error('Error verifying OTP:', error);
-    return NextResponse.json({ error: 'Failed to verify OTP' }, { status: 500 });
+    return NextResponse.json({ error: 'فشل في التحقق من الرمز' }, { status: 500 });
   }
 }

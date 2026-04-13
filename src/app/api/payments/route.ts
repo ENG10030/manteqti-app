@@ -19,11 +19,16 @@ export async function GET() {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
 
-    if (decoded.role !== 'DEVELOPER') {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+    const isDeveloper = decoded.role === 'DEVELOPER';
+
+    // المطور يرى كل المدفوعات، المستخدم العادي يرى مدفوعاته فقط
+    const where: any = {};
+    if (!isDeveloper) {
+      where.userId = decoded.userId;
     }
 
     const payments = await db.payment.findMany({
+      where,
       orderBy: { createdAt: 'desc' },
       include: {
         inquiry: {
