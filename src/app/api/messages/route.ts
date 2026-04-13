@@ -1,12 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { cookies } from 'next/headers';
+import { verify } from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 // جلب الرسائل
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-    const isDeveloper = searchParams.get('isDeveloper') === 'true';
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    const tokenUserId = decoded.userId;
+    const isDeveloper = decoded.role === 'DEVELOPER';
 
     let messages;
 
@@ -21,13 +36,13 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { createdAt: 'desc' }
       });
-    } else if (userId) {
-      // المستخدم يرى رسائله فقط
+    } else {
+      // المستخدم يرى رسائله فقط (filter by token userId)
       messages = await db.message.findMany({
         where: {
           OR: [
-            { senderId: userId },
-            { receiverId: userId }
+            { senderId: tokenUserId },
+            { receiverId: tokenUserId }
           ]
         },
         include: {
@@ -37,8 +52,6 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { createdAt: 'desc' }
       });
-    } else {
-      return NextResponse.json({ error: 'مطلوب معرف المستخدم' }, { status: 400 });
     }
 
     return NextResponse.json(messages);
@@ -51,16 +64,35 @@ export async function GET(request: NextRequest) {
 // إرسال رسالة جديدة
 export async function POST(request: NextRequest) {
   try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    const tokenUserId = decoded.userId;
     const body = await request.json();
     const { senderId, content, receiverId } = body;
 
-    if (!senderId || !content) {
+    if (!content) {
       return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 });
+    }
+
+    // Verify the sender matches the token user
+    const effectiveSenderId = senderId || tokenUserId;
+    if (effectiveSenderId !== tokenUserId) {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
 
     // التحقق من أن المستخدم غير محظور
     const sender = await db.user.findUnique({
-      where: { id: senderId }
+      where: { id: tokenUserId }
     });
 
     if (sender?.isBlocked) {
@@ -72,8 +104,8 @@ export async function POST(request: NextRequest) {
 
     const message = await db.message.create({
       data: {
-        senderId,
-        receiverId: receiverId || null, // null يعني رسالة للمطور
+        senderId: tokenUserId,
+        receiverId: receiverId || null,
         content,
       },
       include: {

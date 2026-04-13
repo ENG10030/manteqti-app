@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { cookies } from 'next/headers';
+import { verify } from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 // جلب التعليقات
 export async function GET(request: NextRequest) {
@@ -45,45 +49,36 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { apartmentId, userId, content, isDeveloper, status } = body;
+    const { apartmentId, content } = body;
 
     if (!apartmentId || !content) {
       return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 });
     }
 
-    let finalUserId = userId;
-    let commentStatus = status || 'pending';
+    // JWT verification for developer status
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    let isDeveloper = false;
+    let userId = body.userId;
 
-    // إذا كان المطور يعلق
-    if (isDeveloper || userId === 'developer') {
-      // البحث عن مستخدم المطور أو إنشاؤه
-      let developerUser = await db.user.findFirst({
-        where: { identifier: 'developer' }
-      });
+    if (token) {
+      try {
+        const decoded = verify(token, JWT_SECRET) as any;
+        if (decoded.role === 'DEVELOPER') isDeveloper = true;
+        if (decoded.userId) userId = decoded.userId;
+      } catch {}
+    }
 
-      if (!developerUser) {
-        // إنشاء مستخدم للمطور
-        developerUser = await db.user.create({
-          data: {
-            email: 'developer@manteqti.app',
-            identifier: 'developer',
-            name: 'المطور',
-            password: 'developer_internal',
-            isApproved: true
-          }
-        });
-      }
-
-      finalUserId = developerUser.id;
-      commentStatus = 'approved'; // تعليقات المطور تُنشر مباشرة
+    if (!userId) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
     }
 
     const comment = await db.comment.create({
       data: {
         apartmentId,
-        userId: finalUserId,
+        userId,
         content,
-        status: commentStatus,
+        status: isDeveloper ? 'approved' : 'pending',
       },
       include: {
         user: {

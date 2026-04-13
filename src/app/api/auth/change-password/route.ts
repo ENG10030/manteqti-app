@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { createHash } from 'crypto';
-
-function hashPassword(password: string): string {
-  return createHash('sha256').update(password).digest('hex');
-}
+import bcrypt from "bcryptjs";
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,15 +30,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify current password
-    const hashedCurrentPassword = hashPassword(currentPassword);
-    if (user.password !== hashedCurrentPassword) {
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isPasswordValid) {
       return NextResponse.json({
         error: 'كلمة المرور الحالية غير صحيحة'
       }, { status: 401 });
     }
 
     // Update password
-    const hashedNewPassword = hashPassword(newPassword);
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
     await db.user.update({
       where: { id: user.id },
       data: { password: hashedNewPassword }

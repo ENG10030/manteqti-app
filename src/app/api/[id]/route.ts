@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { cookies } from 'next/headers';
+import { verify } from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 export async function GET(
   request: NextRequest,
@@ -33,6 +37,18 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+    }
+
     const { id } = await params;
     const body = await request.json();
 
@@ -77,8 +93,6 @@ export async function PUT(
         amenities: body.amenities,
         isFeatured: body.isFeatured,
         isVip: body.isVip,
-        featuredUntil: body.featuredUntil ? new Date(body.featuredUntil) : null,
-        featured: body.featured,
       };
     }
 
@@ -99,6 +113,18 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+    }
+
     const { id } = await params;
 
     await db.payment.deleteMany({ where: { inquiry: { apartmentId: id } } });
@@ -125,9 +151,7 @@ export async function PATCH(
     if (body.status !== undefined) updateData.status = body.status;
     if (body.isFeatured !== undefined) updateData.isFeatured = body.isFeatured;
     if (body.isVip !== undefined) updateData.isVip = body.isVip;
-    if (body.featuredUntil !== undefined) {
-      updateData.featuredUntil = body.featuredUntil ? new Date(body.featuredUntil) : null;
-    }
+
 
     const apartment = await db.apartment.update({
       where: { id },

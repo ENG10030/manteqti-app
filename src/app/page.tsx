@@ -81,7 +81,7 @@ function processApartment(apt: any): Apartment {
   return { ...apt, images: parseJsonArray(apt.images), videos: parseJsonArray(apt.videos), amenities: parseJsonArray(apt.amenities) };
 }
 
-const egyptianAreas = ['مدينة نصر', 'التجمع الخامس', 'المعادي', 'وسط البلد', 'جاردن سيتي', 'الزمالك', 'المهندسين', 'الدقي', '6 أكتوبر', 'الشيخ زايد', 'العاصمة الإدارية', 'المنصورة', 'الإسكندرية'];
+const saudiAreas = ['الرياض', 'جدة', 'الدمام', 'مكة المكرمة', 'المدينة المنورة', 'الخبر', 'تبوك', 'بريدة', 'الطائف', 'أبها', 'نجران', 'الجبيل', 'ينبع', 'حائل', 'القطيف', 'خميس مشيط'];
 
 // Confirm Dialog Component
 function ConfirmDialog({ isOpen, title, message, confirmText = 'تأكيد', cancelText = 'إلغاء', onConfirm, onCancel, type = 'warning', loading = false, darkMode }: { isOpen: boolean; title: string; message: string; confirmText?: string; cancelText?: string; onConfirm: () => void; onCancel: () => void; type?: 'danger' | 'warning' | 'info'; loading?: boolean; darkMode: boolean; }) {
@@ -206,7 +206,7 @@ export default function App() {
     highlightFee: 150,
     priorityListingFee: 200,
     verifiedListingFee: 250,
-    currency: 'ج.م'
+    currency: 'ر.س'
   });
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -332,7 +332,7 @@ export default function App() {
         highlightFee: data.highlightFee || data.settings?.highlightFee || 150,
         priorityListingFee: data.priorityListingFee || data.settings?.priorityListingFee || 200,
         verifiedListingFee: data.verifiedListingFee || data.settings?.verifiedListingFee || 250,
-        currency: data.currency || data.settings?.currency || 'ج.م'
+        currency: data.currency || data.settings?.currency || 'ر.س'
       });
     } catch {}
   };
@@ -598,6 +598,7 @@ export default function App() {
       
       if (res.ok && data.success) {
         setIsDeveloper(true);
+        setCurrentUser({ id: data.user?.id || '', identifier: devEmail, name: 'المطور' });
         setShowDevLogin(false);
         if (rememberMe) {
           localStorage.setItem('manteqti_dev_email', devEmail);
@@ -781,7 +782,7 @@ export default function App() {
 
   const handlePayment = async (confirmed: boolean = false) => {
     if (!paymentApartment || !paymentMethod) return;
-    if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'تأكيد الدفع', message: `هل تريد الدفع بمبلغ ${CONTACT_FEE} ج.م؟`, confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm: () => handlePayment(true), type: 'info' }); return; }
+    if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'تأكيد الدفع', message: `هل تريد الدفع بمبلغ ${CONTACT_FEE} ر.س؟`, confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm: () => handlePayment(true), type: 'info' }); return; }
     setConfirmDialog(prev => ({ ...prev, loading: true }));
     setPaymentSubmitting(true);
     try {
@@ -843,7 +844,7 @@ export default function App() {
         case 'stats':
           prompt = `أنت محلل بيانات عقاري خبير. قم بتحليل هذه البيانات:
 📊 إجمالي الشقق: ${apartments.length} | متاحة: ${apartments.filter(a => a.status === 'available').length} | في انتظار الموافقة: ${pendingApartments.length}
-📈 الاستفسارات: ${inquiries.length} | معدل التحويل: ${conversionRate}% | الإيرادات: ${totalRevenue.toLocaleString()} ج.م
+📈 الاستفسارات: ${inquiries.length} | معدل التحويل: ${conversionRate}% | الإيرادات: ${totalRevenue.toLocaleString()} ر.س
 أعطني تحليل شامل مع توصيات.`;
           break;
         case 'payments':
@@ -1246,7 +1247,7 @@ ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام.
                     <h3 className={`text-lg font-bold mb-2 line-clamp-1 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apartment.title}</h3>
                     {/* السعر في الأعلى */}
                     <div className="mb-2">
-                      <p className="text-2xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent">{apartment.price.toLocaleString()} ج.م{apartment.type === 'rent' && <span className={`text-sm font-normal ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}> /شهر</span>}</p>
+                      <p className="text-2xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent">{apartment.price.toLocaleString()} ر.س{apartment.type === 'rent' && <span className={`text-sm font-normal ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}> /شهر</span>}</p>
                     </div>
                     {/* وصف الشقة */}
                     <p className={`text-sm mb-3 line-clamp-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apartment.description}</p>
@@ -1324,6 +1325,7 @@ ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام.
               <div className="space-y-3">
                 <button onClick={() => { setShowAddModal(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white"><Building2 className="h-5 w-5" />إضافة شقة</button>
                 <button onClick={() => { setShowChat(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><Brain className="h-5 w-5" />المساعد الذكي</button>
+                <button onClick={() => { if (isDeveloper) { fetchMessages(); setShowMessages(true); } else if (currentUser) { setShowMessages(true); } else { setShowAuth(true); } setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><MessageCircle className="h-5 w-5" />تواصل معنا</button>
                 {isDeveloper ? (
                   <>
         <button onClick={() => { setShowDevPanel(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white"><ShieldCheck className="h-5 w-5" />لوحة المطور{pendingApartments.length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-white/20 text-xs">{pendingApartments.length}</span>}</button>
@@ -1367,7 +1369,7 @@ ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام.
                       <div className="flex-1">
                         <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">قيد المراجعة</span>
                         <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
-                        <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.area} • {apt.price.toLocaleString()} ج.م</p>
+                        <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.area} • {apt.price.toLocaleString()} ر.س</p>
                       </div>
                       <button onClick={async () => { if (confirm('هل تريد حذف هذا العقار؟')) { await fetch(`/api/apartments/${apt.id}`, { method: 'DELETE' }); fetchMyPendingApartments(); fetchApartments(); addToast('تم حذف العقار', 'success'); } }} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600"><Trash2 className="h-4 w-4" /></button>
                     </div>
@@ -1459,7 +1461,7 @@ ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام.
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>عنوان الشقة *</label><input type="text" value={aptForm.title} onChange={(e) => setAptForm({ ...aptForm, title: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>السعر *</label><input type="number" value={aptForm.price} onChange={(e) => setAptForm({ ...aptForm, price: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
-                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>المنطقة *</label><select value={aptForm.area} onChange={(e) => setAptForm({ ...aptForm, area: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required><option value="">اختر المنطقة</option>{egyptianAreas.map(area => <option key={area} value={area}>{area}</option>)}</select></div>
+                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>المنطقة *</label><select value={aptForm.area} onChange={(e) => setAptForm({ ...aptForm, area: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required><option value="">اختر المنطقة</option>{saudiAreas.map(area => <option key={area} value={area}>{area}</option>)}</select></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>غرف النوم</label><select value={aptForm.bedrooms} onChange={(e) => setAptForm({ ...aptForm, bedrooms: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>{[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحمامات</label><select value={aptForm.bathrooms} onChange={(e) => setAptForm({ ...aptForm, bathrooms: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>{[1, 2, 3, 4].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>النوع</label><select value={aptForm.type} onChange={(e) => setAptForm({ ...aptForm, type: e.target.value as 'rent' | 'sale' })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="rent">إيجار</option><option value="sale">بيع</option></select></div>
@@ -1504,7 +1506,7 @@ ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام.
                 <div className="flex items-center gap-1"><Bed className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.bedrooms} غرف</span></div>
                 <div className="flex items-center gap-1"><Bath className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.bathrooms} حمام</span></div>
               </div>
-              <p className="text-3xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent mb-4">{selectedApartment.price.toLocaleString()} ج.م{selectedApartment.type === 'rent' && <span className="text-sm text-slate-500"> /شهر</span>}</p>
+              <p className="text-3xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent mb-4">{selectedApartment.price.toLocaleString()} ر.س{selectedApartment.type === 'rent' && <span className="text-sm text-slate-500"> /شهر</span>}</p>
               <p className={`mb-6 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{selectedApartment.description}</p>
               
               {hasPaidForApartment(selectedApartment.id) ? (
@@ -1519,7 +1521,7 @@ ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام.
                     <Lock className="h-6 w-6 text-amber-500" />
                     <div>
                       <p className={`font-medium ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>بيانات التواصل محجوبة</p>
-                      <p className={`text-sm ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>ادفع {CONTACT_FEE} ج.م للحصول على بيانات التواصل</p>
+                      <p className={`text-sm ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>ادفع {CONTACT_FEE} ر.س للحصول على بيانات التواصل</p>
                     </div>
                   </div>
                   <button onClick={() => setPaymentApartment(selectedApartment)} className="mt-3 w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium"><CreditCard className="h-4 w-4 inline ml-2" />طلب بيانات التواصل</button>
@@ -1570,7 +1572,7 @@ ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام.
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>العنوان</label><input type="text" value={editApartment.title} onChange={(e) => setEditApartment({ ...editApartment, title: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>السعر</label><input type="number" value={editApartment.price} onChange={(e) => setEditApartment({ ...editApartment, price: parseInt(e.target.value) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>المنطقة</label><select value={editApartment.area} onChange={(e) => setEditApartment({ ...editApartment, area: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>{egyptianAreas.map(area => <option key={area} value={area}>{area}</option>)}</select></div>
+                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>المنطقة</label><select value={editApartment.area} onChange={(e) => setEditApartment({ ...editApartment, area: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>{saudiAreas.map(area => <option key={area} value={area}>{area}</option>)}</select></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>غرف النوم</label><select value={editApartment.bedrooms} onChange={(e) => setEditApartment({ ...editApartment, bedrooms: parseInt(e.target.value) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>{[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحمامات</label><select value={editApartment.bathrooms} onChange={(e) => setEditApartment({ ...editApartment, bathrooms: parseInt(e.target.value) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>{[1, 2, 3, 4].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الهاتف</label><input type="tel" value={editApartment.ownerPhone} onChange={(e) => setEditApartment({ ...editApartment, ownerPhone: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
@@ -1688,7 +1690,7 @@ ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام.
                         <img src={apt.imageUrl || apt.images?.[0] || '/generated-images/apt1.png'} alt={apt.title} className="w-32 h-24 object-cover rounded-lg" />
                         <div className="flex-1">
                           <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
-                          <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.area} • {apt.price.toLocaleString()} ج.م • {apt.type === 'rent' ? 'إيجار' : 'بيع'}</p>
+                          <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.area} • {apt.price.toLocaleString()} ر.س • {apt.type === 'rent' ? 'إيجار' : 'بيع'}</p>
                           <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>أُرسلت: {new Date(apt.createdAt).toLocaleDateString('ar-EG')}</p>
                         </div>
                         <div className="flex gap-2"><button onClick={() => handleApproveApartment(apt.id)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600">موافقة</button><button onClick={() => handleRejectApartment(apt.id)} className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600">رفض</button></div>
@@ -1786,7 +1788,7 @@ ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام.
                   {payments.length === 0 ? <div className="text-center py-12"><CreditCard className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد مدفوعات</p></div> : payments.map(payment => (
                     <div key={payment.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
                       <div className="flex items-center justify-between">
-                        <div><p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{payment.amount} ج.م - {payment.method}</p><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{payment.inquiry?.name} • {new Date(payment.createdAt).toLocaleDateString('ar-EG')}</p></div>
+                        <div><p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{payment.amount} ر.س - {payment.method}</p><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{payment.inquiry?.name} • {new Date(payment.createdAt).toLocaleDateString('ar-EG')}</p></div>
                         <div className="flex items-center gap-2">
                           <span className={`px-2 py-1 rounded-full text-xs ${payment.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : payment.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{payment.status === 'Paid' ? 'مدفوع' : payment.status === 'Pending' ? 'قيد الانتظار' : 'مرفوض'}</span>
                           {payment.status === 'Pending' && (
@@ -1905,11 +1907,11 @@ ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام.
               {devTab === 'settings' && (
                 <div className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم بيانات التواصل (ج.م)</label><input type="number" value={settings.contactFee} onChange={(e) => setSettings({ ...settings, contactFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم العقار المميز (ج.م)</label><input type="number" value={settings.featuredFee} onChange={(e) => setSettings({ ...settings, featuredFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم العقار المميز+ VIP (ج.م)</label><input type="number" value={settings.vipFee} onChange={(e) => setSettings({ ...settings, vipFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم عرض البيع (ج.م)</label><input type="number" value={settings.saleDisplayFee} onChange={(e) => setSettings({ ...settings, saleDisplayFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم عرض الإيجار (ج.م)</label><input type="number" value={settings.rentDisplayFee} onChange={(e) => setSettings({ ...settings, rentDisplayFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم بيانات التواصل (ر.س)</label><input type="number" value={settings.contactFee} onChange={(e) => setSettings({ ...settings, contactFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم العقار المميز (ر.س)</label><input type="number" value={settings.featuredFee} onChange={(e) => setSettings({ ...settings, featuredFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم العقار المميز+ VIP (ر.س)</label><input type="number" value={settings.vipFee} onChange={(e) => setSettings({ ...settings, vipFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم عرض البيع (ر.س)</label><input type="number" value={settings.saleDisplayFee} onChange={(e) => setSettings({ ...settings, saleDisplayFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم عرض الإيجار (ر.س)</label><input type="number" value={settings.rentDisplayFee} onChange={(e) => setSettings({ ...settings, rentDisplayFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                     <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>العملة</label><input type="text" value={settings.currency} onChange={(e) => setSettings({ ...settings, currency: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                   </div>
                   {/* Developer Password Change */}
@@ -1972,7 +1974,7 @@ ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام.
               <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>طلب بيانات التواصل</h2>
               <button onClick={() => setPaymentApartment(null)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
             </div>
-            <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>المبلغ المطلوب:</p><p className="text-2xl font-bold text-emerald-500">{CONTACT_FEE} ج.م</p></div>
+            <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>المبلغ المطلوب:</p><p className="text-2xl font-bold text-emerald-500">{CONTACT_FEE} ر.س</p></div>
             <div className="space-y-3 mb-6">
               <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>اختر طريقة الدفع:</p>
               {['فودافون كاش', 'أورنج كاش', 'اتصالات كاش', 'تحويل بنكي'].map(method => (

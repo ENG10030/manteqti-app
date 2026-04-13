@@ -11,7 +11,7 @@ export async function POST(
   try {
     const session = await getServerSession(authOptions)
     
-    if (!session?.user || session.user.role !== "developer") {
+    if (!session?.user || session.user.role !== "DEVELOPER") {
       return NextResponse.json(
         { error: "غير مصرح لك بهذا الإجراء" },
         { status: 403 }
@@ -33,7 +33,7 @@ export async function POST(
       )
     }
 
-    if (targetUser.role === "developer") {
+    if (targetUser.role === "DEVELOPER") {
       return NextResponse.json(
         { error: "لا يمكن حظر مطور" },
         { status: 400 }
@@ -100,7 +100,7 @@ export async function GET(
   try {
     const session = await getServerSession(authOptions)
     
-    if (!session?.user || session.user.role !== "developer") {
+    if (!session?.user || session.user.role !== "DEVELOPER") {
       return NextResponse.json(
         { error: "غير مصرح لك بهذا الإجراء" },
         { status: 403 }

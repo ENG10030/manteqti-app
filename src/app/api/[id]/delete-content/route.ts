@@ -11,7 +11,7 @@ export async function DELETE(
   try {
     const session = await getServerSession(authOptions)
     
-    if (!session?.user || session.user.role !== "developer") {
+    if (!session?.user || session.user.role !== "DEVELOPER") {
       return NextResponse.json(
         { error: "غير مصرح لك بهذا الإجراء" },
         { status: 403 }

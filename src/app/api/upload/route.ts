@@ -1,8 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { uploadImage, uploadVideo, ALLOWED_IMAGE_TYPES, ALLOWED_VIDEO_TYPES, MAX_FILE_SIZE } from '@/lib/cloudinary';
+import { cookies } from 'next/headers';
+import { verify } from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 export async function POST(request: NextRequest) {
   try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    try {
+      verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
     const type = formData.get('type') as 'image' | 'video' | null;
@@ -63,6 +78,17 @@ export async function POST(request: NextRequest) {
 // رفع عدة ملفات
 export async function PUT(request: NextRequest) {
   try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    try {
+      verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
     const formData = await request.formData();
     const files = formData.getAll('files') as File[];
     const type = formData.get('type') as 'image' | 'video' | null;

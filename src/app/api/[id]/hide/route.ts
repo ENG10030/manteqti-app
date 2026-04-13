@@ -11,7 +11,7 @@ export async function POST(
   try {
     const session = await getServerSession(authOptions)
     
-    if (!session?.user || session.user.role !== "developer") {
+    if (!session?.user || session.user.role !== "DEVELOPER") {
       return NextResponse.json(
         { error: "غير مصرح لك بهذا الإجراء" },
         { status: 403 }
@@ -51,7 +51,7 @@ export async function POST(
       const updatedApartment = await db.apartment.update({
         where: { id: apartmentId },
         data: {
-          status: "approved"
+          status: "available"
         }
       })
 

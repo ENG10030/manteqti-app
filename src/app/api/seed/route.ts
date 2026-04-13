@@ -1,14 +1,34 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import crypto from "crypto";
+import bcrypt from "bcryptjs";
+import { cookies } from 'next/headers';
+import { verify } from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 // تشفير كلمة المرور
-function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex');
+async function hashPassword(password: string): Promise<string> {
+  return await bcrypt.hash(password, 10);
 }
 
 export async function GET() {
   try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    if (decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+    }
+
     const existingDeveloper = await db.user.findFirst({
       where: { role: "DEVELOPER" },
     });
@@ -24,7 +44,7 @@ export async function GET() {
       });
     }
 
-    const hashedPassword = hashPassword("admin123");
+    const hashedPassword = await hashPassword("admin123");
     const developer = await db.user.create({
       data: {
         email: "ahmadmamdouh10030@gmail.com",
@@ -36,7 +56,7 @@ export async function GET() {
       },
     });
 
-    const userPassword = hashPassword("user123");
+    const userPassword = await hashPassword("user123");
     const user = await db.user.create({
       data: {
         email: "user@example.com",
@@ -131,16 +151,6 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       message: "تم إنشاء البيانات التجريبية بنجاح",
-      credentials: {
-        developer: {
-          email: "ahmadmamdouh10030@gmail.com",
-          password: "admin123",
-        },
-        user: {
-          email: "user@example.com",
-          password: "user123",
-        },
-      },
       apartmentsCount: apartments.length,
     });
   } catch (error) {
