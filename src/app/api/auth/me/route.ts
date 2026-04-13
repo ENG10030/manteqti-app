@@ -11,7 +11,6 @@ export async function GET(request: Request) {
     const token = cookies.get("auth-token");
 
     if (!token) {
-      // إرجاع user: null بدون خطأ - هذا طبيعي للمستخدمين غير المسجلين
       return NextResponse.json({ user: null });
     }
 
@@ -28,6 +27,7 @@ export async function GET(request: Request) {
         isApproved: true,
         isBlocked: true,
         identifier: true,
+        emailVerified: true,
         createdAt: true,
         _count: {
           select: { apartments: true },
@@ -41,7 +41,6 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ user });
   } catch (error) {
-    // أي خطأ في التحقق يعني أن المستخدم غير مسجل
     return NextResponse.json({ user: null });
   }
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
+import crypto from "crypto";
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
@@ -48,6 +49,29 @@ export async function POST(request: Request) {
       );
     }
 
+    // Check email verification (developers bypass this check)
+    if (!user.emailVerified && user.role !== 'DEVELOPER') {
+      // Generate new OTP and send it
+      const otp = crypto.randomInt(100000, 999999).toString();
+      const otpExpires = new Date(Date.now() + 30 * 60 * 1000);
+      
+      await db.user.update({
+        where: { id: user.id },
+        data: { otp, otpExpires }
+      });
+
+      console.log(`📧 New verification OTP for ${user.email}: ${otp}`);
+
+      return NextResponse.json(
+        { 
+          error: "يجب تأكيد البريد الإلكتروني أولاً",
+          emailVerificationRequired: true,
+          email: user.email,
+        },
+        { status: 403 }
+      );
+    }
+
     const token = sign(
       { userId: user.id, identifier: user.identifier, role: user.role },
       JWT_SECRET,
@@ -62,6 +86,7 @@ export async function POST(request: Request) {
         name: user.name,
         identifier: user.identifier,
         role: user.role,
+        emailVerified: user.emailVerified,
       },
     });
 

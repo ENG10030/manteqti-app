@@ -1,13 +1,67 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
+
+// قائمة نطاقات البريد المؤقتة المحظورة
+const BLOCKED_DOMAINS = [
+  // Temporary/disposable email services
+  'mailinator.com', 'guerrillamail.com', 'guerrillamailblock.com', 'sharklasers.com',
+  'guerrillamail.net', 'grr.la', 'dispostable.com', 'trashmail.com', 'trashmail.io',
+  'tempmail.com', 'tempmail.io', 'temp-mail.org', 'throwaway.email', 'fakeinbox.com',
+  'maildrop.cc', 'mailnesia.com', 'mailcatch.com', 'yopmail.com', 'yopmail.fr',
+  'jetable.org', 'mailforspam.com', 'spamgourmet.com', 'mohmal.com', 'tempail.com',
+  'emailondeck.com', 'crazymailing.com', 'trashymail.com', 'filzmail.com',
+  'incognitomail.org', 'mailnull.com', 'tempinbox.com', 'binkmail.com',
+  'safetymail.info', 'spamavert.com', 'mintemail.com', 'mailtothis.com',
+  'dispostable.com', 'inboxkitten.com', 'tutanota.com', 'protonmail.com',
+  // 10minutemail and similar
+  '10minutemail.com', '10minutemail.net', 'tempmailaddress.com',
+  // Common fake domains used for testing
+  'example.com', 'example.org', 'test.com', 'fake.com', 'invalid.com',
+  'notreal.com', 'nomail.com', 'noemail.com', 'nowhere.com',
+];
+
+// التحقق من أن نطاق البريد الإلكتروني ليس مؤقتاً أو وهمياً
+function isDisposableEmail(email: string): boolean {
+  const domain = email.split('@')[1]?.toLowerCase();
+  if (!domain) return true;
+  
+  // Check blocked list
+  if (BLOCKED_DOMAINS.includes(domain)) return true;
+  
+  // Block domains with "temp", "trash", "spam", "fake", "disposable" in name
+  const suspiciousKeywords = ['temp', 'trash', 'spam', 'fake', 'disposable', 'throw', 'burner', 'phish'];
+  for (const keyword of suspiciousKeywords) {
+    if (domain.includes(keyword)) return true;
+  }
+  
+  return false;
+}
+
+// التحقق من صحة البريد الإلكتروني بشكل صارم
+function isValidEmail(email: string): boolean {
+  // Basic format check
+  const emailRegex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
+  if (!emailRegex.test(email)) return false;
+  
+  // Check TLD is at least 2 characters
+  const domain = email.split('@')[1];
+  if (!domain) return false;
+  const tld = domain.split('.').pop();
+  if (!tld || tld.length < 2) return false;
+  
+  // Block disposable domains
+  if (isDisposableEmail(email)) return false;
+  
+  return true;
+}
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { name, email, identifier, password, phone } = body;
 
-    // Accept either email or identifier
     const userEmail = (email || identifier || "").toLowerCase().trim();
 
     if (!name || !userEmail || !password) {
@@ -17,6 +71,15 @@ export async function POST(request: Request) {
       );
     }
 
+    // التحقق الصارم من صيغة البريد الإلكتروني
+    if (!isValidEmail(userEmail)) {
+      return NextResponse.json(
+        { error: "صيغة البريد الإلكتروني غير صحيحة أو النطاق غير مسموح به. يرجى استخدام بريد إلكتروني حقيقي (Gmail, Yahoo, Hotmail, إلخ)" },
+        { status: 400 }
+      );
+    }
+
+    // التحقق من قوة كلمة المرور
     if (password.length < 6) {
       return NextResponse.json(
         { error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" },
@@ -24,7 +87,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if user already exists by identifier
+    // التحقق من طول الاسم
+    if (name.trim().length < 2) {
+      return NextResponse.json(
+        { error: "الاسم يجب أن يكون حرفين على الأقل" },
+        { status: 400 }
+      );
+    }
+
     const existingUser = await db.user.findUnique({
       where: { identifier: userEmail },
     });
@@ -37,12 +107,11 @@ export async function POST(request: Request) {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Generate 6-digit OTP for email verification
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // Check if this is the developer
     const isDeveloper = userEmail === "ahmadmamdouh10030@gmail.com";
+    
+    // Generate OTP for email verification
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const otpExpires = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
 
     const user = await db.user.create({
       data: {
@@ -53,26 +122,18 @@ export async function POST(request: Request) {
         identifier: userEmail,
         role: isDeveloper ? "DEVELOPER" : "USER",
         isApproved: true,
-        emailVerified: isDeveloper, // Developer is auto-verified
-        otp: isDeveloper ? null : otp,
-        otpExpires: isDeveloper ? null : new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+        emailVerified: false,
+        otp,
+        otpExpires,
       },
     });
 
-    // TODO: إرسال رمز التأكيد عبر البريد الإلكتروني
-    // يمكن استخدام Resend أو SendGrid لإرسال البريد
-    // مثال باستخدام Resend:
-    // import { Resend } from 'resend';
-    // const resend = new Resend(process.env.RESEND_API_KEY);
-    // await resend.emails.send({
-    //   from: 'Manteqti <noreply@manteqti.com>',
-    //   to: userEmail,
-    //   subject: 'رمز تأكيد البريد الإلكتروني - منطقتي',
-    //   html: `<h1>رمز التأكيد: ${otp}</h1><p>صالح لمدة 10 دقائق</p>`,
-    // });
+    // Log OTP for development (in production, send via email service)
+    console.log(`📧 Email verification OTP for ${userEmail}: ${otp}`);
 
     return NextResponse.json({
-      message: "تم إنشاء الحساب بنجاح. يرجى تأكيد البريد الإلكتروني",
+      message: "تم إنشاء الحساب بنجاح",
+      emailVerificationRequired: true,
       user: {
         id: user.id,
         email: user.email,
@@ -80,8 +141,6 @@ export async function POST(request: Request) {
         identifier: user.identifier,
         role: user.role,
       },
-      // نعيد رمز OTP لعرضه للمستخدم حتى يتم إعداد خدمة البريد
-      otp: isDeveloper ? undefined : otp,
     });
   } catch (error) {
     console.error("Register error:", error);

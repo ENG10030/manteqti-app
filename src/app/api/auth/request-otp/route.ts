@@ -1,16 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { randomBytes, createHash } from 'crypto';
-
-// Hash password with SHA-256
-function hashPassword(password: string): string {
-  return createHash('sha256').update(password).digest('hex');
-}
-
-// Generate random OTP
-function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
+import crypto from 'crypto';
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,59 +8,46 @@ export async function POST(request: NextRequest) {
 
     if (!identifier) {
       return NextResponse.json({ 
-        error: 'البريد الإلكتروني أو رقم الهاتف مطلوب' 
+        error: 'البريد الإلكتروني مطلوب' 
       }, { status: 400 });
     }
 
-    // Generate OTP
-    const otp = generateOTP();
-    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-    // Determine if identifier is email or phone
-    const isEmail = identifier.includes('@');
     const normalizedIdentifier = identifier.toLowerCase().trim();
 
-    // Check if user exists (search by email or identifier)
-    let user = await db.user.findFirst({
-      where: isEmail 
-        ? { email: normalizedIdentifier }
-        : { identifier: normalizedIdentifier }
+    // Find user by identifier or email
+    const user = await db.user.findFirst({
+      where: {
+        OR: [
+          { identifier: normalizedIdentifier },
+          { email: normalizedIdentifier }
+        ]
+      }
     });
 
-    if (user) {
-      // Update existing user with OTP
-      user = await db.user.update({
-        where: { id: user.id },
-        data: {
-          otp,
-          otpExpires
-        }
-      });
-    } else {
-      // Create new user with OTP and a random default password
-      const randomPassword = randomBytes(16).toString('hex');
-      const hashedPassword = hashPassword(randomPassword);
-      
-      user = await db.user.create({
-        data: {
-          email: isEmail ? normalizedIdentifier : `${normalizedIdentifier}@temp.placeholder`,
-          identifier: isEmail ? normalizedIdentifier : normalizedIdentifier,
-          name: identifier.split('@')[0] || 'User',
-          password: hashedPassword,
-          otp,
-          otpExpires
-        }
-      });
+    if (!user) {
+      return NextResponse.json({ error: 'المستخدم غير موجود' }, { status: 404 });
     }
 
-    // In production, send OTP via email/SMS
-    console.log(`OTP for ${identifier}: ${otp}`);
+    // Generate new OTP
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const otpExpires = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
+
+    // Update user with new OTP
+    await db.user.update({
+      where: { id: user.id },
+      data: {
+        otp,
+        otpExpires
+      }
+    });
+
+    // In production, send OTP via email service
+    console.log(`📧 Email verification OTP for ${identifier}: ${otp}`);
 
     return NextResponse.json({ 
       success: true,
       message: 'تم إرسال رمز التحقق',
-      // In development, return OTP for testing
-      ...(process.env.NODE_ENV === 'development' && { otp })
+      emailVerified: user.emailVerified,
     });
   } catch (error) {
     console.error('Error requesting OTP:', error);

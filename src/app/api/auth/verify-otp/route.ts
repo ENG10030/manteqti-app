@@ -39,12 +39,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'انتهت صلاحية الرمز' }, { status: 400 });
     }
 
-    // Clear OTP after successful verification
+    // Mark email as verified and clear OTP
     const updatedUser = await db.user.update({
       where: { id: user.id },
       data: {
         otp: null,
-        otpExpires: null
+        otpExpires: null,
+        emailVerified: true,
       }
     });
 
@@ -56,12 +57,14 @@ export async function POST(request: NextRequest) {
     );
 
     const response = NextResponse.json({
+      message: 'تم تأكيد البريد الإلكتروني بنجاح',
       user: {
         id: updatedUser.id,
         identifier: updatedUser.identifier,
         name: updatedUser.name,
         email: updatedUser.email,
-        role: updatedUser.role
+        role: updatedUser.role,
+        emailVerified: true,
       }
     });
 

@@ -1,5 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// Manteqti - PostgreSQL Schema for Vercel/Supabase
+// هذا الملف الرئيسي - يحل مكان schema.prisma
 
 generator client {
   provider = "prisma-client-js"
@@ -7,7 +7,7 @@ generator client {
 
 datasource db {
   provider  = "postgresql"
-  url      = env("DATABASE_URL")
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_DATABASE_URL")
 }
 
@@ -18,21 +18,19 @@ model User {
   email                 String?
   phone                 String?
   password              String
-  role                  String    @default("user")
+  role                  String    @default("USER")
   isBlocked             Boolean   @default(false)
   blockedAt             DateTime?
   blockReason           String?
   isApproved            Boolean   @default(true)
-  emailVerified            Boolean   @default(false)
-  emailVerificationToken   String?
-  emailVerificationExpires DateTime?
   passwordResetToken    String?
   passwordResetExpires  DateTime?
   otp                   String?
   otpExpires            DateTime?
+  emailVerified         Boolean   @default(false)
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
-  
+
   apartments    Apartment[]
   inquiries     Inquiry[]
   payments      Payment[]
@@ -48,10 +46,10 @@ model Apartment {
   title            String
   price            Int
   area             String
-  apartmentSize    Int?
-  floor            String?
   bedrooms         Int
   bathrooms        Int
+  floor            Int?
+  apartmentSize    Int?
   description      String
   ownerPhone       String
   mapLink          String?
@@ -72,7 +70,7 @@ model Apartment {
   views            Int       @default(0)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
-  
+
   user          User?         @relation(fields: [createdBy], references: [id], onDelete: Cascade)
   inquiries     Inquiry[]
   likes         Like[]
@@ -81,35 +79,35 @@ model Apartment {
 }
 
 model Inquiry {
-  id              String   @id @default(cuid())
-  apartmentId     String
-  userId          String?
-  name            String
-  email           String
-  phone           String
-  message         String
-  lifecycleStatus String   @default("new")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  id               String    @id @default(cuid())
+  apartmentId      String
+  userId           String?
+  name             String
+  email            String
+  phone            String
+  message          String
+  lifecycleStatus  String    @default("New")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
   apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
   user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
   payment   Payment?
 }
 
 model Payment {
-  id             String   @id @default(cuid())
-  inquiryId      String   @unique
+  id             String    @id @default(cuid())
+  inquiryId      String    @unique
   method         String
-  status         String   @default("Pending")
-  inquiryStatus  String   @default("new")
+  status         String    @default("Pending")
+  inquiryStatus  String    @default("New")
   amount         Int
   transactionRef String?
   paymentLink    String?
   userId         String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
   inquiry Inquiry @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
   user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
@@ -119,10 +117,10 @@ model Like {
   apartmentId String
   userId      String
   createdAt   DateTime @default(now())
-  
+
   apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   @@unique([apartmentId, userId])
 }
 
@@ -134,7 +132,7 @@ model Comment {
   status      String   @default("pending")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
+
   apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -146,8 +144,8 @@ model Message {
   content    String
   isRead     Boolean   @default(false)
   createdAt  DateTime  @default(now())
-  
-  sender User  @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
 }
 
 model PropertyEditRequest {
@@ -166,7 +164,7 @@ model PropertyEditRequest {
   reviewNotes  String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  
+
   apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -176,7 +174,7 @@ model BlockedUser {
   userId    String
   reason    String?
   blockedAt DateTime @default(now())
-  
+
   user User @relation("BlockedUserRelation", fields: [userId], references: [id], onDelete: Cascade)
 }
 

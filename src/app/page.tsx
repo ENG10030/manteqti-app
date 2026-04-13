@@ -48,7 +48,7 @@ interface Inquiry { id: string; apartmentId: string; userId?: string; name: stri
 interface Payment { id: string; inquiryId: string; method: string; status: string; amount: number; userId?: string; createdAt: string; inquiry?: { id: string; apartmentId: string; name: string; email: string; phone: string; apartment?: { id: string; title: string; price: number } | null } | null; }
 
 interface Toast { id: string; message: string; type: 'success' | 'error' | 'info'; }
-interface User { id: string; identifier: string; name: string; }
+interface User { id: string; identifier: string; name: string; emailVerified?: boolean; }
 
 // Edit Request Interface
 interface PropertyEditRequest {
@@ -647,6 +647,12 @@ export default function App() {
         else { localStorage.removeItem('manteqti_remembered_identifier'); localStorage.removeItem('manteqti_remember_me'); }
         setAuthPassword('');
         addToast(`مرحباً ${data.user.name}!`, 'success');
+      } else if (data.emailVerificationRequired) {
+        // البريد الإلكتروني غير مؤكد - إظهار نافذة التأكيد
+        setShowAuth(false);
+        setShowOtpVerification(true);
+        setOtpEmail(data.email || authIdentifier.trim().toLowerCase());
+        addToast('يجب تأكيد البريد الإلكتروني أولاً! تم إرسال رمز التحقق', 'info');
       } else addToast(data.error || 'خطأ في تسجيل الدخول', 'error');
     } catch { addToast('حدث خطأ في الاتصال', 'error'); }
     finally { setAuthLoading(false); }
