@@ -17,6 +17,13 @@ export async function POST(request: Request) {
       );
     }
 
+    if (password.length < 6) {
+      return NextResponse.json(
+        { error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" },
+        { status: 400 }
+      );
+    }
+
     // Check if user already exists by identifier
     const existingUser = await db.user.findUnique({
       where: { identifier: userEmail },
@@ -31,6 +38,9 @@ export async function POST(request: Request) {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Generate 6-digit OTP for email verification
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
     // Check if this is the developer
     const isDeveloper = userEmail === "ahmadmamdouh10030@gmail.com";
 
@@ -43,11 +53,26 @@ export async function POST(request: Request) {
         identifier: userEmail,
         role: isDeveloper ? "DEVELOPER" : "USER",
         isApproved: true,
+        emailVerified: isDeveloper, // Developer is auto-verified
+        otp: isDeveloper ? null : otp,
+        otpExpires: isDeveloper ? null : new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
       },
     });
 
+    // TODO: إرسال رمز التأكيد عبر البريد الإلكتروني
+    // يمكن استخدام Resend أو SendGrid لإرسال البريد
+    // مثال باستخدام Resend:
+    // import { Resend } from 'resend';
+    // const resend = new Resend(process.env.RESEND_API_KEY);
+    // await resend.emails.send({
+    //   from: 'Manteqti <noreply@manteqti.com>',
+    //   to: userEmail,
+    //   subject: 'رمز تأكيد البريد الإلكتروني - منطقتي',
+    //   html: `<h1>رمز التأكيد: ${otp}</h1><p>صالح لمدة 10 دقائق</p>`,
+    // });
+
     return NextResponse.json({
-      message: "تم إنشاء الحساب بنجاح",
+      message: "تم إنشاء الحساب بنجاح. يرجى تأكيد البريد الإلكتروني",
       user: {
         id: user.id,
         email: user.email,
@@ -55,6 +80,8 @@ export async function POST(request: Request) {
         identifier: user.identifier,
         role: user.role,
       },
+      // نعيد رمز OTP لعرضه للمستخدم حتى يتم إعداد خدمة البريد
+      otp: isDeveloper ? undefined : otp,
     });
   } catch (error) {
     console.error("Register error:", error);

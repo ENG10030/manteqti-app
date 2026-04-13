@@ -114,6 +114,8 @@ export async function POST(request: Request) {
       type,
       images,
       videos,
+      apartmentSize,
+      floor,
     } = body;
 
     if (!title || !price || !area || !ownerPhone) {
@@ -143,6 +145,8 @@ export async function POST(request: Request) {
         createdBy: user.id,
         isFeatured: false,
         isVip: false,
+        apartmentSize: apartmentSize ? parseInt(apartmentSize) : null,
+        floor: floor || null,
       },
     });
 

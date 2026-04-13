@@ -1,9 +1,21 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Only allow in development or with a valid secret
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    const initSecret = request.headers.get('x-init-secret');
+    const expectedSecret = process.env.INIT_DB_SECRET || 'manteqti-init-2024';
+
+    if (!isDevelopment && initSecret !== expectedSecret) {
+      return NextResponse.json(
+        { error: 'غير مصرح - هذا الإجراء متاح فقط في بيئة التطوير أو مع مفتاح سري صحيح' },
+        { status: 403 }
+      );
+    }
+
     const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
     const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || 'admin123';
     

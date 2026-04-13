@@ -1,14 +1,28 @@
-import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { NextRequest, NextResponse } from "next/server"
+import { verify } from "jsonwebtoken"
 import { db } from "@/lib/db"
 
-// جلب عقارات المستخدم الحالي
-export async function GET() {
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
+async function getCurrentUser(request: Request) {
+  const cookieHeader = request.headers.get("cookie");
+  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
+  const token = cookies.get("auth-token");
+  if (!token) return null;
   try {
-    const session = await getServerSession(authOptions)
+    const decoded = verify(token, JWT_SECRET) as { userId: string };
+    return await db.user.findUnique({ where: { id: decoded.userId } });
+  } catch {
+    return null;
+  }
+}
+
+// جلب عقارات المستخدم الحالي
+export async function GET(request: NextRequest) {
+  try {
+    const user = await getCurrentUser(request)
     
-    if (!session?.user) {
+    if (!user) {
       return NextResponse.json(
         { error: "يجب تسجيل الدخول أولاً" },
         { status: 401 }
@@ -17,7 +31,7 @@ export async function GET() {
 
     const apartments = await db.apartment.findMany({
       where: {
-        createdBy: session.user.id
+        createdBy: user.id
       },
       orderBy: {
         createdAt: "desc"

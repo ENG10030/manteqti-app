@@ -1,5 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verify } from 'jsonwebtoken';
 import { db } from '@/lib/db';
+
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
+async function getCurrentUser(request: Request) {
+  const cookieHeader = request.headers.get("cookie");
+  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
+  const token = cookies.get("auth-token");
+  if (!token) return null;
+  try {
+    const decoded = verify(token, JWT_SECRET) as { userId: string };
+    return await db.user.findUnique({ where: { id: decoded.userId } });
+  } catch {
+    return null;
+  }
+}
 
 // الموافقة على التعليق أو رفضه
 export async function PUT(
@@ -7,6 +23,15 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await getCurrentUser(request)
+
+    if (!user || user.role !== "DEVELOPER") {
+      return NextResponse.json(
+        { error: "غير مصرح لك بهذا الإجراء" },
+        { status: 403 }
+      )
+    }
+
     const { id } = await params;
     const body = await request.json();
     const { status } = body;
@@ -46,6 +71,15 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await getCurrentUser(request)
+
+    if (!user || user.role !== "DEVELOPER") {
+      return NextResponse.json(
+        { error: "غير مصرح لك بهذا الإجراء" },
+        { status: 403 }
+      )
+    }
+
     const { id } = await params;
 
     await db.comment.delete({

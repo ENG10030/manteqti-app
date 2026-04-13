@@ -1,7 +1,21 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { verify } from "jsonwebtoken"
 import { db } from "@/lib/db"
+
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
+async function getCurrentUser(request: Request) {
+  const cookieHeader = request.headers.get("cookie");
+  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
+  const token = cookies.get("auth-token");
+  if (!token) return null;
+  try {
+    const decoded = verify(token, JWT_SECRET) as { userId: string };
+    return await db.user.findUnique({ where: { id: decoded.userId } });
+  } catch {
+    return null;
+  }
+}
 
 // حظر / إلغاء حظر المستخدم
 export async function POST(
@@ -9,9 +23,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
+    const user = await getCurrentUser(request)
     
-    if (!session?.user || session.user.role !== "DEVELOPER") {
+    if (!user || user.role !== "DEVELOPER") {
       return NextResponse.json(
         { error: "غير مصرح لك بهذا الإجراء" },
         { status: 403 }
@@ -98,9 +112,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions)
+    const user = await getCurrentUser(request)
     
-    if (!session?.user || session.user.role !== "DEVELOPER") {
+    if (!user || user.role !== "DEVELOPER") {
       return NextResponse.json(
         { error: "غير مصرح لك بهذا الإجراء" },
         { status: 403 }
@@ -109,11 +123,11 @@ export async function GET(
 
     const { id: userId } = await params
 
-    const user = await db.user.findUnique({
+    const userRecord = await db.user.findUnique({
       where: { id: userId }
     })
 
-    if (!user) {
+    if (!userRecord) {
       return NextResponse.json(
         { error: "المستخدم غير موجود" },
         { status: 404 }
@@ -127,7 +141,7 @@ export async function GET(
     })
 
     return NextResponse.json({
-      user,
+      user: userRecord,
       apartments
     })
 
