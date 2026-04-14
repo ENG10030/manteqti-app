@@ -219,6 +219,7 @@ export default function App() {
   const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'favorites' | 'payments' | 'messages' | 'users' | 'blocked' | 'settings' | 'logs' | 'editRequests'>('stats');
   const [likes, setLikes] = useState<Array<{ id: string; apartmentId: string; userId: string; user: { id: string; name: string }; apartment: { id: string; title: string } | null; createdAt: string }>>([]);
   const [comments, setComments] = useState<Array<{ id: string; apartmentId: string; userId: string; content: string; status: string; user: { id: string; name: string }; createdAt: string }>>([]);
+  const [favoritesStats, setFavoritesStats] = useState<{ totalFavorites: number; recentFavorites: number; mostFavoritedApartments: Array<{ apartment: any; likeCount: number }>; topFavoritingUsers: Array<{ user: any; favoriteCount: number }>; favoritesByArea: Array<{ area: string; count: number }> } | null>(null);
   const [newComment, setNewComment] = useState('');
   const [commentLoading, setCommentLoading] = useState(false);
 
@@ -315,13 +316,21 @@ export default function App() {
   const fetchDevData = async () => {
     if (!isDeveloper) return;
     try {
-      const [inqRes, payRes] = await Promise.all([fetch('/api/inquiries'), fetch('/api/payments')]);
-      const [inqData, payData] = await Promise.all([inqRes.json(), payRes.json()]);
+      const [inqRes, payRes, statsRes] = await Promise.all([fetch('/api/inquiries'), fetch('/api/payments'), fetch('/api/stats')]);
+      const [inqData, payData, statsData] = await Promise.all([inqRes.json(), payRes.json(), statsRes.json()]);
       setInquiries(Array.isArray(inqData) ? inqData : []); 
       setPayments(Array.isArray(payData) ? payData : []);
+      if (statsRes.ok && statsData) {
+        setFavoritesStats({
+          totalFavorites: statsData.totalFavorites || 0,
+          recentFavorites: statsData.recentFavorites || 0,
+          mostFavoritedApartments: statsData.mostFavoritedApartments || [],
+          topFavoritingUsers: statsData.topFavoritingUsers || [],
+          favoritesByArea: statsData.favoritesByArea || [],
+        });
+      }
     } catch {}
   };
-
   // Fetch settings
   const fetchSettings = async () => {
     try {
@@ -545,10 +554,6 @@ export default function App() {
 
   useEffect(() => { if (currentUser) fetchUserLikes(); }, [currentUser]);
 
-  // Load favorites from localStorage
-  useEffect(() => {
-    try { const saved = localStorage.getItem('manteqti_favorites'); if (saved) setFavorites(JSON.parse(saved)); } catch {}
-  }, []);
 
   // Load remembered identifier
   useEffect(() => {
@@ -1076,13 +1081,10 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
   };
 
   const toggleFavorite = async (apartmentId: string) => {
-    if (!currentUser) {
-      setFavorites(prev => {
-        const newFavorites = prev.includes(apartmentId) ? prev.filter(f => f !== apartmentId) : [...prev, apartmentId];
-        localStorage.setItem('manteqti_favorites', JSON.stringify(newFavorites));
-        addToast(newFavorites.includes(apartmentId) ? 'تمت الإضافة للمفضلة ❤️' : 'تمت الإزالة من المفضلة', newFavorites.includes(apartmentId) ? 'success' : 'info');
-        return newFavorites;
-      });
+    // تسجيل الدخول مطلوب للمفضلة
+    if (!currentUser && !isDeveloper) {
+      addToast('يجب تسجيل الدخول لإضافة المفضلة ❤️', 'error');
+      setShowAuth(true);
       return;
     }
     try {
