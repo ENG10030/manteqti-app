@@ -121,3 +121,48 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }
+
+// حذف رسالة أو مسح جميع الرسائل (للمطور)
+export async function DELETE(request: NextRequest) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    if (decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (id) {
+      // حذف رسالة واحدة
+      try {
+        await db.message.delete({ where: { id } });
+        return NextResponse.json({ success: true, message: 'تم حذف الرسالة' });
+      } catch {
+        return NextResponse.json({ error: 'الرسالة غير موجودة' }, { status: 404 });
+      }
+    } else {
+      // مسح جميع الرسائل المرسلة للمطور (receiverId: null)
+      try {
+        await db.message.deleteMany({ where: { receiverId: null } });
+        return NextResponse.json({ success: true, message: 'تم مسح جميع الرسائل' });
+      } catch {
+        return NextResponse.json({ error: 'حدث خطأ أثناء مسح الرسائل' }, { status: 500 });
+      }
+    }
+  } catch (error) {
+    console.error('Error deleting messages:', error);
+    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+  }
+}

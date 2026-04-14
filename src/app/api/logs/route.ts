@@ -104,3 +104,48 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, message: 'Log skipped' });
   }
 }
+
+// حذف سجل أو مسح جميع السجلات (للمطور)
+export async function DELETE(request: NextRequest) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    if (decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (id) {
+      // حذف سجل واحد
+      try {
+        await db.operationLog.delete({ where: { id } });
+        return NextResponse.json({ success: true, message: 'تم حذف السجل' });
+      } catch {
+        return NextResponse.json({ error: 'السجل غير موجود' }, { status: 404 });
+      }
+    } else {
+      // مسح جميع السجلات
+      try {
+        await db.operationLog.deleteMany({});
+        return NextResponse.json({ success: true, message: 'تم مسح جميع السجلات' });
+      } catch {
+        return NextResponse.json({ error: 'حدث خطأ أثناء مسح السجلات' }, { status: 500 });
+      }
+    }
+  } catch (error) {
+    console.error('Error deleting logs:', error);
+    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+  }
+}

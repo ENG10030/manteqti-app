@@ -107,3 +107,48 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create inquiry' }, { status: 500 });
   }
 }
+
+// حذف استفسار أو مسح جميع الاستفسارات (للمطور)
+export async function DELETE(request: NextRequest) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    if (decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (id) {
+      // حذف استفسار واحد
+      try {
+        await db.inquiry.delete({ where: { id } });
+        return NextResponse.json({ success: true, message: 'تم حذف الاستفسار' });
+      } catch {
+        return NextResponse.json({ error: 'الاستفسار غير موجود' }, { status: 404 });
+      }
+    } else {
+      // مسح جميع الاستفسارات
+      try {
+        await db.inquiry.deleteMany({});
+        return NextResponse.json({ success: true, message: 'تم مسح جميع الاستفسارات' });
+      } catch {
+        return NextResponse.json({ error: 'حدث خطأ أثناء مسح الاستفسارات' }, { status: 500 });
+      }
+    }
+  } catch (error) {
+    console.error('Error deleting inquiries:', error);
+    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+  }
+}

@@ -115,3 +115,48 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create payment' }, { status: 500 });
   }
 }
+
+// حذف مدفوعة أو مسح جميع المدفوعات (للمطور)
+export async function DELETE(request: NextRequest) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    if (decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (id) {
+      // حذف مدفوعة واحدة
+      try {
+        await db.payment.delete({ where: { id } });
+        return NextResponse.json({ success: true, message: 'تم حذف المدفوعة' });
+      } catch {
+        return NextResponse.json({ error: 'المدفوعة غير موجودة' }, { status: 404 });
+      }
+    } else {
+      // مسح جميع المدفوعات
+      try {
+        await db.payment.deleteMany({});
+        return NextResponse.json({ success: true, message: 'تم مسح جميع المدفوعات' });
+      } catch {
+        return NextResponse.json({ error: 'حدث خطأ أثناء مسح المدفوعات' }, { status: 500 });
+      }
+    }
+  } catch (error) {
+    console.error('Error deleting payments:', error);
+    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+  }
+}
