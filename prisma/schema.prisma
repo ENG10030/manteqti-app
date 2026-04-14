@@ -1,5 +1,5 @@
-// Manteqti - PostgreSQL Schema for Vercel/Supabase
-// هذا الملف الرئيسي - يحل مكان schema.prisma
+// Manteqti - PostgreSQL Schema for Vercel production
+// For local SQLite development, change provider to "sqlite"
 
 generator client {
   provider = "prisma-client-js"
@@ -18,7 +18,7 @@ model User {
   email                 String?
   phone                 String?
   password              String
-  role                  String    @default("USER")
+  role                  String    @default("user")
   isBlocked             Boolean   @default(false)
   blockedAt             DateTime?
   blockReason           String?
@@ -79,16 +79,16 @@ model Apartment {
 }
 
 model Inquiry {
-  id               String    @id @default(cuid())
-  apartmentId      String
-  userId           String?
-  name             String
-  email            String
-  phone            String
-  message          String
-  lifecycleStatus  String    @default("New")
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id              String   @id @default(cuid())
+  apartmentId     String
+  userId          String?
+  name            String
+  email           String
+  phone           String
+  message         String
+  lifecycleStatus String   @default("new")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
   user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -96,17 +96,17 @@ model Inquiry {
 }
 
 model Payment {
-  id             String    @id @default(cuid())
-  inquiryId      String    @unique
+  id             String   @id @default(cuid())
+  inquiryId      String   @unique
   method         String
-  status         String    @default("Pending")
-  inquiryStatus  String    @default("New")
+  status         String   @default("Pending")
+  inquiryStatus  String   @default("new")
   amount         Int
   transactionRef String?
   paymentLink    String?
   userId         String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   inquiry Inquiry @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
   user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
