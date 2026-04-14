@@ -2017,12 +2017,14 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                   </div>
 
                   {/* Favorites by Area */}
-                  {(favoritesStats?.favoritesByArea?.length || 0) > 0 && (
+                  {favoritesStats?.favoritesByArea && favoritesStats.favoritesByArea.length > 0 && (() => {
+                    const byArea = favoritesStats.favoritesByArea;
+                    const maxCount = Math.max(...byArea.map(a => a.count));
+                    return (
                     <div className={`rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'} p-4`}>
                       <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><MapPin className="h-5 w-5 text-emerald-500" />المفضلة حسب المنطقة</h3>
                       <div className="space-y-2">
-                        {favoritesStats.favoritesByArea.map((item, i) => {
-                          const maxCount = Math.max(...favoritesStats.favoritesByArea.map(a => a.count));
+                        {byArea.map((item, i) => {
                           const pct = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
                           return (
                             <div key={i} className="flex items-center gap-3">
@@ -2036,7 +2038,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                         })}
                       </div>
                     </div>
-                  )}
+                    );
+                  })()}
 
                   {/* All Likes Table */}
                   <div className={`rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'} p-4`}>
