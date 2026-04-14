@@ -8,19 +8,8 @@ let zaiInstance: any = null;
 let ZAI_AVAILABLE = false;
 
 async function getZAI() {
-  if (zaiInstance) return zaiInstance;
-  
-  try {
-    // Dynamic import to avoid build errors when SDK is not available
-    const ZAI = (await import('z-ai-web-dev-sdk')).default;
-    zaiInstance = await ZAI.create();
-    ZAI_AVAILABLE = true;
-    return zaiInstance;
-  } catch (e) {
-    console.log('ZAI SDK not available, using fallback responses');
-    ZAI_AVAILABLE = false;
-    return null;
-  }
+  // SDK not available on Vercel - use fallback responses
+  return null;
 }
 
 // System prompt for real estate assistant
