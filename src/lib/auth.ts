@@ -13,6 +13,7 @@ export interface AuthUser {
   role: string;
   isApproved: boolean;
   isBlocked: boolean;
+  emailVerified: boolean;
 }
 
 // NextAuth Options
@@ -41,11 +42,17 @@ export const authOptions = {
 
         if (user.isBlocked) return null;
 
+        // Check email verification (developers bypass this check)
+        if (!user.emailVerified && user.role !== 'DEVELOPER') {
+          return null;
+        }
+
         return {
           id: user.id,
           email: user.email || "",
           name: user.name,
           role: user.role,
+          emailVerified: user.emailVerified,
         };
       },
     }),
@@ -93,6 +100,7 @@ export async function getCurrentUser(request: NextRequest): Promise<AuthUser | n
         role: true,
         isApproved: true,
         isBlocked: true,
+        emailVerified: true,
       },
     });
 
@@ -120,6 +128,11 @@ export async function requireAuth(request: NextRequest): Promise<AuthUser> {
   
   if (user.isBlocked) {
     throw new Error("تم حظر حسابك");
+  }
+
+  // Check email verification (developers bypass this check)
+  if (!user.emailVerified && user.role !== 'DEVELOPER') {
+    throw new Error("يجب تأكيد البريد الإلكتروني أولاً");
   }
   
   return user;

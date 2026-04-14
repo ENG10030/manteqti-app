@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import crypto from 'crypto';
 
+// Rate limiting for OTP requests (in-memory)
+const otpRequestCounts = new Map<string, { count: number; lastRequest: number }>();
+const MAX_OTP_REQUESTS = 3; // max 3 requests per 5 minutes
+const OTP_REQUEST_WINDOW = 5 * 60 * 1000;
+
 export async function POST(request: NextRequest) {
   try {
     const { identifier } = await request.json();
@@ -14,6 +19,24 @@ export async function POST(request: NextRequest) {
 
     const normalizedIdentifier = identifier.toLowerCase().trim();
 
+    // Rate limit OTP requests
+    const requestCount = otpRequestCounts.get(normalizedIdentifier);
+    if (requestCount) {
+      const now = Date.now();
+      if (now - requestCount.lastRequest < OTP_REQUEST_WINDOW) {
+        if (requestCount.count >= MAX_OTP_REQUESTS) {
+          return NextResponse.json({ 
+            error: 'طلبات كثيرة. يرجى المحاولة بعد 5 دقائق' 
+          }, { status: 429 });
+        }
+      } else {
+        // Window expired, reset counter
+        otpRequestCounts.set(normalizedIdentifier, { count: 1, lastRequest: now });
+      }
+    } else {
+      otpRequestCounts.set(normalizedIdentifier, { count: 1, lastRequest: Date.now() });
+    }
+
     // Find user by identifier or email
     const user = await db.user.findFirst({
       where: {
@@ -24,8 +47,13 @@ export async function POST(request: NextRequest) {
       }
     });
 
+    // Always return the same success message to prevent email enumeration
+    // Even if user doesn't exist, we return "success" to not leak info
     if (!user) {
-      return NextResponse.json({ error: 'المستخدم غير موجود' }, { status: 404 });
+      return NextResponse.json({ 
+        success: true,
+        message: 'إذا كان البريد مسجلاً، سيتم إرسال رمز التحقق' 
+      });
     }
 
     // Generate new OTP
@@ -47,7 +75,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ 
       success: true,
       message: 'تم إرسال رمز التحقق',
-      emailVerified: user.emailVerified,
     });
   } catch (error) {
     console.error('Error requesting OTP:', error);

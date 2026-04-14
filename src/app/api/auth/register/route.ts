@@ -14,7 +14,7 @@ const BLOCKED_DOMAINS = [
   'emailondeck.com', 'crazymailing.com', 'trashymail.com', 'filzmail.com',
   'incognitomail.org', 'mailnull.com', 'tempinbox.com', 'binkmail.com',
   'safetymail.info', 'spamavert.com', 'mintemail.com', 'mailtothis.com',
-  'dispostable.com', 'inboxkitten.com', 'tutanota.com', 'protonmail.com',
+  'dispostable.com', 'inboxkitten.com',
   // 10minutemail and similar
   '10minutemail.com', '10minutemail.net', 'tempmailaddress.com',
   // Common fake domains used for testing

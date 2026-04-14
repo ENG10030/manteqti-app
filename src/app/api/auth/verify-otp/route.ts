@@ -4,6 +4,11 @@ import { sign } from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
+// OTP attempt rate limiting (in-memory)
+const otpAttempts = new Map<string, { count: number; lockedUntil: number }>();
+const MAX_OTP_ATTEMPTS = 5;
+const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
+
 export async function POST(request: NextRequest) {
   try {
     const { identifier, otp, code } = await request.json();
@@ -17,6 +22,26 @@ export async function POST(request: NextRequest) {
 
     const normalizedIdentifier = identifier.toLowerCase().trim();
 
+    // Check rate limiting for OTP attempts
+    const attempt = otpAttempts.get(normalizedIdentifier);
+    if (attempt) {
+      if (attempt.lockedUntil && Date.now() < attempt.lockedUntil) {
+        const remainingMinutes = Math.ceil((attempt.lockedUntil - Date.now()) / 60000);
+        return NextResponse.json({ 
+          error: `تم تجاوز عدد المحاولات المسموح. يرجى المحاولة بعد ${remainingMinutes} دقيقة`,
+          tooManyAttempts: true 
+        }, { status: 429 });
+      }
+      if (attempt.count >= MAX_OTP_ATTEMPTS) {
+        // Lock for 15 minutes
+        otpAttempts.set(normalizedIdentifier, { count: attempt.count, lockedUntil: Date.now() + LOCKOUT_DURATION });
+        return NextResponse.json({ 
+          error: 'تم تجاوز عدد المحاولات المسموح. يرجى المحاولة بعد 15 دقيقة',
+          tooManyAttempts: true 
+        }, { status: 429 });
+      }
+    }
+
     // Find user by identifier
     const user = await db.user.findFirst({
       where: {
@@ -28,16 +53,36 @@ export async function POST(request: NextRequest) {
     });
 
     if (!user) {
-      return NextResponse.json({ error: 'المستخدم غير موجود' }, { status: 404 });
+      return NextResponse.json({ error: 'البريد الإلكتروني أو الرمز غير صحيح' }, { status: 400 });
     }
 
     if (user.otp !== otpCode) {
-      return NextResponse.json({ error: 'رمز التأكيد غير صحيح' }, { status: 400 });
+      // Increment attempt counter
+      const currentAttempt = otpAttempts.get(normalizedIdentifier) || { count: 0, lockedUntil: 0 };
+      currentAttempt.count += 1;
+      otpAttempts.set(normalizedIdentifier, currentAttempt);
+
+      const remaining = MAX_OTP_ATTEMPTS - currentAttempt.count;
+      if (remaining <= 0) {
+        otpAttempts.set(normalizedIdentifier, { count: currentAttempt.count, lockedUntil: Date.now() + LOCKOUT_DURATION });
+        return NextResponse.json({ 
+          error: 'تم تجاوز عدد المحاولات المسموح. يرجى المحاولة بعد 15 دقيقة',
+          tooManyAttempts: true 
+        }, { status: 429 });
+      }
+
+      return NextResponse.json({ 
+        error: `رمز التأكيد غير صحيح. متبقي ${remaining} محاول${remaining === 1 ? 'ة' : 'ات'}`,
+        remainingAttempts: remaining 
+      }, { status: 400 });
     }
 
     if (!user.otpExpires || user.otpExpires < new Date()) {
       return NextResponse.json({ error: 'انتهت صلاحية الرمز' }, { status: 400 });
     }
+
+    // Clear attempt counter on success
+    otpAttempts.delete(normalizedIdentifier);
 
     // Mark email as verified and clear OTP
     const updatedUser = await db.user.update({
