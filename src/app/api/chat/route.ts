@@ -4,13 +4,6 @@ import { NextRequest, NextResponse } from 'next/server';
 const conversations = new Map<string, Array<{ role: 'assistant' | 'user'; content: string }>>();
 
 // Check if we're in development environment with SDK available
-let zaiInstance: any = null;
-let ZAI_AVAILABLE = false;
-
-async function getZAI() {
-  // SDK not available on Vercel - use fallback responses
-  return null;
-}
 
 // System prompt for real estate assistant
 const SYSTEM_PROMPT = `أنت مساعد ذكي متخصص في العقارات والشقق في مصر. اسمك "منطقتي".
@@ -96,6 +89,43 @@ function getFallbackReply(message: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  let body: any = null;
+  
+  try {
+    body = await request.json();
+    const { message } = body;
+
+    if (!message || !message.trim()) {
+      return NextResponse.json({ 
+        success: true, 
+        response: defaultReply 
+      });
+    }
+
+    // Use fallback response
+    const fallbackReply = getFallbackReply(message);
+    
+    return NextResponse.json({
+      success: true,
+      response: fallbackReply,
+      fallback: true
+    });
+
+  } catch (error) {
+    console.error('Chat error:', error);
+    
+    const message = typeof body === 'object' && body?.message ? body.message : '';
+    const fallbackReply = getFallbackReply(message);
+    
+    return NextResponse.json({
+      success: true,
+      response: fallbackReply,
+      fallback: true
+    });
+  }
+}
+
+
   let body: any = null;
   
   try {
