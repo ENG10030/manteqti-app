@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import { sendOTPEmail } from "@/lib/email";
 
 // قائمة نطاقات البريد المؤقتة المحظورة
 const BLOCKED_DOMAINS = [
@@ -128,8 +129,8 @@ export async function POST(request: Request) {
       },
     });
 
-    // Log OTP for development (in production, send via email service)
-    console.log(`📧 Email verification OTP for ${userEmail}: ${otp}`);
+    // Send OTP via email service (Resend) or fallback to console.log in dev
+    await sendOTPEmail({ to: userEmail, otp, type: 'registration' });
 
     return NextResponse.json({
       message: "تم إنشاء الحساب بنجاح",

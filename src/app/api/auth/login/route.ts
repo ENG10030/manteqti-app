@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
 import crypto from "crypto";
+import { sendOTPEmail } from "@/lib/email";
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
@@ -60,7 +61,8 @@ export async function POST(request: Request) {
         data: { otp, otpExpires }
       });
 
-      console.log(`📧 New verification OTP for ${user.email}: ${otp}`);
+      // Send OTP via email service (Resend) or fallback to console.log in dev
+      await sendOTPEmail({ to: user.email, otp, type: 'login' });
 
       return NextResponse.json(
         { 
