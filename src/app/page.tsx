@@ -2017,7 +2017,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                   </div>
 
                   {/* Favorites by Area */}
-                  {favoritesStats?.favoritesByArea?.length > 0 && (
+                  {(favoritesStats?.favoritesByArea?.length || 0) > 0 && (
                     <div className={`rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'} p-4`}>
                       <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><MapPin className="h-5 w-5 text-emerald-500" />المفضلة حسب المنطقة</h3>
                       <div className="space-y-2">
