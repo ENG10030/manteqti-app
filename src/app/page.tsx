@@ -38,7 +38,7 @@ const statusConfig: Record<string, { label: string; color: string; bgColor: stri
 
 // Interfaces
 interface Apartment {
-  id: string; title: string; price: number; area: string; bedrooms: number; bathrooms: number; floor?: number | null; apartmentSize?: number | null;
+  id: string; title: string; price: number; area: string; bedrooms: number; bathrooms: number; floor?: number | string | null; apartmentSize?: number | null;
   description: string; ownerPhone: string; mapLink: string; imageUrl?: string; images?: string[];
   videoUrl?: string; videos?: string[]; amenities?: string[]; isFeatured?: boolean; isVip?: boolean;
   type: 'rent' | 'sale'; status: string; paymentRef?: string; createdBy?: string; views?: number; createdAt: string;
