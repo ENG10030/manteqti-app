@@ -1088,7 +1088,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
       return;
     }
     try {
-      const existingLike = likes.find(l => l.apartmentId === apartmentId && l.userId === currentUser.id);
+      const existingLike = currentUser ? likes.find(l => l.apartmentId === apartmentId && l.userId === currentUser.id) : null;
       if (existingLike) {
         await fetch(`/api/likes/${existingLike.id}`, { method: 'DELETE' });
         setLikes(prev => prev.filter(l => l.id !== existingLike.id));
