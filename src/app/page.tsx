@@ -1422,7 +1422,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Footer */}
       <footer className={`relative z-10 mt-auto py-6 border-t ${darkMode ? 'bg-slate-900/80 border-slate-700' : 'bg-white/80 border-slate-200'} backdrop-blur`}>
-        <div className="max-w-7xl mx-auto px-4 text-center"><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>© 2026 منطقتي | Manteqti - جميع الحقوق محفوظة</p></div>
+        <div className="max-w-7xl mx-auto px-4 text-center"><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>© 2025 منطقتي | Manteqti - جميع الحقوق محفوظة</p></div>
       </footer>
 
       {/* Confirm Dialog */}
@@ -2017,29 +2017,28 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                   </div>
 
                   {/* Favorites by Area */}
-                  {favoritesStats?.favoritesByArea && favoritesStats.favoritesByArea.length > 0 && (() => {
-                    const byArea = favoritesStats.favoritesByArea;
-                    const maxCount = Math.max(...byArea.map(a => a.count));
-                    return (
+                  {favoritesStats && favoritesStats.favoritesByArea && favoritesStats.favoritesByArea.length > 0 && (
                     <div className={`rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'} p-4`}>
                       <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><MapPin className="h-5 w-5 text-emerald-500" />المفضلة حسب المنطقة</h3>
                       <div className="space-y-2">
-                        {byArea.map((item, i) => {
-                          const pct = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
-                          return (
-                            <div key={i} className="flex items-center gap-3">
-                              <span className={`text-sm w-20 truncate ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{item.area}</span>
-                              <div className={`flex-1 h-6 rounded-full ${darkMode ? 'bg-slate-600' : 'bg-slate-200'} overflow-hidden`}>
-                                <div className="h-full bg-gradient-to-l from-emerald-500 to-teal-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                        {(() => {
+                          const maxCount = Math.max(...favoritesStats.favoritesByArea.map(a => a.count));
+                          return favoritesStats.favoritesByArea.map((item, i) => {
+                            const pct = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
+                            return (
+                              <div key={i} className="flex items-center gap-3">
+                                <span className={`text-sm w-20 truncate ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{item.area}</span>
+                                <div className={`flex-1 h-6 rounded-full ${darkMode ? 'bg-slate-600' : 'bg-slate-200'} overflow-hidden`}>
+                                  <div className="h-full bg-gradient-to-l from-emerald-500 to-teal-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                                </div>
+                                <span className={`text-sm font-bold w-8 text-left ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{item.count}</span>
                               </div>
-                              <span className={`text-sm font-bold w-8 text-left ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{item.count}</span>
-                            </div>
-                          );
-                        })}
+                            );
+                          });
+                        })()}
                       </div>
                     </div>
-                    );
-                  })()}
+                  )}
 
                   {/* All Likes Table */}
                   <div className={`rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'} p-4`}>
