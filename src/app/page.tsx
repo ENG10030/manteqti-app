@@ -1095,7 +1095,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
         setFavorites(prev => prev.filter(f => f !== apartmentId));
         addToast('تمت الإزالة من المفضلة', 'info');
       } else {
-        const res = await fetch('/api/likes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apartmentId, userId: currentUser.id }) });
+        const res = await fetch('/api/likes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apartmentId, userId: currentUser?.id }) });
         const data = await res.json();
         if (data.success) { setLikes(prev => [...prev, data.like]); setFavorites(prev => [...prev, apartmentId]); addToast('تمت الإضافة للمفضلة ❤️', 'success'); }
       }
@@ -2013,7 +2013,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <input type="password" placeholder="كلمة المرور الجديدة" value={devPasswordChange.new} onChange={(e) => setDevPasswordChange({ ...devPasswordChange, new: e.target.value })} className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 placeholder-slate-400'}`} />
                       <input type="password" placeholder="تأكيد كلمة المرور" value={devPasswordChange.confirm} onChange={(e) => setDevPasswordChange({ ...devPasswordChange, confirm: e.target.value })} className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 placeholder-slate-400'}`} />
                     </div>
-                    <button onClick={async () => {
                     <button onClick={async () => {
                       if (!devPasswordChange.current || !devPasswordChange.new || !devPasswordChange.confirm) { addToast('جميع الحقول مطلوبة', 'error'); return; }
                       if (devPasswordChange.new !== devPasswordChange.confirm) { addToast('كلمتا المرور غير متطابقتين', 'error'); return; }
