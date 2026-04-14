@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       });
 
       // Send OTP via email service (Resend) or fallback to console.log in dev
-      await sendOTPEmail({ to: user.email, otp, type: 'login' });
+      await sendOTPEmail({ to: user.email || user.identifier, otp, type: 'login' });
 
       return NextResponse.json(
         { 
