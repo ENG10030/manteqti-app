@@ -985,19 +985,6 @@ export default function App() {
     return uploadedUrls;
   };
 
-  // Delete like (developer only)
-  const deleteLike = async (likeId: string) => {
-    try {
-      const res = await fetch(`/api/likes/${likeId}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
-        fetchAllLikes();
-        addToast('تم حذف الإعجاب', 'success');
-      }
-    } catch {
-      addToast('حدث خطأ', 'error');
-    }
-  };
 
   const handleSendMessage = async () => {
     if (!chatInput.trim() || chatLoading) return;
