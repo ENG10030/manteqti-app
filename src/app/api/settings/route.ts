@@ -15,7 +15,6 @@ async function isDeveloper(request: Request) {
   try {
     const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
     
-    // التحقق من دور DEVELOPER أو بريد المطور
     if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
 
     const user = await db.user.findUnique({
@@ -39,6 +38,7 @@ export async function GET() {
         data: {
           contactFee: 50,
           featuredFee: 100,
+          vipFee: 300,
           premiumFee: 200,
           saleDisplayFee: 100,
           rentDisplayFee: 75,
@@ -70,49 +70,69 @@ export async function PUT(request: Request) {
 
     const body = await request.json();
 
+    // تحقق من وجود البيانات
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
+    }
+
     let settings = await db.settings.findFirst();
 
+    // بناء updateData - فقط الحقول الموجودة في الـ body
+    const updateData: Record<string, any> = {};
+
+    // لكل حقل: لو موجود في body (حتى لو قيمته 0) نستخدمه، ولو مش موجود نحتفظ بالقيمة الحالية
+    if (body.contactFee !== undefined && body.contactFee !== null) updateData.contactFee = Number(body.contactFee) || 0;
+    if (body.featuredFee !== undefined && body.featuredFee !== null) updateData.featuredFee = Number(body.featuredFee) || 0;
+    if (body.vipFee !== undefined && body.vipFee !== null) updateData.vipFee = Number(body.vipFee) || 0;
+    if (body.premiumFee !== undefined && body.premiumFee !== null) updateData.premiumFee = Number(body.premiumFee) || 0;
+    if (body.saleDisplayFee !== undefined && body.saleDisplayFee !== null) updateData.saleDisplayFee = Number(body.saleDisplayFee) || 0;
+    if (body.rentDisplayFee !== undefined && body.rentDisplayFee !== null) updateData.rentDisplayFee = Number(body.rentDisplayFee) || 0;
+    if (body.otherServicesFee !== undefined && body.otherServicesFee !== null) updateData.otherServicesFee = Number(body.otherServicesFee) || 0;
+    if (body.highlightFee !== undefined && body.highlightFee !== null) updateData.highlightFee = Number(body.highlightFee) || 0;
+    if (body.priorityListingFee !== undefined && body.priorityListingFee !== null) updateData.priorityListingFee = Number(body.priorityListingFee) || 0;
+    if (body.verifiedListingFee !== undefined && body.verifiedListingFee !== null) updateData.verifiedListingFee = Number(body.verifiedListingFee) || 0;
+    if (body.currency !== undefined && body.currency !== null) updateData.currency = String(body.currency);
+
+    // لو مفيش حقول محدثة
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: "لا توجد بيانات للتحديث" }, { status: 400 });
+    }
+
     if (!settings) {
+      // إنشاء إعدادات جديدة مع القيم الافتراضية للم fields اللي مش موجودة
       settings = await db.settings.create({
         data: {
-          contactFee: body.contactFee || 50,
-          featuredFee: body.featuredFee || 100,
-          premiumFee: body.premiumFee || 200,
-          saleDisplayFee: body.saleDisplayFee || 100,
-          rentDisplayFee: body.rentDisplayFee || 75,
-          otherServicesFee: body.otherServicesFee || 50,
-          highlightFee: body.highlightFee || 150,
-          priorityListingFee: body.priorityListingFee || 200,
-          verifiedListingFee: body.verifiedListingFee || 250,
-          currency: body.currency || "ج.م",
+          contactFee: updateData.contactFee ?? 50,
+          featuredFee: updateData.featuredFee ?? 100,
+          vipFee: updateData.vipFee ?? 300,
+          premiumFee: updateData.premiumFee ?? 200,
+          saleDisplayFee: updateData.saleDisplayFee ?? 100,
+          rentDisplayFee: updateData.rentDisplayFee ?? 75,
+          otherServicesFee: updateData.otherServicesFee ?? 50,
+          highlightFee: updateData.highlightFee ?? 150,
+          priorityListingFee: updateData.priorityListingFee ?? 200,
+          verifiedListingFee: updateData.verifiedListingFee ?? 250,
+          currency: updateData.currency || "ج.م",
         },
       });
     } else {
       settings = await db.settings.update({
         where: { id: settings.id },
-        data: {
-          contactFee: body.contactFee,
-          featuredFee: body.featuredFee,
-          premiumFee: body.premiumFee,
-          saleDisplayFee: body.saleDisplayFee,
-          rentDisplayFee: body.rentDisplayFee,
-          otherServicesFee: body.otherServicesFee,
-          highlightFee: body.highlightFee,
-          priorityListingFee: body.priorityListingFee,
-          verifiedListingFee: body.verifiedListingFee,
-          currency: body.currency,
-        },
+        data: updateData,
       });
     }
 
+    console.log("✅ Settings updated successfully:", JSON.stringify(updateData));
+
     return NextResponse.json({
+      success: true,
       message: "تم تحديث الإعدادات بنجاح",
       settings,
     });
   } catch (error) {
-    console.error("Update settings error:", error);
+    console.error("❌ Update settings error:", error);
     return NextResponse.json(
-      { error: "حدث خطأ أثناء تحديث الإعدادات" },
+      { error: "حدث خطأ أثناء تحديث الإعدادات", details: String(error) },
       { status: 500 }
     );
   }
