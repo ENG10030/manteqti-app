@@ -1086,6 +1086,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
         const data = await res.json();
         if (data.success) { setLikes(prev => [...prev, data.like]); setFavorites(prev => [...prev, apartmentId]); addToast('تمت الإضافة للمفضلة ❤️', 'success'); }
       }
+      fetchUserLikes(); // ensure sync
     } catch { addToast('حدث خطأ', 'error'); }
   };
 
@@ -1106,24 +1107,24 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
   };
 
   const deleteComment = async (commentId: string) => {
-    try { await fetch(`/api/comments/${commentId}`, { method: 'DELETE' }); fetchAllComments(); addToast('تم حذف التعليق', 'success'); } catch { addToast('حدث خطأ', 'error'); }
+    setConfirmDialog({ isOpen: true, title: 'حذف التعليق', message: 'هل أنت متأكد من حذف هذا التعليق؟', confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { try { await fetch(`/api/comments/${commentId}`, { method: 'DELETE' }); fetchAllComments(); addToast('تم حذف التعليق', 'success'); } catch { addToast('حدث خطأ', 'error'); } setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }, type: 'danger' });
   };
 
   // ===== Clear All & Individual Delete Handlers =====
   const deleteMessage = async (msgId: string) => {
-    try { await fetch(`/api/messages?id=${msgId}`, { method: 'DELETE' }); setMessages(prev => prev.filter(m => m.id !== msgId)); addToast('تم حذف الرسالة', 'success'); } catch { addToast('حدث خطأ', 'error'); }
+    setConfirmDialog({ isOpen: true, title: 'حذف الرسالة', message: 'هل أنت متأكد من حذف هذه الرسالة؟', confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { try { await fetch(`/api/messages?id=${msgId}`, { method: 'DELETE' }); setMessages(prev => prev.filter(m => m.id !== msgId)); addToast('تم حذف الرسالة', 'success'); } catch { addToast('حدث خطأ', 'error'); } setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }, type: 'danger' });
   };
   const clearAllMessages = async () => {
     setConfirmDialog({ isOpen: true, title: 'مسح جميع الرسائل', message: 'هل أنت متأكد من مسح جميع الرسائل؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/messages', { method: 'DELETE' }); setMessages([]); addToast('تم مسح جميع الرسائل', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
   };
   const deletePayment = async (paymentId: string) => {
-    try { await fetch(`/api/payments/${paymentId}`, { method: 'DELETE' }); setPayments(prev => prev.filter(p => p.id !== paymentId)); fetchDevData(); addToast('تم حذف عملية الدفع', 'success'); } catch { addToast('حدث خطأ', 'error'); }
+    setConfirmDialog({ isOpen: true, title: 'حذف عملية الدفع', message: 'هل أنت متأكد من حذف عملية الدفع هذه؟', confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { try { await fetch(`/api/payments/${paymentId}`, { method: 'DELETE' }); setPayments(prev => prev.filter(p => p.id !== paymentId)); fetchDevData(); addToast('تم حذف عملية الدفع', 'success'); } catch { addToast('حدث خطأ', 'error'); } setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }, type: 'danger' });
   };
   const clearAllPayments = async () => {
     setConfirmDialog({ isOpen: true, title: 'مسح جميع المدفوعات', message: 'هل أنت متأكد من مسح جميع المدفوعات؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/payments', { method: 'DELETE' }); setPayments([]); addToast('تم مسح جميع المدفوعات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
   };
   const deleteLike = async (likeId: string) => {
-    try { await fetch(`/api/likes?id=${likeId}`, { method: 'DELETE' }); setLikes(prev => prev.filter(l => l.id !== likeId)); addToast('تم حذف الإعجاب', 'success'); } catch { addToast('حدث خطأ', 'error'); }
+    setConfirmDialog({ isOpen: true, title: 'حذف الإعجاب', message: 'هل أنت متأكد من حذف هذا الإعجاب؟', confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { try { await fetch(`/api/likes?id=${likeId}`, { method: 'DELETE' }); setLikes(prev => prev.filter(l => l.id !== likeId)); addToast('تم حذف الإعجاب', 'success'); } catch { addToast('حدث خطأ', 'error'); } setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }, type: 'danger' });
   };
   const clearAllLikes = async () => {
     setConfirmDialog({ isOpen: true, title: 'مسح جميع الإعجابات', message: 'هل أنت متأكد من مسح جميع الإعجابات؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/likes', { method: 'DELETE' }); setLikes([]); addToast('تم مسح جميع الإعجابات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
@@ -1135,19 +1136,19 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     setConfirmDialog({ isOpen: true, title: 'مسح جميع التعليقات', message: 'هل أنت متأكد من مسح جميع التعليقات؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/comments', { method: 'DELETE' }); setComments([]); addToast('تم مسح جميع التعليقات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
   };
   const deleteInquiry = async (inqId: string) => {
-    try { await fetch(`/api/inquiries/${inqId}`, { method: 'DELETE' }); setInquiries(prev => prev.filter(i => i.id !== inqId)); addToast('تم حذف الاستفسار', 'success'); } catch { addToast('حدث خطأ', 'error'); }
+    setConfirmDialog({ isOpen: true, title: 'حذف الاستفسار', message: 'هل أنت متأكد من حذف هذا الاستفسار؟', confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { try { await fetch(`/api/inquiries/${inqId}`, { method: 'DELETE' }); setInquiries(prev => prev.filter(i => i.id !== inqId)); addToast('تم حذف الاستفسار', 'success'); } catch { addToast('حدث خطأ', 'error'); } setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }, type: 'danger' });
   };
   const clearAllInquiries = async () => {
     setConfirmDialog({ isOpen: true, title: 'مسح جميع الاستفسارات', message: 'هل أنت متأكد من مسح جميع الاستفسارات؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/inquiries', { method: 'DELETE' }); setInquiries([]); setPayments([]); addToast('تم مسح جميع الاستفسارات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
   };
   const deleteLog = async (logId: string) => {
-    try { await fetch(`/api/logs?id=${logId}`, { method: 'DELETE' }); setOperationLogs(prev => prev.filter(l => l.id !== logId)); addToast('تم حذف السجل', 'success'); } catch { addToast('حدث خطأ', 'error'); }
+    setConfirmDialog({ isOpen: true, title: 'حذف السجل', message: 'هل أنت متأكد من حذف هذا السجل؟', confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { try { await fetch(`/api/logs?id=${logId}`, { method: 'DELETE' }); setOperationLogs(prev => prev.filter(l => l.id !== logId)); addToast('تم حذف السجل', 'success'); } catch { addToast('حدث خطأ', 'error'); } setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }, type: 'danger' });
   };
   const clearAllLogs = async () => {
     setConfirmDialog({ isOpen: true, title: 'مسح سجل العمليات', message: 'هل أنت متأكد من مسح جميع سجلات العمليات؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/logs', { method: 'DELETE' }); setOperationLogs([]); addToast('تم مسح سجل العمليات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
   };
   const deleteEditRequest = async (reqId: string) => {
-    try { await fetch(`/api/edit-requests/${reqId}`, { method: 'DELETE' }); setEditRequests(prev => prev.filter(r => r.id !== reqId)); addToast('تم حذف طلب التعديل', 'success'); } catch { addToast('حدث خطأ', 'error'); }
+    setConfirmDialog({ isOpen: true, title: 'حذف طلب التعديل', message: 'هل أنت متأكد من حذف طلب التعديل هذا؟', confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { try { await fetch(`/api/edit-requests/${reqId}`, { method: 'DELETE' }); setEditRequests(prev => prev.filter(r => r.id !== reqId)); addToast('تم حذف طلب التعديل', 'success'); } catch { addToast('حدث خطأ', 'error'); } setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }, type: 'danger' });
   };
   const clearAllEditRequests = async () => {
     setConfirmDialog({ isOpen: true, title: 'مسح طلبات التعديل', message: 'هل أنت متأكد من مسح جميع طلبات التعديل المعلقة؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/edit-requests', { method: 'DELETE' }); setEditRequests(prev => prev.filter(r => r.status !== 'pending')); addToast('تم مسح طلبات التعديل المعلقة', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
@@ -1155,8 +1156,32 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
   const rejectAllPending = async () => {
     setConfirmDialog({ isOpen: true, title: 'رفض جميع العقارات المعلقة', message: 'هل أنت متأكد من رفض جميع العقارات قيد المراجعة؟ لا يمكن التراجع.', confirmText: 'رفض الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { for (const apt of pendingApartments) { await fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reject' }) }); } fetchApartments(); addToast('تم رفض جميع العقارات المعلقة', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
   };
+  const clearAllApartments = async () => {
+    setConfirmDialog({ isOpen: true, title: 'حذف جميع العقارات', message: `هل أنت متأكد من حذف جميع العقارات؟ لا يمكن التراجع عن هذا الإجراء!\n\nسيتم حذف ${allApartments.length} عقار.`, confirmText: 'حذف الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { for (const apt of allApartments) { try { await fetch(`/api/apartments/${apt.id}`, { method: 'DELETE' }); } catch {} } setAllApartments([]); setApartments([]); setPendingApartments([]); addToast('تم حذف جميع العقارات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
+  };
+  const deleteUser = async (userId: string, userName: string) => {
+    setConfirmDialog({ isOpen: true, title: 'حذف المستخدم', message: `هل أنت متأكد من حذف المستخدم "${userName}"؟\n\nسيتم حذف جميع بياناته بما في ذلك العقارات والرسائل والإعجابات.`, confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch(`/api/users/${userId}`, { method: 'DELETE' }); setAllUsers(prev => prev.filter(u => u.id !== userId)); fetchAllUsers(); fetchDevData(); addToast('تم حذف المستخدم', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
+  };
 
-  // Re-fetch data when switching dev tabs (favorites fix)
+  // Refresh function for current dev tab
+  const refreshDevTab = useCallback(async () => {
+    if (!isDeveloper) return;
+    addToast('جاري التحديث...', 'info');
+    if (devTab === 'stats') { fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchAllUsers(); fetchBlockedUsers(); fetchEditRequests(); fetchOperationLogs(); }
+    if (devTab === 'pending' || devTab === 'apartments') fetchApartments();
+    if (devTab === 'favorites') fetchAllLikes();
+    if (devTab === 'inquiries') fetchDevData();
+    if (devTab === 'payments') fetchDevData();
+    if (devTab === 'messages') fetchMessages();
+    if (devTab === 'comments') fetchAllComments();
+    if (devTab === 'editRequests') fetchEditRequests();
+    if (devTab === 'users') { fetchAllUsers(); fetchBlockedUsers(); }
+    if (devTab === 'blocked') { fetchBlockedUsers(); fetchAllUsers(); }
+    if (devTab === 'logs') fetchOperationLogs();
+    if (devTab === 'settings') fetchSettings();
+  }, [devTab, isDeveloper]);
+
+  // Re-fetch data when switching dev tabs
   useEffect(() => {
     if (!isDeveloper) return;
     if (devTab === 'favorites') fetchAllLikes();
@@ -1169,6 +1194,23 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     if (devTab === 'comments') fetchAllComments();
     if (devTab === 'inquiries') fetchDevData();
   }, [devTab]);
+
+  // Auto-refresh developer panel data every 30 seconds
+  useEffect(() => {
+    if (!showDevPanel || !isDeveloper) return;
+    const interval = setInterval(() => {
+      if (devTab === 'favorites') fetchAllLikes();
+      if (devTab === 'messages') fetchMessages();
+      if (devTab === 'inquiries' || devTab === 'payments') fetchDevData();
+      if (devTab === 'comments') fetchAllComments();
+      if (devTab === 'editRequests') fetchEditRequests();
+      if (devTab === 'logs') fetchOperationLogs();
+      if (devTab === 'pending' || devTab === 'apartments') fetchApartments();
+      if (devTab === 'users') { fetchAllUsers(); fetchBlockedUsers(); }
+      if (devTab === 'blocked') fetchBlockedUsers();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [showDevPanel, isDeveloper, devTab]);
 
   // Loading state
   if (loading) return (
@@ -1769,7 +1811,10 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
             <div className={`p-4 border-b ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
               <div className="flex items-center justify-between">
                 <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><ShieldCheck className="h-6 w-6 text-amber-500" />لوحة تحكم المطور</h2>
-                <button onClick={() => setShowDevPanel(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
+                <div className="flex items-center gap-2">
+                  <button onClick={refreshDevTab} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-100 text-slate-600'} transition-colors`} title="تحديث البيانات"><RefreshCw className="h-5 w-5" /></button>
+                  <button onClick={() => setShowDevPanel(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
+                </div>
               </div>
               <div className="flex gap-2 mt-4 overflow-x-auto pb-2 scrollbar-hide">
                 {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'inquiries', icon: MessageSquare, label: 'الاستفسارات', count: inquiries.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل', count: messages.length }, { id: 'comments', icon: MessageSquare, label: 'التعليقات', count: comments.length }, { id: 'editRequests', icon: Edit, label: 'طلبات التعديل', count: editRequests.length }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'blocked', icon: Ban, label: 'محظورين', count: blockedUsers.length }, { id: 'logs', icon: Activity, label: 'سجل العمليات', count: operationLogs.length }, { id: 'settings', icon: Settings, label: 'الإعدادات' } ].map(tab => (
@@ -1897,6 +1942,11 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <Building2 className="h-5 w-5 text-amber-500" />جميع العقارات
                       <span className="text-sm font-normal text-slate-500">({allApartments.length})</span>
                     </h3>
+                    {allApartments.length > 0 && (
+                      <button onClick={clearAllApartments} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-xs font-medium hover:bg-red-500/20 transition-colors">
+                        <Trash2 className="h-3.5 w-3.5" />مسح الكل
+                      </button>
+                    )}
                   </div>
                   {allApartments.length === 0 ? (
                     <div className="text-center py-12">
@@ -2309,8 +2359,9 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                             {u.isBlocked ? (
                               <button onClick={() => unblockUser(u.id)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm hover:bg-emerald-600 transition-colors">إلغاء الحظر</button>
                             ) : (
-                              <button onClick={() => blockUser(u.id, 'حظر من المطور')} className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600 transition-colors">حظر</button>
+                              <button onClick={() => blockUser(u.id, 'حظر من المطور')} className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm hover:bg-amber-600 transition-colors">حظر</button>
                             )}
+                            <button onClick={() => deleteUser(u.id, u.name)} className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600 transition-colors flex items-center gap-1.5"><Trash2 className="h-3.5 w-3.5" />حذف</button>
                           </div>
                         </div>
                       ))}
