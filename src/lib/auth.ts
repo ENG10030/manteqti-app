@@ -4,7 +4,8 @@ import { NextRequest } from "next/server";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+// JWT_SECRET مع fallback آمن - لا نعمل throw في build time
+const JWT_SECRET = process.env.JWT_SECRET || 'manteqti-secret-key-2024';
 
 export interface AuthUser {
   id: string;
@@ -119,6 +120,27 @@ export async function isDeveloper(request: NextRequest): Promise<boolean> {
 }
 
 // التحقق من تسجيل الدخول
+// دالة التوثيق المطلوبة من stats و favorites routes
+export function authenticateRequest(request: NextRequest): { user: { id: string; role: string } } | null {
+  try {
+    const token = request.cookies.get("auth-token")?.value;
+    if (!token) return null;
+
+    const decoded = verify(token, JWT_SECRET) as { userId: string; role: string };
+    if (!decoded.userId) return null;
+    return {
+      user: { id: decoded.userId, role: decoded.role || 'USER' },
+    };
+  } catch {
+    return null;
+  }
+}
+
+// التحقق من أن المستخدم مطور أو أدمن
+export function isDeveloperOrAdmin(user: { role: string }): boolean {
+  return user.role === 'DEVELOPER' || user.role === 'ADMIN';
+}
+
 export async function requireAuth(request: NextRequest): Promise<AuthUser> {
   const user = await getCurrentUser(request);
   
