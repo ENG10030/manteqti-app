@@ -370,19 +370,22 @@ export default function App() {
     try {
       const res = await fetch('/api/settings');
       const data = await res.json();
-      if (res.ok) setSettings({ 
-        contactFee: data.contactFee || data.settings?.contactFee || 50, 
-        featuredFee: data.featuredFee || data.settings?.featuredFee || 100, 
-        premiumFee: data.premiumFee || data.settings?.premiumFee || 200, 
-        vipFee: data.vipFee || data.settings?.vipFee || 300,
-        saleDisplayFee: data.saleDisplayFee || data.settings?.saleDisplayFee || 100,
-        rentDisplayFee: data.rentDisplayFee || data.settings?.rentDisplayFee || 75,
-        otherServicesFee: data.otherServicesFee || data.settings?.otherServicesFee || 50,
-        highlightFee: data.highlightFee || data.settings?.highlightFee || 150,
-        priorityListingFee: data.priorityListingFee || data.settings?.priorityListingFee || 200,
-        verifiedListingFee: data.verifiedListingFee || data.settings?.verifiedListingFee || 250,
-        currency: data.currency || data.settings?.currency || 'ج.م'
-      });
+      if (res.ok) {
+        const s = data.settings || data;
+        setSettings({
+          contactFee: s.contactFee ?? 50,
+          featuredFee: s.featuredFee ?? 100,
+          premiumFee: s.premiumFee ?? 200,
+          vipFee: s.vipFee ?? 300,
+          saleDisplayFee: s.saleDisplayFee ?? 100,
+          rentDisplayFee: s.rentDisplayFee ?? 75,
+          otherServicesFee: s.otherServicesFee ?? 50,
+          highlightFee: s.highlightFee ?? 150,
+          priorityListingFee: s.priorityListingFee ?? 200,
+          verifiedListingFee: s.verifiedListingFee ?? 250,
+          currency: s.currency ?? 'ج.م'
+        });
+      }
     } catch {}
   };
 
@@ -949,6 +952,237 @@ export default function App() {
     } finally {
       setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
     }
+  };
+
+  // Delete single payment
+  const handleDeletePayment = async (paymentId: string) => {
+    setConfirmDialog({
+      isOpen: true, title: 'حذف الدفعة', message: 'هل أنت متأكد من حذف هذه الدفعة؟',
+      confirmText: 'حذف', cancelText: 'إلغاء',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, loading: true }));
+        try {
+          await fetch(`/api/payments/${paymentId}`, { method: 'DELETE' });
+          setPayments(prev => prev.filter(p => p.id !== paymentId));
+          addToast('تم حذف الدفعة', 'success');
+        } catch { addToast('حدث خطأ', 'error'); }
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+      },
+      type: 'danger'
+    });
+  };
+
+  // Clear all payments
+  const handleClearAllPayments = () => {
+    setConfirmDialog({
+      isOpen: true, title: 'مسح كل المدفوعات', message: `هل أنت متأكد من مسح كل ${payments.length} دفعة؟\n\nلا يمكن التراجع عن هذا الإجراء!`,
+      confirmText: 'مسح الكل', cancelText: 'إلغاء',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, loading: true }));
+        try {
+          await Promise.all(payments.map(p => fetch(`/api/payments/${p.id}`, { method: 'DELETE' })));
+          setPayments([]);
+          addToast('تم مسح كل المدفوعات', 'success');
+        } catch { addToast('حدث خطأ', 'error'); }
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+      },
+      type: 'danger'
+    });
+  };
+
+  // Delete single message
+  const handleDeleteMessage = async (msgId: string) => {
+    setConfirmDialog({
+      isOpen: true, title: 'حذف الرسالة', message: 'هل أنت متأكد من حذف هذه الرسالة؟',
+      confirmText: 'حذف', cancelText: 'إلغاء',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, loading: true }));
+        try {
+          await fetch(`/api/messages/${msgId}`, { method: 'DELETE' });
+          setMessages(prev => prev.filter(m => m.id !== msgId));
+          addToast('تم حذف الرسالة', 'success');
+        } catch { addToast('حدث خطأ', 'error'); }
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+      },
+      type: 'danger'
+    });
+  };
+
+  // Clear all messages
+  const handleClearAllMessages = () => {
+    setConfirmDialog({
+      isOpen: true, title: 'مسح كل الرسائل', message: `هل أنت متأكد من مسح كل ${messages.length} رسالة؟\n\nلا يمكن التراجع عن هذا الإجراء!`,
+      confirmText: 'مسح الكل', cancelText: 'إلغاء',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, loading: true }));
+        try {
+          await Promise.all(messages.map(m => fetch(`/api/messages/${m.id}`, { method: 'DELETE' })));
+          setMessages([]);
+          addToast('تم مسح كل الرسائل', 'success');
+        } catch { addToast('حدث خطأ', 'error'); }
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+      },
+      type: 'danger'
+    });
+  };
+
+  // Delete single like
+  const handleDeleteLike = async (likeId: string, apartmentId: string) => {
+    setConfirmDialog({
+      isOpen: true, title: 'حذف المفضلة', message: 'هل أنت متأكد من حذف هذا المفضلة؟',
+      confirmText: 'حذف', cancelText: 'إلغاء',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, loading: true }));
+        try {
+          await fetch(`/api/likes/${likeId}`, { method: 'DELETE' });
+          setLikes(prev => prev.filter(l => l.id !== likeId));
+          addToast('تم حذف المفضلة', 'success');
+        } catch { addToast('حدث خطأ', 'error'); }
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+      },
+      type: 'danger'
+    });
+  };
+
+  // Clear all likes
+  const handleClearAllLikes = () => {
+    setConfirmDialog({
+      isOpen: true, title: 'مسح كل المفضلات', message: `هل أنت متأكد من مسح كل ${likes.length} مفضلة؟\n\nلا يمكن التراجع عن هذا الإجراء!`,
+      confirmText: 'مسح الكل', cancelText: 'إلغاء',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, loading: true }));
+        try {
+          await Promise.all(likes.map(l => fetch(`/api/likes/${l.id}`, { method: 'DELETE' })));
+          setLikes([]);
+          addToast('تم مسح كل المفضلات', 'success');
+        } catch { addToast('حدث خطأ', 'error'); }
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+      },
+      type: 'danger'
+    });
+  };
+
+  // Delete single inquiry
+  const handleDeleteInquiry = async (inquiryId: string) => {
+    setConfirmDialog({
+      isOpen: true, title: 'حذف الاستفسار', message: 'هل أنت متأكد من حذف هذا الاستفسار؟',
+      confirmText: 'حذف', cancelText: 'إلغاء',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, loading: true }));
+        try {
+          await fetch(`/api/inquiries/${inquiryId}`, { method: 'DELETE' });
+          setInquiries(prev => prev.filter(i => i.id !== inquiryId));
+          addToast('تم حذف الاستفسار', 'success');
+        } catch { addToast('حدث خطأ', 'error'); }
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+      },
+      type: 'danger'
+    });
+  };
+
+  // Clear all inquiries
+  const handleClearAllInquiries = () => {
+    setConfirmDialog({
+      isOpen: true, title: 'مسح كل الاستفسارات', message: `هل أنت متأكد من مسح كل ${inquiries.length} استفسار؟\n\nلا يمكن التراجع عن هذا الإجراء!`,
+      confirmText: 'مسح الكل', cancelText: 'إلغاء',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, loading: true }));
+        try {
+          await Promise.all(inquiries.map(i => fetch(`/api/inquiries/${i.id}`, { method: 'DELETE' })));
+          setInquiries([]);
+          addToast('تم مسح كل الاستفسارات', 'success');
+        } catch { addToast('حدث خطأ', 'error'); }
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+      },
+      type: 'danger'
+    });
+  };
+
+  // Clear all comments
+  const handleClearAllComments = () => {
+    setConfirmDialog({
+      isOpen: true, title: 'مسح كل التعليقات', message: `هل أنت متأكد من مسح كل ${comments.length} تعليق؟\n\nلا يمكن التراجع عن هذا الإجراء!`,
+      confirmText: 'مسح الكل', cancelText: 'إلغاء',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, loading: true }));
+        try {
+          await Promise.all(comments.map(c => fetch(`/api/comments/${c.id}`, { method: 'DELETE' })));
+          setComments([]);
+          addToast('تم مسح كل التعليقات', 'success');
+        } catch { addToast('حدث خطأ', 'error'); }
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+      },
+      type: 'danger'
+    });
+  };
+
+  // Delete single operation log
+  const handleDeleteLog = async (logId: string) => {
+    setConfirmDialog({
+      isOpen: true, title: 'حذف السجل', message: 'هل أنت متأكد من حذف هذا السجل؟',
+      confirmText: 'حذف', cancelText: 'إلغاء',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, loading: true }));
+        try {
+          await fetch(`/api/logs/${logId}`, { method: 'DELETE' });
+          setOperationLogs(prev => prev.filter(l => l.id !== logId));
+          addToast('تم حذف السجل', 'success');
+        } catch { addToast('حدث خطأ', 'error'); }
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+      },
+      type: 'danger'
+    });
+  };
+
+  // Clear all operation logs
+  const handleClearAllLogs = () => {
+    setConfirmDialog({
+      isOpen: true, title: 'مسح سجل العمليات', message: `هل أنت متأكد من مسح كل ${operationLogs.length} سجل؟\n\nلا يمكن التراجع عن هذا الإجراء!`,
+      confirmText: 'مسح الكل', cancelText: 'إلغاء',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, loading: true }));
+        try {
+          await Promise.all(operationLogs.map(l => fetch(`/api/logs/${l.id}`, { method: 'DELETE' })));
+          setOperationLogs([]);
+          addToast('تم مسح سجل العمليات', 'success');
+        } catch { addToast('حدث خطأ', 'error'); }
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+      },
+      type: 'danger'
+    });
+  };
+
+  // Clear all edit requests
+  const handleClearAllEditRequests = () => {
+    setConfirmDialog({
+      isOpen: true, title: 'مسح طلبات التعديل', message: `هل أنت متأكد من مسح كل ${editRequests.length} طلب؟\n\nلا يمكن التراجع عن هذا الإجراء!`,
+      confirmText: 'مسح الكل', cancelText: 'إلغاء',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, loading: true }));
+        try {
+          await Promise.all(editRequests.map(r => fetch(`/api/edit-requests/${r.id}`, { method: 'DELETE' })));
+          setEditRequests([]);
+          addToast('تم مسح طلبات التعديل', 'success');
+        } catch { addToast('حدث خطأ', 'error'); }
+        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+      },
+      type: 'danger'
+    });
+  };
+
+  // Refresh all developer data
+  const refreshDevData = () => {
+    addToast('جاري تحديث البيانات...', 'info');
+    fetchDevData();
+    fetchSettings();
+    fetchAllLikes();
+    fetchAllComments();
+    fetchMessages();
+    fetchBlockedUsers();
+    fetchAllUsers();
+    fetchOperationLogs();
+    fetchEditRequests();
+    fetchApartments();
   };
 
   // Handle AI assistant for developer
@@ -1838,12 +2072,13 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <button onClick={() => setShowDevPanel(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
               </div>
               <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
-                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل' }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'blocked', icon: Ban, label: 'محظورين' }, { id: 'settings', icon: Settings, label: 'الإعدادات' } ].map(tab => (
-                  <button key={tab.id} onClick={() => setDevTab(tab.id as any)} className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-all ${devTab === tab.id ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل', count: messages.length }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'blocked', icon: Ban, label: 'محظورين', count: blockedUsers.length }, { id: 'editRequests', icon: Edit, label: 'طلبات تعديل', count: editRequests.filter(r => r.status === 'pending').length }, { id: 'logs', icon: Activity, label: 'سجل العمليات', count: operationLogs.length }, { id: 'settings', icon: Settings, label: 'الإعدادات' } ].map(tab => (
+                  <button key={tab.id} onClick={() => setDevTab(tab.id as any)} className={`flex items-center gap-2 px-3 py-2 rounded-xl whitespace-nowrap transition-all text-sm ${devTab === tab.id ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                     <tab.icon className="h-4 w-4" />{tab.label}
-                    {tab.count !== undefined && tab.count > 0 && <span className={`px-2 py-0.5 rounded-full text-xs ${devTab === tab.id ? 'bg-white/20' : 'bg-amber-500 text-white'}`}>{tab.count}</span>}
+                    {tab.count !== undefined && tab.count > 0 && <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${devTab === tab.id ? 'bg-white/20' : 'bg-red-500 text-white'}`}>{tab.count}</span>}
                   </button>
                 ))}
+                <button onClick={refreshDevData} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white whitespace-nowrap hover:from-emerald-600 hover:to-teal-700 transition-all text-sm shadow-lg"><RefreshCw className="h-4 w-4" />تحديث</button>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
@@ -1876,12 +2111,29 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     </div>
                   </div>
                   <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                    <h3 className={`font-bold mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>التعليقات قيد المراجعة</h3>
-                    <div className="space-y-2">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className={`font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>💬 التعليقات قيد المراجعة ({comments.filter(c => c.status === 'pending').length})</h3>
+                      {comments.length > 0 && <button onClick={handleClearAllComments} className="text-xs text-red-500 hover:text-red-600 flex items-center gap-1"><Trash2 className="h-3 w-3" />مسح الكل</button>}
+                    </div>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
                       {comments.filter(c => c.status === 'pending').length === 0 ? <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد تعليقات قيد المراجعة</p> : comments.filter(c => c.status === 'pending').map(c => (
                         <div key={c.id} className={`p-3 rounded-lg ${darkMode ? 'bg-slate-600' : 'bg-white'} flex items-center justify-between`}>
                           <div><p className={darkMode ? 'text-white' : 'text-slate-900'}>{c.content}</p><p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{c.user.name}</p></div>
                           <div className="flex gap-2"><button onClick={() => approveComment(c.id)} className="p-1 rounded bg-emerald-500 text-white"><Check className="h-4 w-4" /></button><button onClick={() => deleteComment(c.id)} className="p-1 rounded bg-red-500 text-white"><X className="h-4 w-4" /></button></div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className={`font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><MessageCircle className="h-5 w-5 text-blue-500" />الاستفسارات ({inquiries.length})</h3>
+                      {inquiries.length > 0 && <button onClick={handleClearAllInquiries} className="text-xs text-red-500 hover:text-red-600 flex items-center gap-1"><Trash2 className="h-3 w-3" />مسح الكل</button>}
+                    </div>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {inquiries.length === 0 ? <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد استفسارات</p> : inquiries.slice(0, 10).map(inq => (
+                        <div key={inq.id} className={`p-3 rounded-lg ${darkMode ? 'bg-slate-600' : 'bg-white'} flex items-center justify-between`}>
+                          <div className="flex-1 min-w-0"><p className={`truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{inq.name} - {inq.message}</p><p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{new Date(inq.createdAt).toLocaleDateString('ar-EG')}</p></div>
+                          <button onClick={() => handleDeleteInquiry(inq.id)} className="p-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20 mr-2"><Trash2 className="h-3.5 w-3.5" /></button>
                         </div>
                       ))}
                     </div>
@@ -1965,6 +2217,10 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               {/* Favorites Tab */}
               {devTab === 'favorites' && (
                 <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className={`text-sm font-medium ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{likes.length} مفضلة</p>
+                    {likes.length > 0 && <button onClick={handleClearAllLikes} className="text-xs text-red-500 hover:text-red-600 flex items-center gap-1"><Trash2 className="h-3 w-3" />مسح الكل</button>}
+                  </div>
                   {/* Summary Cards */}
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
@@ -2077,6 +2333,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                                 <th className={`p-3 text-right ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>المستخدم</th>
                                 <th className={`p-3 text-right ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>العقار</th>
                                 <th className={`p-3 text-right ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>التاريخ</th>
+                                <th className={`p-3 text-right ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>إجراء</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -2085,6 +2342,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                                   <td className={`p-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{like.user?.name || 'مستخدم'}</td>
                                   <td className={`p-3 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{like.apartment?.title || 'عقار محذوف'}</td>
                                   <td className={`p-3 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{new Date(like.createdAt).toLocaleDateString('ar-EG')}</td>
+                                  <td className="p-3"><button onClick={() => handleDeleteLike(like.id, like.apartmentId)} className="p-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20"><Trash2 className="h-3.5 w-3.5" /></button></td>
                                 </tr>
                               ))}
                             </tbody>
@@ -2099,18 +2357,23 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               {/* Payments Tab */}
               {devTab === 'payments' && (
                 <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className={`text-sm font-medium ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{payments.length} عملية دفع</p>
+                    {payments.length > 0 && <button onClick={handleClearAllPayments} className="text-xs text-red-500 hover:text-red-600 flex items-center gap-1"><Trash2 className="h-3 w-3" />مسح الكل</button>}
+                  </div>
                   {payments.length === 0 ? <div className="text-center py-12"><CreditCard className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد مدفوعات</p></div> : payments.map(payment => (
                     <div key={payment.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
                       <div className="flex items-center justify-between">
-                        <div><p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{payment.amount} ج.م - {payment.method}</p><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{payment.inquiry?.name} • {new Date(payment.createdAt).toLocaleDateString('ar-EG')}</p></div>
+                        <div><p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{payment.amount} {settings.currency} - {payment.method}</p><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{payment.inquiry?.name} • {new Date(payment.createdAt).toLocaleDateString('ar-EG')}</p></div>
                         <div className="flex items-center gap-2">
                           <span className={`px-2 py-1 rounded-full text-xs ${payment.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : payment.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{payment.status === 'Paid' ? 'مدفوع' : payment.status === 'Pending' ? 'قيد الانتظار' : 'مرفوض'}</span>
                           {payment.status === 'Pending' && (
                             <div className="flex gap-1">
                               <button onClick={() => handleConfirmPayment(payment.id)} className="p-1 rounded bg-emerald-500 text-white"><Check className="h-4 w-4" /></button>
-                              <button onClick={() => { }} className="p-1 rounded bg-red-500 text-white"><X className="h-4 w-4" /></button>
+                              <button onClick={() => handleRejectPayment(payment.id)} className="p-1 rounded bg-red-500 text-white"><X className="h-4 w-4" /></button>
                             </div>
                           )}
+                          <button onClick={() => handleDeletePayment(payment.id)} className="p-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20"><Trash2 className="h-4 w-4" /></button>
                         </div>
                       </div>
                     </div>
@@ -2121,6 +2384,10 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               {/* Messages Tab */}
               {devTab === 'messages' && (
                 <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className={`text-sm font-medium ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{messages.length} رسالة</p>
+                    {messages.length > 0 && <button onClick={handleClearAllMessages} className="text-xs text-red-500 hover:text-red-600 flex items-center gap-1"><Trash2 className="h-3 w-3" />مسح الكل</button>}
+                  </div>
                   {messages.length === 0 ? <div className="text-center py-12"><MessageCircle className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد رسائل</p></div> : messages.map(msg => (
                     <div key={msg.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
                       <div className="flex items-center justify-between mb-2">
@@ -2131,35 +2398,15 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                             {msg.sender?.identifier && <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{msg.sender.identifier}</p>}
                           </div>
                         </div>
-                        <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(msg.createdAt).toLocaleString('ar-EG')}</span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(msg.createdAt).toLocaleString('ar-EG')}</span>
+                          <button onClick={() => handleDeleteMessage(msg.id)} className="p-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20"><Trash2 className="h-3.5 w-3.5" /></button>
+                        </div>
                       </div>
                       <p className={`mb-3 ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{msg.content}</p>
-                      {/* Reply input for developer */}
                       <div className="flex gap-2 mt-2">
-                        <input 
-                          type="text" 
-                          placeholder="اكتب رداً..." 
-                          className={`flex-1 px-3 py-2 rounded-lg text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 text-slate-700 placeholder-slate-400'} border`}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                              // Send reply logic
-                              addToast('تم إرسال الرد!', 'success');
-                              e.currentTarget.value = '';
-                            }
-                          }}
-                        />
-                        <button 
-                          onClick={(e) => {
-                            const input = e.currentTarget.previousElementSibling as HTMLInputElement;
-                            if (input?.value.trim()) {
-                              addToast('تم إرسال الرد!', 'success');
-                              input.value = '';
-                            }
-                          }}
-                          className="px-3 py-2 rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 text-white text-sm"
-                        >
-                          <Send className="h-4 w-4" />
-                        </button>
+                        <input type="text" placeholder="اكتب رداً..." className={`flex-1 px-3 py-2 rounded-lg text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 text-slate-700 placeholder-slate-400'} border`} onKeyDown={(e) => { if (e.key === 'Enter' && e.currentTarget.value.trim()) { addToast('تم إرسال الرد!', 'success'); e.currentTarget.value = ''; } }} />
+                        <button onClick={(e) => { const input = e.currentTarget.previousElementSibling as HTMLInputElement; if (input?.value.trim()) { addToast('تم إرسال الرد!', 'success'); input.value = ''; } }} className="px-3 py-2 rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 text-white text-sm"><Send className="h-4 w-4" /></button>
                       </div>
                     </div>
                   ))}
@@ -2221,11 +2468,11 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               {devTab === 'settings' && (
                 <div className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم بيانات التواصل (ج.م)</label><input type="number" value={settings.contactFee} onChange={(e) => setSettings({ ...settings, contactFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم العقار المميز (ج.م)</label><input type="number" value={settings.featuredFee} onChange={(e) => setSettings({ ...settings, featuredFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم العقار المميز+ VIP (ج.م)</label><input type="number" value={settings.vipFee} onChange={(e) => setSettings({ ...settings, vipFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم عرض البيع (ج.م)</label><input type="number" value={settings.saleDisplayFee} onChange={(e) => setSettings({ ...settings, saleDisplayFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم عرض الإيجار (ج.م)</label><input type="number" value={settings.rentDisplayFee} onChange={(e) => setSettings({ ...settings, rentDisplayFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم بيانات التواصل (ج.م)</label><input type="number" value={settings.contactFee} onChange={(e) => setSettings({ ...settings, contactFee: e.target.value === '' ? 0 : Number(e.target.value) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم العقار المميز (ج.م)</label><input type="number" value={settings.featuredFee} onChange={(e) => setSettings({ ...settings, featuredFee: e.target.value === '' ? 0 : Number(e.target.value) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم العقار المميز+ VIP (ج.م)</label><input type="number" value={settings.vipFee} onChange={(e) => setSettings({ ...settings, vipFee: e.target.value === '' ? 0 : Number(e.target.value) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم عرض البيع (ج.م)</label><input type="number" value={settings.saleDisplayFee} onChange={(e) => setSettings({ ...settings, saleDisplayFee: e.target.value === '' ? 0 : Number(e.target.value) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم عرض الإيجار (ج.م)</label><input type="number" value={settings.rentDisplayFee} onChange={(e) => setSettings({ ...settings, rentDisplayFee: e.target.value === '' ? 0 : Number(e.target.value) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                     <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>العملة</label><input type="text" value={settings.currency} onChange={(e) => setSettings({ ...settings, currency: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                   </div>
                   {/* Developer Password Change */}
