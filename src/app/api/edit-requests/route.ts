@@ -47,6 +47,11 @@ export async function GET(request: NextRequest) {
             images: true,
             videos: true,
             type: true,
+            area: true,
+            bedrooms: true,
+            bathrooms: true,
+            description: true,
+            ownerPhone: true,
           }
         },
         user: {
@@ -67,7 +72,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// إنشاء طلب تعديل جديد
+// إنشاء طلب تعديل جديد - يدعم كل حقول العقار
 export async function POST(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -94,8 +99,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'العقار غير موجود' }, { status: 404 });
     }
 
-    // التحقق من أن العقار موافق عليه (منشور)
-    if (apartment.status !== 'available') {
+    // التحقق من أن المستخدم هو صاحب العقار أو مطور
+    if (apartment.createdBy !== tokenUserId && decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح لك بتعديل هذا العقار' }, { status: 403 });
+    }
+
+    // المطور يعدل مباشرة بدون طلب
+    if (decoded.role === 'DEVELOPER') {
+      const updateData: Record<string, unknown> = {};
+      
+      if (body.title !== undefined) updateData.title = body.title;
+      if (body.price !== undefined) updateData.price = parseInt(body.price);
+      if (body.area !== undefined) updateData.area = body.area;
+      if (body.bedrooms !== undefined) updateData.bedrooms = parseInt(body.bedrooms);
+      if (body.bathrooms !== undefined) updateData.bathrooms = parseInt(body.bathrooms);
+      if (body.floor !== undefined) updateData.floor = body.floor ? parseInt(body.floor) : null;
+      if (body.apartmentSize !== undefined) updateData.apartmentSize = body.apartmentSize ? parseInt(body.apartmentSize) : null;
+      if (body.description !== undefined) updateData.description = body.description;
+      if (body.ownerPhone !== undefined) updateData.ownerPhone = body.ownerPhone;
+      if (body.mapLink !== undefined) updateData.mapLink = body.mapLink;
+      if (body.type !== undefined) updateData.type = body.type;
+      if (body.status !== undefined) updateData.status = body.status;
+      if (body.images !== undefined) updateData.images = body.images;
+      if (body.videos !== undefined) updateData.videos = body.videos;
+
+      if (Object.keys(updateData).length > 0) {
+        await db.apartment.update({
+          where: { id: body.apartmentId },
+          data: updateData,
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'تم تحديث العقار بنجاح',
+        directUpdate: true,
+      });
+    }
+
+    // التحقق من أن العقار منشور
+    if (apartment.status !== 'available' && apartment.status !== 'reserved') {
       return NextResponse.json({ error: 'لا يمكن طلب تعديل على عقار غير منشور' }, { status: 400 });
     }
 
@@ -103,7 +146,7 @@ export async function POST(request: NextRequest) {
     const existingRequest = await db.propertyEditRequest.findFirst({
       where: {
         apartmentId: body.apartmentId,
-        userId: body.userId,
+        userId: tokenUserId,
         status: 'pending',
       },
     });
@@ -112,28 +155,60 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'يوجد طلب تعديل معلق بالفعل على هذا العقار' }, { status: 400 });
     }
 
+    // تجهيز التعديلات المطلوبة
+    const changes: Record<string, unknown> = {};
+    const fieldLabels: string[] = [];
+
+    if (body.title !== undefined && body.title !== apartment.title) { changes.title = body.title; fieldLabels.push('العنوان'); }
+    if (body.price !== undefined && parseInt(body.price) !== apartment.price) { changes.price = parseInt(body.price); fieldLabels.push('السعر'); }
+    if (body.area !== undefined && body.area !== apartment.area) { changes.area = body.area; fieldLabels.push('المنطقة'); }
+    if (body.bedrooms !== undefined && parseInt(body.bedrooms) !== apartment.bedrooms) { changes.bedrooms = parseInt(body.bedrooms); fieldLabels.push('غرف النوم'); }
+    if (body.bathrooms !== undefined && parseInt(body.bathrooms) !== apartment.bathrooms) { changes.bathrooms = parseInt(body.bathrooms); fieldLabels.push('الحمامات'); }
+    if (body.floor !== undefined && (body.floor ? parseInt(body.floor) : null) !== apartment.floor) { changes.floor = body.floor ? parseInt(body.floor) : null; fieldLabels.push('الدور'); }
+    if (body.apartmentSize !== undefined && (body.apartmentSize ? parseInt(body.apartmentSize) : null) !== apartment.apartmentSize) { changes.apartmentSize = body.apartmentSize ? parseInt(body.apartmentSize) : null; fieldLabels.push('المساحة'); }
+    if (body.description !== undefined && body.description !== apartment.description) { changes.description = body.description; fieldLabels.push('الوصف'); }
+    if (body.ownerPhone !== undefined && body.ownerPhone !== apartment.ownerPhone) { changes.ownerPhone = body.ownerPhone; fieldLabels.push('رقم الهاتف'); }
+    if (body.mapLink !== undefined && body.mapLink !== apartment.mapLink) { changes.mapLink = body.mapLink; fieldLabels.push('رابط الخريطة'); }
+    if (body.type !== undefined && body.type !== apartment.type) { changes.type = body.type; fieldLabels.push('النوع'); }
+    
+    // الصور والفيديوهات
+    const newImages = body.images !== undefined ? body.images : null;
+    const newVideos = body.videos !== undefined ? body.videos : null;
+    
+    if (newImages !== null) {
+      changes.images = newImages;
+      fieldLabels.push('الصور');
+    }
+    if (newVideos !== null) {
+      changes.videos = newVideos;
+      fieldLabels.push('الفيديوهات');
+    }
+
+    if (Object.keys(changes).length === 0) {
+      return NextResponse.json({ error: 'لم تقم بأي تعديل' }, { status: 400 });
+    }
+
     // تحديد نوع التعديل
     let editType = 'multiple';
-    const hasImages = body.newImages && body.newImages.length > 0;
-    const hasVideos = body.newVideos && body.newVideos.length > 0;
-    const hasPrice = body.newPrice !== undefined && body.newPrice !== null;
-    const hasStatus = body.newStatus !== undefined && body.newStatus !== null;
-
-    if (hasImages && !hasVideos && !hasPrice && !hasStatus) editType = 'images';
-    else if (hasVideos && !hasImages && !hasPrice && !hasStatus) editType = 'videos';
-    else if (hasPrice && !hasImages && !hasVideos && !hasStatus) editType = 'price';
-    else if (hasStatus && !hasImages && !hasVideos && !hasPrice) editType = 'status';
+    if (fieldLabels.length === 1) {
+      if (changes.images !== undefined) editType = 'images';
+      else if (changes.videos !== undefined) editType = 'videos';
+      else if (changes.price !== undefined) editType = 'price';
+      else editType = 'update';
+    }
 
     const editRequest = await db.propertyEditRequest.create({
       data: {
         apartmentId: body.apartmentId,
-        userId: body.userId,
+        userId: tokenUserId,
         editType,
-        newImages: body.newImages ? JSON.stringify(body.newImages) : null,
-        newVideos: body.newVideos ? JSON.stringify(body.newVideos) : null,
-        newPrice: body.newPrice ? parseInt(body.newPrice) : null,
-        newStatus: body.newStatus || null,
-        description: body.description || null,
+        changes: JSON.stringify(changes),
+        // حقول محددة للتوافق
+        newImages: changes.images ? (typeof changes.images === 'string' ? changes.images : JSON.stringify(changes.images)) : null,
+        newVideos: changes.videos ? (typeof changes.videos === 'string' ? changes.videos : JSON.stringify(changes.videos)) : null,
+        newPrice: changes.price ? (changes.price as number) : null,
+        newStatus: changes.status ? (changes.status as string) : null,
+        description: `طلب تعديل: ${fieldLabels.join(', ')}${body.description ? '\n' + body.description : ''}`,
         status: 'pending',
       },
       include: {

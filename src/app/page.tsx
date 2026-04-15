@@ -56,6 +56,7 @@ interface PropertyEditRequest {
   apartmentId: string;
   userId: string;
   editType: string;
+  changes?: string;
   newImages?: string[];
   newVideos?: string[];
   newPrice?: number;
@@ -66,7 +67,7 @@ interface PropertyEditRequest {
   reviewedAt?: string;
   reviewNotes?: string;
   createdAt: string;
-  apartment?: { id: string; title: string; price: number; status: string; images?: string; videos?: string; type: string; };
+  apartment?: { id: string; title: string; price: number; status: string; images?: string; videos?: string; type: string; area?: string; bedrooms?: number; bathrooms?: number; description?: string; ownerPhone?: string; floor?: number | null; apartmentSize?: number | null; mapLink?: string; };
   user?: { id: string; name: string; identifier: string; };
 }
 
@@ -140,7 +141,7 @@ export default function App() {
   const [messageLoading, setMessageLoading] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState<Array<{ id: string; userId: string; reason: string | null; blockedAt: string; user: { id: string; name: string; identifier: string } }>>([]);
-  const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; identifier: string; email: string; isBlocked: boolean; blockReason?: string | null; createdAt: string }>>([]);
+  const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; identifier: string; email: string; isBlocked: boolean; blockReason?: string | null; createdAt: string; role?: string }>>([]);
   const [selectedApartment, setSelectedApartment] = useState<Apartment | null>(null);
   const [editApartment, setEditApartment] = useState<Apartment | null>(null);
   const [inquiryApartment, setInquiryApartment] = useState<Apartment | null>(null);
@@ -177,6 +178,8 @@ export default function App() {
   const [aptSubmitting, setAptSubmitting] = useState(false);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
+  const [editImageUrls, setEditImageUrls] = useState<string[]>([]);
+  const [editVideoUrls, setEditVideoUrls] = useState<string[]>([]);
   const [inquiryForm, setInquiryForm] = useState({ name: '', email: '', phone: '', message: '' });
   const [inquirySubmitting, setInquirySubmitting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>('');
@@ -227,13 +230,25 @@ export default function App() {
   const [showEditRequestModal, setShowEditRequestModal] = useState(false);
   const [selectedApartmentForEdit, setSelectedApartmentForEdit] = useState<Apartment | null>(null);
   const [editRequestForm, setEditRequestForm] = useState({
-    newImages: [] as string[],
-    newVideos: [] as string[],
-    newPrice: '',
-    newStatus: '',
-    description: ''
+    title: '',
+    price: '',
+    area: '',
+    bedrooms: '1',
+    bathrooms: '1',
+    floor: '',
+    apartmentSize: '',
+    description: '',
+    ownerPhone: '',
+    mapLink: '',
+    type: 'rent' as 'rent' | 'sale',
   });
+  const [editRequestImageUrls, setEditRequestImageUrls] = useState<string[]>([]);
+  const [editRequestVideoUrls, setEditRequestVideoUrls] = useState<string[]>([]);
+  const [editRequestNotes, setEditRequestNotes] = useState('');
   const [editRequestLoading, setEditRequestLoading] = useState(false);
+  // Review notes for dev panel
+  const [reviewNotesInput, setReviewNotesInput] = useState<Record<string, string>>({});
+  const [expandedEditRequest, setExpandedEditRequest] = useState<string | null>(null);
 
   // AI Action States
   const [aiAction, setAiAction] = useState<string | null>(null);
@@ -393,6 +408,33 @@ export default function App() {
     } catch {}
   };
 
+  // Open edit request modal (pre-fill form with apartment values)
+  const openEditRequestModal = (apartment: Apartment) => {
+    setSelectedApartmentForEdit(apartment);
+    // Parse existing images/videos
+    let existingImages: string[] = [];
+    let existingVideos: string[] = [];
+    try { existingImages = apartment.images ? (Array.isArray(apartment.images) ? apartment.images : JSON.parse(apartment.images as string)) : []; } catch {}
+    try { existingVideos = apartment.videos ? (Array.isArray(apartment.videos) ? apartment.videos : JSON.parse(apartment.videos as string)) : []; } catch {}
+    setEditRequestForm({
+      title: apartment.title || '',
+      price: apartment.price ? String(apartment.price) : '',
+      area: apartment.area || '',
+      bedrooms: apartment.bedrooms ? String(apartment.bedrooms) : '1',
+      bathrooms: apartment.bathrooms ? String(apartment.bathrooms) : '1',
+      floor: apartment.floor ? String(apartment.floor) : '',
+      apartmentSize: apartment.apartmentSize ? String(apartment.apartmentSize) : '',
+      description: apartment.description || '',
+      ownerPhone: apartment.ownerPhone || '',
+      mapLink: apartment.mapLink || '',
+      type: apartment.type || 'rent',
+    });
+    setEditRequestImageUrls(existingImages);
+    setEditRequestVideoUrls(existingVideos);
+    setEditRequestNotes('');
+    setShowEditRequestModal(true);
+  };
+
   // Submit edit request (for publishers)
   const submitEditRequest = async () => {
     if (!selectedApartmentForEdit || !currentUser) return;
@@ -404,11 +446,19 @@ export default function App() {
         body: JSON.stringify({
           apartmentId: selectedApartmentForEdit.id,
           userId: currentUser.id,
-          newImages: editRequestForm.newImages,
-          newVideos: editRequestForm.newVideos,
-          newPrice: editRequestForm.newPrice ? parseInt(editRequestForm.newPrice) : null,
-          newStatus: editRequestForm.newStatus || null,
-          description: editRequestForm.description,
+          title: editRequestForm.title,
+          price: editRequestForm.price,
+          area: editRequestForm.area,
+          bedrooms: editRequestForm.bedrooms,
+          bathrooms: editRequestForm.bathrooms,
+          floor: editRequestForm.floor,
+          apartmentSize: editRequestForm.apartmentSize,
+          ownerPhone: editRequestForm.ownerPhone,
+          mapLink: editRequestForm.mapLink,
+          type: editRequestForm.type,
+          images: editRequestImageUrls,
+          videos: editRequestVideoUrls,
+          description: editRequestForm.description + (editRequestNotes ? '\n---\nملاحظات: ' + editRequestNotes : ''),
         }),
       });
       const data = await res.json();
@@ -416,7 +466,10 @@ export default function App() {
         addToast('تم إرسال طلب التعديل بنجاح! سيتم مراجعته من قبل المطور.', 'success');
         setShowEditRequestModal(false);
         setSelectedApartmentForEdit(null);
-        setEditRequestForm({ newImages: [], newVideos: [], newPrice: '', newStatus: '', description: '' });
+        setEditRequestForm({ title: '', price: '', area: '', bedrooms: '1', bathrooms: '1', floor: '', apartmentSize: '', description: '', ownerPhone: '', mapLink: '', type: 'rent' });
+        setEditRequestImageUrls([]);
+        setEditRequestVideoUrls([]);
+        setEditRequestNotes('');
       } else {
         addToast(data.error || 'حدث خطأ', 'error');
       }
@@ -845,8 +898,48 @@ export default function App() {
     e.preventDefault();
     if (!editApartment) return;
     setEditSubmitting(true);
-    try { await fetch(`/api/apartments/${editApartment.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editApartment) }); fetchApartments(); setEditApartment(null); addToast('تم تحديث الشقة', 'success'); }
+    try {
+      const body: Record<string, unknown> = {
+        title: editApartment.title,
+        price: editApartment.price,
+        area: editApartment.area,
+        bedrooms: editApartment.bedrooms,
+        bathrooms: editApartment.bathrooms,
+        floor: editApartment.floor,
+        apartmentSize: editApartment.apartmentSize,
+        ownerPhone: editApartment.ownerPhone,
+        status: editApartment.status,
+        type: editApartment.type,
+        description: editApartment.description,
+        mapLink: editApartment.mapLink,
+        images: Array.isArray(editImageUrls) && editImageUrls.length > 0 ? JSON.stringify(editImageUrls) : editApartment.images,
+        videos: Array.isArray(editVideoUrls) && editVideoUrls.length > 0 ? JSON.stringify(editVideoUrls) : editApartment.videos,
+      };
+
+      await fetch(`/api/apartments/${editApartment.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      fetchApartments();
+      setEditApartment(null);
+      setEditImageUrls([]);
+      setEditVideoUrls([]);
+      addToast('تم تحديث الشقة', 'success');
+    }
     finally { setEditSubmitting(false); }
+  };
+
+  // فتح نموذج تعديل شقة - للمستخدم العادي يفتح طلب تعديل، للمطور يعدل مباشرة
+  const openEditApartment = (apartment: Apartment) => {
+    // Parse existing images/videos
+    let existingImages: string[] = [];
+    let existingVideos: string[] = [];
+    try { existingImages = apartment.images ? (Array.isArray(apartment.images) ? apartment.images : JSON.parse(apartment.images as string)) : []; } catch {}
+    try { existingVideos = apartment.videos ? (Array.isArray(apartment.videos) ? apartment.videos : JSON.parse(apartment.videos as string)) : []; } catch {}
+    setEditImageUrls(existingImages);
+    setEditVideoUrls(existingVideos);
+    setEditApartment(apartment);
   };
 
   const handleUpdateStatus = async (id: string, newStatus: string, confirmed: boolean = false) => {
@@ -1068,6 +1161,25 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     try { await fetch(`/api/block?userId=${userId}`, { method: 'DELETE' }); addToast('تم إلغاء الحظر', 'success'); fetchBlockedUsers(); fetchAllUsers(); } catch { addToast('حدث خطأ', 'error'); }
   };
 
+  const changeUserRole = async (userId: string, newRole: string, userName: string, currentRole?: string) => {
+    const roleLabel = newRole === 'DEVELOPER' ? 'مطور' : 'مستخدم';
+    setConfirmDialog({
+      isOpen: true, title: 'تغيير دور المستخدم',
+      message: `هل تريد تغيير دور "${userName}" من "${currentRole === 'DEVELOPER' ? 'مطور' : 'مستخدم'}" إلى "${roleLabel}"؟`,
+      confirmText: 'تأكيد', cancelText: 'إلغاء',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, loading: true }));
+        try {
+          const res = await fetch(`/api/users/${userId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: newRole }) });
+          if (res.ok) { addToast(`تم تغيير دور "${userName}" إلى ${roleLabel}`, 'success'); fetchAllUsers(); }
+          else { const data = await res.json(); addToast(data.error || 'حدث خطأ', 'error'); }
+        } catch { addToast('حدث خطأ', 'error'); }
+        finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+      },
+      type: 'warning',
+    });
+  };
+
   const toggleFavorite = async (apartmentId: string) => {
     if (!currentUser) {
       addToast('يجب تسجيل الدخول لإضافة المفضلة', 'error');
@@ -1160,7 +1272,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     setConfirmDialog({ isOpen: true, title: 'حذف جميع العقارات', message: `هل أنت متأكد من حذف جميع العقارات؟ لا يمكن التراجع عن هذا الإجراء!\n\nسيتم حذف ${allApartments.length} عقار.`, confirmText: 'حذف الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { for (const apt of allApartments) { try { await fetch(`/api/apartments/${apt.id}`, { method: 'DELETE' }); } catch {} } setAllApartments([]); setApartments([]); setMyPendingApartments([]); addToast('تم حذف جميع العقارات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
   };
   const deleteUser = async (userId: string, userName: string) => {
-    setConfirmDialog({ isOpen: true, title: 'حذف المستخدم', message: `هل أنت متأكد من حذف المستخدم "${userName}"؟\n\nسيتم حذف جميع بياناته بما في ذلك العقارات والرسائل والإعجابات.`, confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch(`/api/users/${userId}`, { method: 'DELETE' }); setAllUsers(prev => prev.filter(u => u.id !== userId)); fetchAllUsers(); fetchDevData(); addToast('تم حذف المستخدم', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
+    setConfirmDialog({ isOpen: true, title: 'حذف المستخدم', message: `هل أنت متأكد من حذف المستخدم "${userName}"؟\n\nسيتم حذف جميع بياناته بما في ذلك العقارات والرسائل والإعجابات.`, confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch(`/api/users/${userId}`, { method: 'DELETE' }); setAllUsers(prev => prev.filter(u => u.id !== userId)); fetchAllUsers(); fetchDevData(); fetchBlockedUsers(); fetchApartments(); addToast('تم حذف المستخدم', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
   };
 
   // Refresh function for current dev tab
@@ -1546,7 +1658,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                         <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
                         <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.area} • {apt.price.toLocaleString()} ج.م</p>
                       </div>
-                      <button onClick={async () => { if (confirm('هل تريد حذف هذا العقار؟')) { await fetch(`/api/apartments/${apt.id}`, { method: 'DELETE' }); fetchMyPendingApartments(); fetchApartments(); addToast('تم حذف العقار', 'success'); } }} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600"><Trash2 className="h-4 w-4" /></button>
+                      <button onClick={() => { setConfirmDialog({ isOpen: true, title: 'حذف العقار', message: `هل أنت متأكد من حذف "${apt.title}"؟\nلا يمكن التراجع عن هذا الإجراء.`, confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch(`/api/apartments/${apt.id}`, { method: 'DELETE' }); fetchMyPendingApartments(); fetchApartments(); addToast('تم حذف العقار', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' }); }} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600"><Trash2 className="h-4 w-4" /></button>
                     </div>
                   </div>
                 ))}</div>
@@ -1714,9 +1826,12 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <button onClick={() => toggleFavorite(selectedApartment.id)} className={`flex-1 py-3 rounded-xl font-medium flex items-center justify-center gap-2 ${favorites.includes(selectedApartment.id) ? 'bg-red-500 text-white' : darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}><Heart className={`h-5 w-5 ${favorites.includes(selectedApartment.id) ? 'fill-white' : ''}`} />{favorites.includes(selectedApartment.id) ? 'في المفضلة' : 'أضف للمفضلة'}</button>
                 {isDeveloper && (
                   <>
-                    <button onClick={() => setEditApartment(selectedApartment)} className={`py-3 px-4 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>تعديل</button>
+                    <button onClick={() => openEditApartment(selectedApartment)} className={`py-3 px-4 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>تعديل</button>
                     <button onClick={() => handleDeleteApartment(selectedApartment.id)} className="py-3 px-4 rounded-xl bg-red-500/10 text-red-500 font-medium hover:bg-red-500/20">حذف</button>
                   </>
+                )}
+                {!isDeveloper && currentUser && selectedApartment.createdBy === currentUser.id && (selectedApartment.status === 'available' || selectedApartment.status === 'reserved') && (
+                  <button onClick={() => openEditRequestModal(selectedApartment)} className={`py-3 px-4 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}><Edit className="h-4 w-4 inline ml-1" />طلب تعديل</button>
                 )}
               </div>
 
@@ -1762,12 +1877,139 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الهاتف</label><input type="tel" value={editApartment.ownerPhone} onChange={(e) => setEditApartment({ ...editApartment, ownerPhone: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحالة</label><select value={editApartment.status} onChange={(e) => setEditApartment({ ...editApartment, status: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="available">متاح</option><option value="reserved">محجوز</option><option value="unavailable">غير متاح</option><option value="sold">تم البيع</option><option value="rented">تم التأجير</option></select></div>
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الوصف</label><textarea value={editApartment.description} onChange={(e) => setEditApartment({ ...editApartment, description: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} rows={3} /></div>
+                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>النوع</label><select value={editApartment.type} onChange={(e) => setEditApartment({ ...editApartment, type: e.target.value as 'rent' | 'sale' })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="rent">إيجار</option><option value="sale">بيع</option></select></div>
+                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رابط الخريطة</label><input type="text" placeholder="https://maps.google.com/..." value={editApartment.mapLink || ''} onChange={(e) => setEditApartment({ ...editApartment, mapLink: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+              </div>
+              {/* صور الشقة */}
+              <div className="col-span-2">
+                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                  <ImageIcon className="h-4 w-4 inline ml-1" />صور الشقة ({editImageUrls.length}/10)
+                </label>
+                <FileUpload type="image" value={editImageUrls} onChange={setEditImageUrls} maxFiles={10} />
+              </div>
+              {/* فيديوهات الشقة */}
+              <div className="col-span-2">
+                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                  <Video className="h-4 w-4 inline ml-1" />فيديوهات الشقة ({editVideoUrls.length}/3)
+                </label>
+                <FileUpload type="video" value={editVideoUrls} onChange={setEditVideoUrls} maxFiles={3} />
               </div>
               <div className="flex gap-3 mt-6">
                 <button type="button" onClick={() => setEditApartment(null)} className={`flex-1 py-3 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>إلغاء</button>
                 <button type="submit" disabled={editSubmitting} className="flex-1 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-violet-600 to-purple-700 disabled:opacity-50">{editSubmitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'حفظ التعديلات'}</button>
               </div>
             </form>
+          </motion.div>
+        </motion.div>
+      )}</AnimatePresence>
+
+      {/* Publisher Edit Request Modal */}
+      <AnimatePresence>{showEditRequestModal && selectedApartmentForEdit && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => { setShowEditRequestModal(false); setSelectedApartmentForEdit(null); }}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Edit className="h-5 w-5 text-amber-500" />طلب تعديل الشقة</h2>
+              <button onClick={() => { setShowEditRequestModal(false); setSelectedApartmentForEdit(null); }} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
+            </div>
+            <p className={`text-sm mb-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>قم بتعديل البيانات المطلوبة وسيتم إرسال طلبك للمراجعة. الحقول التي يتم تغييرها فقط ستكون في الطلب.</p>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                {/* العنوان */}
+                <div className="col-span-2">
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>العنوان</label>
+                  <input type="text" value={editRequestForm.title} onChange={(e) => setEditRequestForm({ ...editRequestForm, title: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                </div>
+                {/* السعر */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>السعر</label>
+                  <input type="number" value={editRequestForm.price} onChange={(e) => setEditRequestForm({ ...editRequestForm, price: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                </div>
+                {/* المنطقة */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>المنطقة</label>
+                  <input type="text" list="area-suggestions-editreq" value={editRequestForm.area} onChange={(e) => setEditRequestForm({ ...editRequestForm, area: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                  <datalist id="area-suggestions-editreq">{egyptianAreas.map(area => <option key={area} value={area} />)}</datalist>
+                </div>
+                {/* غرف النوم */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>غرف النوم</label>
+                  <select value={editRequestForm.bedrooms} onChange={(e) => setEditRequestForm({ ...editRequestForm, bedrooms: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>
+                    {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+                {/* الحمامات */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحمامات</label>
+                  <select value={editRequestForm.bathrooms} onChange={(e) => setEditRequestForm({ ...editRequestForm, bathrooms: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>
+                    {[1, 2, 3, 4].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+                {/* الدور */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الدور</label>
+                  <select value={editRequestForm.floor} onChange={(e) => setEditRequestForm({ ...editRequestForm, floor: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>
+                    <option value="">بدون تحديد</option>
+                    {['أرضي', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15+'].map(n => <option key={n} value={n === 'أرضي' ? '0' : n === '15+' ? '15' : n}>{n}</option>)}
+                  </select>
+                </div>
+                {/* مساحة الشقة */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>مساحة الشقة (م²)</label>
+                  <input type="number" placeholder="مثال: 120" value={editRequestForm.apartmentSize} onChange={(e) => setEditRequestForm({ ...editRequestForm, apartmentSize: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                </div>
+                {/* الهاتف */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رقم الهاتف</label>
+                  <input type="tel" value={editRequestForm.ownerPhone} onChange={(e) => setEditRequestForm({ ...editRequestForm, ownerPhone: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                </div>
+                {/* النوع */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>النوع</label>
+                  <select value={editRequestForm.type} onChange={(e) => setEditRequestForm({ ...editRequestForm, type: e.target.value as 'rent' | 'sale' })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>
+                    <option value="rent">إيجار</option>
+                    <option value="sale">بيع</option>
+                  </select>
+                </div>
+                {/* رابط الخريطة */}
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}><Link className="h-4 w-4 inline ml-1" />رابط الخريطة</label>
+                  <input type="text" placeholder="https://maps.google.com/..." value={editRequestForm.mapLink} onChange={(e) => setEditRequestForm({ ...editRequestForm, mapLink: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                </div>
+                {/* الوصف */}
+                <div className="col-span-2">
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الوصف</label>
+                  <textarea value={editRequestForm.description} onChange={(e) => setEditRequestForm({ ...editRequestForm, description: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} rows={3} />
+                </div>
+              </div>
+              {/* صور الشقة */}
+              <div>
+                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                  <ImageIcon className="h-4 w-4 inline ml-1" />صور الشقة ({editRequestImageUrls.length}/10)
+                </label>
+                <FileUpload type="image" value={editRequestImageUrls} onChange={setEditRequestImageUrls} maxFiles={10} />
+              </div>
+              {/* فيديوهات الشقة */}
+              <div>
+                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                  <Video className="h-4 w-4 inline ml-1" />فيديوهات الشقة ({editRequestVideoUrls.length}/3)
+                </label>
+                <FileUpload type="video" value={editRequestVideoUrls} onChange={setEditRequestVideoUrls} maxFiles={3} />
+              </div>
+              {/* ملاحظات إضافية */}
+              <div>
+                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                  <MessageCircle className="h-4 w-4 inline ml-1" />ملاحظات إضافية (اختياري)
+                </label>
+                <textarea value={editRequestNotes} onChange={(e) => setEditRequestNotes(e.target.value)} placeholder="أضف أي ملاحظات توضيحية للمطور..." className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-500' : 'bg-white border-slate-200 placeholder-slate-400'}`} rows={2} />
+              </div>
+              {/* أزرار */}
+              <div className="flex gap-3 mt-6">
+                <button type="button" onClick={() => { setShowEditRequestModal(false); setSelectedApartmentForEdit(null); }} className={`flex-1 py-3 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>إلغاء</button>
+                <button type="button" onClick={submitEditRequest} disabled={editRequestLoading} className="flex-1 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-amber-500 to-orange-600 disabled:opacity-50">
+                  {editRequestLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : <><Send className="h-4 w-4 inline ml-1" />إرسال طلب التعديل</>}
+                </button>
+              </div>
+            </div>
           </motion.div>
         </motion.div>
       )}</AnimatePresence>
@@ -1925,6 +2167,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                             <div className="flex flex-col gap-2 shrink-0">
                               <button onClick={() => handleApproveApartment(apt.id)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 text-sm font-medium transition-colors">موافقة</button>
                               <button onClick={() => handleRejectApartment(apt.id)} className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 text-sm font-medium transition-colors">رفض</button>
+                              <button onClick={() => handleDeleteApartment(apt.id)} className="px-4 py-2 rounded-lg bg-slate-600 text-white hover:bg-slate-700 text-sm font-medium transition-colors flex items-center justify-center gap-1"><Trash2 className="h-3.5 w-3.5" />حذف</button>
                             </div>
                           </div>
                         </div>
@@ -1955,7 +2198,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     </div>
                   ) : (
                     <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-                      {allApartments.slice(0, 50).map(apt => (
+                      {allApartments.map(apt => (
                         <div key={apt.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3 min-w-0">
@@ -2291,35 +2534,221 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     </div>
                   ) : (
                     <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-                      {editRequests.map(req => (
-                        <div key={req.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                          <div className="flex items-start justify-between gap-3 mb-3">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap mb-1">
-                                <h4 className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{req.user?.name || 'مستخدم'}</h4>
-                                <span className={`px-2 py-0.5 rounded-full text-xs ${req.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : req.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
-                                  {req.status === 'approved' ? 'معتمد' : req.status === 'pending' ? 'قيد المراجعة' : 'مرفوض'}
-                                </span>
+                      {editRequests.map(req => {
+                        // Parse changes from JSON
+                        let parsedChanges: Record<string, any> = {};
+                        if (req.changes) {
+                          try { parsedChanges = JSON.parse(req.changes); } catch {}
+                        }
+                        // Fallback: if no changes JSON, build from individual fields
+                        if (Object.keys(parsedChanges).length === 0) {
+                          if (req.newImages && req.newImages.length > 0) parsedChanges.images = req.newImages;
+                          if (req.newVideos && req.newVideos.length > 0) parsedChanges.videos = req.newVideos;
+                          if (req.newPrice) parsedChanges.price = req.newPrice;
+                          if (req.newStatus) parsedChanges.status = req.newStatus;
+                        }
+                        const hasChanges = Object.keys(parsedChanges).length > 0;
+                        const isExpanded = expandedEditRequest === req.id;
+                        // Field label mapping
+                        const fieldLabels: Record<string, string> = { title: 'العنوان', price: 'السعر', area: 'المنطقة', bedrooms: 'غرف النوم', bathrooms: 'الحمامات', floor: 'الدور', apartmentSize: 'المساحة', description: 'الوصف', ownerPhone: 'رقم الهاتف', mapLink: 'رابط الخريطة', type: 'النوع', status: 'الحالة', images: 'الصور', videos: 'الفيديوهات' };
+                        // Get original apartment values for comparison
+                        const apt = req.apartment;
+                        const getOriginalValue = (field: string) => {
+                          if (!apt) return '—';
+                          switch (field) {
+                            case 'title': return apt.title || '—';
+                            case 'price': return apt.price ? `${apt.price.toLocaleString()} ج.م` : '—';
+                            case 'area': return apt.area || '—';
+                            case 'bedrooms': return apt.bedrooms || '—';
+                            case 'bathrooms': return apt.bathrooms || '—';
+                            case 'floor': return apt.floor || '—';
+                            case 'apartmentSize': return apt.apartmentSize ? `${apt.apartmentSize} م²` : '—';
+                            case 'description': return apt.description ? (apt.description.length > 80 ? apt.description.substring(0, 80) + '...' : apt.description) : '—';
+                            case 'ownerPhone': return apt.ownerPhone || '—';
+                            case 'mapLink': return apt.mapLink || '—';
+                            case 'type': return apt.type === 'rent' ? 'إيجار' : apt.type === 'sale' ? 'بيع' : '—';
+                            case 'status': return statusConfig[apt.status]?.label || apt.status || '—';
+                            case 'images': return apt.images ? parseJsonArray(apt.images).length : 0;
+                            case 'videos': return apt.videos ? parseJsonArray(apt.videos).length : 0;
+                            default: return '—';
+                          }
+                        };
+                        const getNewValue = (field: string, value: any) => {
+                          switch (field) {
+                            case 'price': return value ? `${Number(value).toLocaleString()} ج.م` : '—';
+                            case 'apartmentSize': return value ? `${value} م²` : '—';
+                            case 'type': return value === 'rent' ? 'إيجار' : value === 'sale' ? 'بيع' : String(value || '—');
+                            case 'status': return statusConfig[value]?.label || String(value || '—');
+                            case 'bedrooms':
+                            case 'bathrooms':
+                            case 'floor':
+                              return String(value ?? '—');
+                            case 'description':
+                              return value ? (String(value).length > 80 ? String(value).substring(0, 80) + '...' : String(value)) : '—';
+                            default:
+                              return String(value ?? '—');
+                          }
+                        };
+                        // Parse new images/videos for thumbnail display
+                        const newImagesList = Array.isArray(parsedChanges.images) ? parsedChanges.images : (typeof parsedChanges.images === 'string' ? (() => { try { return JSON.parse(parsedChanges.images); } catch { return []; } })() : []);
+                        const newVideosList = Array.isArray(parsedChanges.videos) ? parsedChanges.videos : (typeof parsedChanges.videos === 'string' ? (() => { try { return JSON.parse(parsedChanges.videos); } catch { return []; } })() : []);
+
+                        return (
+                          <div key={req.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                            {/* Header */}
+                            <div className="flex items-start justify-between gap-3 mb-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap mb-1">
+                                  <div className={`w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shrink-0`}>{(req.user?.name || 'م').charAt(0)}</div>
+                                  <h4 className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{req.user?.name || 'مستخدم'}</h4>
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${req.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : req.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                                    {req.status === 'approved' ? '✓ معتمد' : req.status === 'pending' ? '⏳ قيد المراجعة' : '✗ مرفوض'}
+                                  </span>
+                                </div>
+                                <div className={`flex flex-wrap gap-2 text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                  <span className={`px-2 py-0.5 rounded-md ${darkMode ? 'bg-slate-600' : 'bg-white'}`}>{req.editType === 'images' ? 'صور' : req.editType === 'videos' ? 'فيديوهات' : req.editType === 'price' ? 'سعر' : req.editType === 'status' ? 'حالة' : req.editType === 'multiple' ? 'تعديلات متعددة' : req.editType}</span>
+                                  <span className={darkMode ? 'text-slate-500' : 'text-slate-400'}>{new Date(req.createdAt).toLocaleDateString('ar-EG')}</span>
+                                  {hasChanges && <span className={darkMode ? 'text-slate-500' : 'text-slate-400'}>{Object.keys(parsedChanges).length} حقول</span>}
+                                </div>
                               </div>
-                              <div className={`flex flex-wrap gap-2 text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                                <span className={`px-2 py-0.5 rounded-md ${darkMode ? 'bg-slate-600' : 'bg-white'}`}>نوع: {req.editType === 'images' ? 'صور' : req.editType === 'videos' ? 'فيديوهات' : req.editType === 'price' ? 'سعر' : req.editType === 'status' ? 'حالة' : req.editType}</span>
-                                <span>{new Date(req.createdAt).toLocaleDateString('ar-EG')}</span>
+                              <div className="flex gap-1.5 shrink-0">
+                                {hasChanges && (
+                                  <button onClick={() => setExpandedEditRequest(isExpanded ? null : req.id)} className={`p-1.5 rounded-lg transition-colors ${isExpanded ? 'bg-violet-500/20 text-violet-500' : darkMode ? 'bg-slate-600 text-slate-400 hover:bg-slate-500' : 'bg-white text-slate-500 hover:bg-slate-200'}`} title="عرض التفاصيل">
+                                    <Eye className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                                {req.status === 'pending' && (
+                                  <>
+                                    <button onClick={() => handleApproveEditRequest(req.id, reviewNotesInput[req.id])} className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors" title="موافقة"><Check className="h-3.5 w-3.5" /></button>
+                                    <button onClick={() => handleRejectEditRequest(req.id, reviewNotesInput[req.id])} className="p-1.5 rounded-lg bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 transition-colors" title="رفض"><XCircle className="h-3.5 w-3.5" /></button>
+                                  </>
+                                )}
+                                <button onClick={() => deleteEditRequest(req.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-500 transition-colors" title="حذف"><Trash2 className="h-3.5 w-3.5" /></button>
                               </div>
                             </div>
-                            <div className="flex gap-1.5 shrink-0">
-                              {req.status === 'pending' && (
-                                <>
-                                  <button onClick={() => handleApproveEditRequest(req.id)} className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors" title="موافقة"><Check className="h-3.5 w-3.5" /></button>
-                                  <button onClick={() => handleRejectEditRequest(req.id)} className="p-1.5 rounded-lg bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 transition-colors" title="رفض"><XCircle className="h-3.5 w-3.5" /></button>
-                                </>
-                              )}
-                              <button onClick={() => deleteEditRequest(req.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-500 transition-colors" title="حذف"><Trash2 className="h-3.5 w-3.5" /></button>
-                            </div>
+
+                            {/* Apartment reference */}
+                            {req.apartment && (
+                              <div className={`mb-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs ${darkMode ? 'bg-slate-600 text-slate-300' : 'bg-white text-slate-600'}`}>
+                                <Building2 className="h-3 w-3" />
+                                <span className="font-medium">{req.apartment.title}</span>
+                                <span className={darkMode ? 'text-slate-400' : 'text-slate-400'}>• {req.apartment.area}</span>
+                              </div>
+                            )}
+
+                            {/* Description */}
+                            {req.description && (
+                              <p className={`text-sm mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{req.description}</p>
+                            )}
+
+                            {/* Expanded changes detail */}
+                            {isExpanded && hasChanges && (
+                              <div className={`mt-3 p-3 rounded-xl border ${darkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-200'}`}>
+                                <h5 className={`text-xs font-bold mb-3 flex items-center gap-1.5 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                                  <Sparkles className="h-3.5 w-3.5 text-amber-500" />التعديلات المطلوبة
+                                </h5>
+                                <div className="space-y-2.5">
+                                  {Object.entries(parsedChanges).map(([field, value]) => {
+                                    if (field === 'images') {
+                                      return (
+                                        <div key={field}>
+                                          <div className={`text-xs font-medium mb-1.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{fieldLabels[field] || field}</div>
+                                          <div className="flex gap-2">
+                                            {/* Before */}
+                                            <div className="flex-1">
+                                              <div className={`text-[10px] mb-1 font-medium ${darkMode ? 'text-red-400' : 'text-red-500'}`}>قبل ({getOriginalValue(field)})</div>
+                                              <div className="flex gap-1 flex-wrap">
+                                                {apt?.images ? parseJsonArray(apt.images).slice(0, 3).map((img: string, i: number) => (
+                                                  <img key={i} src={img} className="w-12 h-12 rounded-lg object-cover border border-red-200 opacity-60" alt="" />
+                                                )) : <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>لا توجد صور</span>}
+                                              </div>
+                                            </div>
+                                            {/* After */}
+                                            <div className="flex-1">
+                                              <div className={`text-[10px] mb-1 font-medium ${darkMode ? 'text-emerald-400' : 'text-emerald-500'}`}>بعد ({newImagesList.length})</div>
+                                              <div className="flex gap-1 flex-wrap">
+                                                {newImagesList.slice(0, 3).map((img: string, i: number) => (
+                                                  <img key={i} src={img} className="w-12 h-12 rounded-lg object-cover border border-emerald-200" alt="" />
+                                                ))}
+                                                {newImagesList.length > 3 && <span className={`text-[10px] self-center ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>+{newImagesList.length - 3}</span>}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    }
+                                    if (field === 'videos') {
+                                      return (
+                                        <div key={field}>
+                                          <div className={`text-xs font-medium mb-1.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{fieldLabels[field] || field}</div>
+                                          <div className="flex gap-2">
+                                            <div className="flex-1">
+                                              <div className={`text-[10px] mb-1 font-medium ${darkMode ? 'text-red-400' : 'text-red-500'}`}>قبل ({getOriginalValue(field)})</div>
+                                              <div className={`flex items-center gap-1 text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                                                <Video className="h-3 w-3" />
+                                                {Number(getOriginalValue(field)) > 0 ? `${getOriginalValue(field)} فيديو` : 'لا توجد فيديوهات'}
+                                              </div>
+                                            </div>
+                                            <div className="flex-1">
+                                              <div className={`text-[10px] mb-1 font-medium ${darkMode ? 'text-emerald-400' : 'text-emerald-500'}`}>بعد ({newVideosList.length})</div>
+                                              <div className="flex gap-1 flex-wrap">
+                                                {newVideosList.slice(0, 3).map((vid: string, i: number) => (
+                                                  <a key={i} href={vid} target="_blank" rel="noopener noreferrer" className={`px-2 py-1 rounded-md text-[10px] ${darkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-600'}`}>
+                                                    <Play className="h-2.5 w-2.5 inline" /> فيديو {i + 1}
+                                                  </a>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    }
+                                    // Regular text fields
+                                    const originalVal = getOriginalValue(field);
+                                    const newVal = getNewValue(field, value);
+                                    return (
+                                      <div key={field}>
+                                        <div className={`text-xs font-medium mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{fieldLabels[field] || field}</div>
+                                        <div className="flex gap-2">
+                                          <div className="flex-1">
+                                            <div className={`text-[10px] mb-0.5 font-medium ${darkMode ? 'text-red-400' : 'text-red-500'}`}>قبل</div>
+                                            <div className={`text-xs px-2 py-1.5 rounded-lg ${darkMode ? 'bg-red-500/10 text-red-300 line-through' : 'bg-red-50 text-red-600 line-through'}`}>{originalVal}</div>
+                                          </div>
+                                          <div className="flex items-center"><ChevronLeft className={`h-3 w-3 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /></div>
+                                          <div className="flex-1">
+                                            <div className={`text-[10px] mb-0.5 font-medium ${darkMode ? 'text-emerald-400' : 'text-emerald-500'}`}>بعد</div>
+                                            <div className={`text-xs px-2 py-1.5 rounded-lg ${darkMode ? 'bg-emerald-500/10 text-emerald-300' : 'bg-emerald-50 text-emerald-700'}`}>{newVal}</div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Review notes input for pending requests */}
+                            {req.status === 'pending' && (
+                              <div className="mt-3">
+                                <input
+                                  type="text"
+                                  placeholder="أضف ملاحظات مراجعة (اختياري)..."
+                                  value={reviewNotesInput[req.id] || ''}
+                                  onChange={(e) => setReviewNotesInput({ ...reviewNotesInput, [req.id]: e.target.value })}
+                                  className={`w-full px-3 py-2 rounded-lg text-xs border ${darkMode ? 'bg-slate-800 border-slate-600 text-white placeholder-slate-500' : 'bg-white border-slate-200 placeholder-slate-400'}`}
+                                />
+                              </div>
+                            )}
+
+                            {/* Show review notes for approved/rejected */}
+                            {req.reviewNotes && (
+                              <div className={`mt-2 px-3 py-2 rounded-lg text-xs ${req.status === 'approved' ? (darkMode ? 'bg-emerald-500/10 text-emerald-300' : 'bg-emerald-50 text-emerald-700') : (darkMode ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-50 text-amber-700')}`}>
+                                <span className="font-medium">{req.status === 'approved' ? 'ملاحظات الموافقة' : 'سبب الرفض'}: </span>{req.reviewNotes}
+                              </div>
+                            )}
                           </div>
-                          <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{req.description || 'بدون وصف'}</p>
-                          {req.apartment && <div className={`mt-2 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs ${darkMode ? 'bg-slate-600 text-slate-300' : 'bg-white text-slate-600'}`}><Building2 className="h-3 w-3" />{req.apartment.title}</div>}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -2341,30 +2770,50 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     </div>
                   ) : (
                     <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-                      {allUsers.map(u => (
-                        <div key={u.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'} flex items-center justify-between`}>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
+                      {allUsers.map(u => {
+                        const isMainDev = u.identifier === DEVELOPER_EMAIL;
+                        return (
+                        <div key={u.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'} flex flex-col gap-3`}>
+                          <div className="flex items-center justify-between">
+                            <div className="min-w-0 flex items-center gap-3">
                               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold shrink-0">{u.name?.charAt(0) || 'م'}</div>
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
                                   <p className={`font-medium truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{u.name}</p>
+                                  {u.role === 'DEVELOPER' && <span className="px-2 py-0.5 rounded-full text-xs bg-violet-100 text-violet-700 shrink-0 font-medium">مطور</span>}
                                   {u.isBlocked && <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700 shrink-0">محظور</span>}
                                 </div>
                                 <p className={`text-sm truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{u.identifier || u.email}</p>
                               </div>
                             </div>
                           </div>
-                          <div className="flex gap-2 shrink-0">
+                          {/* Role changer - only for non-main developers */}
+                          {!isMainDev && (
+                            <div className={`flex items-center gap-3 p-3 rounded-lg ${darkMode ? 'bg-slate-600' : 'bg-white'}`}>
+                              <ShieldCheck className={`h-4 w-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`} />
+                              <span className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>الدور:</span>
+                              <select
+                                value={u.role || 'USER'}
+                                onChange={(e) => changeUserRole(u.id, e.target.value, u.name, u.role)}
+                                className={`flex-1 px-3 py-1.5 rounded-lg border text-sm ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-700'}`}
+                              >
+                                <option value="USER">مستخدم عادي</option>
+                                <option value="DEVELOPER">مطور</option>
+                              </select>
+                            </div>
+                          )}
+                          {/* Actions */}
+                          <div className="flex gap-2 justify-end">
                             {u.isBlocked ? (
                               <button onClick={() => unblockUser(u.id)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm hover:bg-emerald-600 transition-colors">إلغاء الحظر</button>
                             ) : (
-                              <button onClick={() => blockUser(u.id, 'حظر من المطور')} className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm hover:bg-amber-600 transition-colors">حظر</button>
+                              !isMainDev && <button onClick={() => blockUser(u.id, 'حظر من المطور')} className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm hover:bg-amber-600 transition-colors">حظر</button>
                             )}
-                            <button onClick={() => deleteUser(u.id, u.name)} className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600 transition-colors flex items-center gap-1.5"><Trash2 className="h-3.5 w-3.5" />حذف</button>
+                            {!isMainDev && <button onClick={() => deleteUser(u.id, u.name)} className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600 transition-colors flex items-center gap-1.5"><Trash2 className="h-3.5 w-3.5" />حذف</button>}
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -2379,11 +2828,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <span className="text-sm font-normal text-slate-500">({blockedUsers.length})</span>
                     </h3>
                     {blockedUsers.length > 0 && (
-                      <button onClick={async () => {
-                        for (const bu of blockedUsers) { try { await fetch(`/api/block?userId=${bu.userId}`, { method: 'DELETE' }); } catch {} }
-                        addToast('تم إلغاء حظر جميع المستخدمين', 'success');
-                        fetchBlockedUsers(); fetchAllUsers();
-                      }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 text-xs font-medium hover:bg-emerald-500/20 transition-colors">
+                      <button onClick={() => { setConfirmDialog({ isOpen: true, title: 'إلغاء حظر جميع المستخدمين', message: `هل أنت متأكد من إلغاء حظر جميع المستخدمين المحظورين (${blockedUsers.length})؟`, confirmText: 'إلغاء حظر الكل', cancelText: 'تراجع', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { for (const bu of blockedUsers) { try { await fetch(`/api/block?userId=${bu.userId}`, { method: 'DELETE' }); } catch {} } addToast('تم إلغاء حظر جميع المستخدمين', 'success'); fetchBlockedUsers(); fetchAllUsers(); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'warning' }); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 text-xs font-medium hover:bg-emerald-500/20 transition-colors">
                         <CheckCircle2 className="h-3.5 w-3.5" />إلغاء حظر الكل
                       </button>
                     )}
