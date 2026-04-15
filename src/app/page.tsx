@@ -12,7 +12,7 @@ import {
   ChevronLeft, ChevronRight, Plus, Trash2, ShieldCheck, Hourglass,
   Send, Bot, Home, Crown, Diamond, Ban, Brain, Search,
   Play, Upload, Link, Activity, Wallet, PieChart, Layers, Key, ArrowUp,
-  Download, RefreshCw as RefreshCwIcon, Smartphone, Banknote, Zap,
+  Download, Smartphone, Banknote, Zap,
   Clock, Sparkles, Share2, Calendar, BookOpen, Users, Edit
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
@@ -251,8 +251,9 @@ export default function App() {
 
   const hasPaidForApartment = useCallback((apartmentId: string) => isDeveloper || userPaidApartments.includes(apartmentId), [userPaidApartments, isDeveloper]);
 
-  // Fetch current user on mount
+  // Fetch current user and settings on mount
   useEffect(() => {
+    fetchSettings();
     fetch('/api/auth/me').then(r => r.json()).then(data => {
       if (data.user) {
         setCurrentUser(data.user);
@@ -1922,16 +1923,16 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                                     isOpen: true, title: 'تغيير حالة العقار',
                                     message: `سيتم حذف العقار تلقائياً بعد 48 ساعة من تغيير الحالة إلى "${newStatus === 'sold' ? 'تم البيع' : 'تم التأجير'}"\n\nهل أنت متأكد؟`,
                                     confirmText: 'تأكيد', cancelText: 'إلغاء',
-                                    onConfirm: () => { apt.status = newStatus; setAllApartments([...allApartments]); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus, statusChangedAt: new Date().toISOString() }) }); setConfirmDialog({ ...confirmDialog, isOpen: false }); addToast('تم تغيير الحالة - سيُحذف بعد 48 ساعة', 'success'); },
+                                    onConfirm: () => { setAllApartments(prev => prev.map(a => a.id === apt.id ? { ...a, status: newStatus } : a)); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus, statusChangedAt: new Date().toISOString() }) }); setConfirmDialog({ ...confirmDialog, isOpen: false }); addToast('تم تغيير الحالة - سيُحذف بعد 48 ساعة', 'success'); },
                                     type: 'warning'
                                   });
                                 } else {
-                                  apt.status = newStatus; setAllApartments([...allApartments]); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) });
+                                  setAllApartments(prev => prev.map(a => a.id === apt.id ? { ...a, status: newStatus } : a)); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) });
                                 }
                               }} className={`px-3 py-1 rounded-lg text-sm ${darkMode ? 'bg-slate-600 text-white' : 'bg-white border'}`}><option value="available">متاح</option><option value="preview">في معاينة</option><option value="reserved">محجوز</option><option value="sold">تم البيع</option><option value="rented">تم التأجير</option><option value="unavailable">غير متاح</option></select>
                               <div className="flex gap-1">
-                                <button onClick={() => { apt.isVip = !apt.isVip; setAllApartments([...allApartments]); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isVip: apt.isVip }) }); addToast(apt.isVip ? 'تم إضافة VIP+' : 'تم إزالة VIP+', 'success'); }} className={`p-1.5 rounded-lg transition-colors ${apt.isVip ? 'bg-purple-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300 hover:bg-slate-500' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`} title="VIP+"><Diamond className="h-4 w-4" /></button>
-                                <button onClick={() => { apt.isFeatured = !apt.isFeatured; setAllApartments([...allApartments]); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isFeatured: apt.isFeatured }) }); addToast(apt.isFeatured ? 'تم إضافة مميز' : 'تم إزالة مميز', 'success'); }} className={`p-1.5 rounded-lg transition-colors ${apt.isFeatured && !apt.isVip ? 'bg-amber-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300 hover:bg-slate-500' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`} title="مميز"><Star className="h-4 w-4" /></button>
+                                <button onClick={() => { const newVip = !apt.isVip; setAllApartments(prev => prev.map(a => a.id === apt.id ? { ...a, isVip: newVip } : a)); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isVip: newVip }) }); addToast(newVip ? 'تم إضافة VIP+' : 'تم إزالة VIP+', 'success'); }} className={`p-1.5 rounded-lg transition-colors ${apt.isVip ? 'bg-purple-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300 hover:bg-slate-500' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`} title="VIP+"><Diamond className="h-4 w-4" /></button>
+                                <button onClick={() => { const newFeatured = !apt.isFeatured; setAllApartments(prev => prev.map(a => a.id === apt.id ? { ...a, isFeatured: newFeatured } : a)); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isFeatured: newFeatured }) }); addToast(newFeatured ? 'تم إضافة مميز' : 'تم إزالة مميز', 'success'); }} className={`p-1.5 rounded-lg transition-colors ${apt.isFeatured && !apt.isVip ? 'bg-amber-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300 hover:bg-slate-500' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`} title="مميز"><Star className="h-4 w-4" /></button>
                                 <button onClick={() => handleDeleteApartment(apt.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors" title="حذف"><Trash2 className="h-4 w-4" /></button>
                               </div>
                             </div>
@@ -2130,19 +2131,29 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                               type="text"
                               placeholder="اكتب رداً..."
                               className={`flex-1 px-3 py-2 rounded-lg text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 text-slate-700 placeholder-slate-400'} border`}
-                              onKeyDown={(e) => {
+                              onKeyDown={async (e) => {
                                 if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                                  addToast('تم إرسال الرد!', 'success');
+                                  const replyText = e.currentTarget.value.trim();
                                   e.currentTarget.value = '';
+                                  try {
+                                    await fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: replyText, receiverId: msg.senderId }) });
+                                    addToast('تم إرسال الرد!', 'success');
+                                    fetchMessages();
+                                  } catch { addToast('حدث خطأ في إرسال الرد', 'error'); }
                                 }
                               }}
                             />
                             <button
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 const input = e.currentTarget.previousElementSibling as HTMLInputElement;
                                 if (input?.value.trim()) {
-                                  addToast('تم إرسال الرد!', 'success');
+                                  const replyText = input.value.trim();
                                   input.value = '';
+                                  try {
+                                    await fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: replyText, receiverId: msg.senderId }) });
+                                    addToast('تم إرسال الرد!', 'success');
+                                    fetchMessages();
+                                  } catch { addToast('حدث خطأ في إرسال الرد', 'error'); }
                                 }
                               }}
                               className="px-3 py-2 rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 text-white text-sm"
@@ -2413,6 +2424,11 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم العقار المميز+ VIP (ج.م)</label><input type="number" value={settings.vipFee} onChange={(e) => setSettings({ ...settings, vipFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                     <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم عرض البيع (ج.م)</label><input type="number" value={settings.saleDisplayFee} onChange={(e) => setSettings({ ...settings, saleDisplayFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                     <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم عرض الإيجار (ج.م)</label><input type="number" value={settings.rentDisplayFee} onChange={(e) => setSettings({ ...settings, rentDisplayFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم البريميوم (ج.م)</label><input type="number" value={settings.premiumFee} onChange={(e) => setSettings({ ...settings, premiumFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم الخدمات الأخرى (ج.م)</label><input type="number" value={settings.otherServicesFee} onChange={(e) => setSettings({ ...settings, otherServicesFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم إبراز العقار (ج.م)</label><input type="number" value={settings.highlightFee} onChange={(e) => setSettings({ ...settings, highlightFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم الأسبقية في العرض (ج.م)</label><input type="number" value={settings.priorityListingFee} onChange={(e) => setSettings({ ...settings, priorityListingFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم التوثيق (ج.م)</label><input type="number" value={settings.verifiedListingFee} onChange={(e) => setSettings({ ...settings, verifiedListingFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                     <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>العملة</label><input type="text" value={settings.currency} onChange={(e) => setSettings({ ...settings, currency: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                   </div>
                   {/* Developer Password Change */}
@@ -2447,7 +2463,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       {settings.vipFee === 0 ? <div className={`p-2 rounded-lg bg-emerald-100 text-emerald-700`}>VIP+: مجاني ✨</div> : <div className={`p-2 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>VIP+: {settings.vipFee} {settings.currency}</div>}
                     </div>
                   </div>
-                  <button onClick={async () => { await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) }); addToast('تم حفظ الإعدادات', 'success'); }} className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium">حفظ الإعدادات</button>
+                  <button onClick={() => updateSettings(settings)} disabled={settingsLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium disabled:opacity-50">{settingsLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'حفظ الإعدادات'}</button>
                 </div>
               )}
             </div>

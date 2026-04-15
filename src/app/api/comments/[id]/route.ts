@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verify } from 'jsonwebtoken';
 import { db } from '@/lib/db';
+import { cookies } from 'next/headers';
+import { verify } from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
-async function getCurrentUser(request: Request) {
-  const cookieHeader = request.headers.get("cookie");
-  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
-  const token = cookies.get("auth-token");
-  if (!token) return null;
+async function verifyDevAuth(request: NextRequest): Promise<boolean> {
   try {
-    const decoded = verify(token, JWT_SECRET) as { userId: string };
-    return await db.user.findUnique({ where: { id: decoded.userId } });
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) return false;
+    const decoded = verify(token, JWT_SECRET) as any;
+    return decoded.role === 'DEVELOPER';
   } catch {
-    return null;
+    return false;
   }
 }
 
@@ -23,13 +23,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await getCurrentUser(request)
-
-    if (!user || user.role !== "DEVELOPER") {
-      return NextResponse.json(
-        { error: "غير مصرح لك بهذا الإجراء" },
-        { status: 403 }
-      )
+    if (!(await verifyDevAuth(request))) {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
 
     const { id } = await params;
@@ -71,13 +66,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await getCurrentUser(request)
-
-    if (!user || user.role !== "DEVELOPER") {
-      return NextResponse.json(
-        { error: "غير مصرح لك بهذا الإجراء" },
-        { status: 403 }
-      )
+    if (!(await verifyDevAuth(request))) {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
 
     const { id } = await params;
