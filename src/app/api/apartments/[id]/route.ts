@@ -33,7 +33,7 @@ export async function GET(
       where: { id },
       include: {
         user: {
-          select: { id: true, name: true, phone: true, email: true },
+          select: { id: true, name: true },
         },
       },
     });
@@ -87,6 +87,8 @@ export async function PUT(
         area: body.area,
         bedrooms: body.bedrooms ? parseInt(body.bedrooms) : undefined,
         bathrooms: body.bathrooms ? parseInt(body.bathrooms) : undefined,
+        floor: body.floor !== undefined && body.floor !== null ? parseInt(body.floor) : null,
+        apartmentSize: body.apartmentSize !== undefined && body.apartmentSize !== null ? parseInt(body.apartmentSize) : null,
         type: body.type,
         images: body.images,
         ownerPhone: body.ownerPhone,
