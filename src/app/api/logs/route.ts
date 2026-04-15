@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// حذف سجل أو مسح جميع السجلات (للمطور)
+// حذف سجل أو حذف جميع السجلات
 export async function DELETE(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -119,7 +119,6 @@ export async function DELETE(request: NextRequest) {
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
-
     if (decoded.role !== 'DEVELOPER') {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
@@ -128,22 +127,12 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get('id');
 
     if (id) {
-      // حذف سجل واحد
-      try {
-        await db.operationLog.delete({ where: { id } });
-        return NextResponse.json({ success: true, message: 'تم حذف السجل' });
-      } catch {
-        return NextResponse.json({ error: 'السجل غير موجود' }, { status: 404 });
-      }
+      await db.operationLog.delete({ where: { id } });
     } else {
-      // مسح جميع السجلات
-      try {
-        await db.operationLog.deleteMany({});
-        return NextResponse.json({ success: true, message: 'تم مسح جميع السجلات' });
-      } catch {
-        return NextResponse.json({ error: 'حدث خطأ أثناء مسح السجلات' }, { status: 500 });
-      }
+      await db.operationLog.deleteMany({});
     }
+
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting logs:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });

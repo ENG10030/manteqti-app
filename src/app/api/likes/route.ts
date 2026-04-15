@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// مسح جميع الإعجابات (للمطور فقط)
+// حذف إعجاب أو حذف جميع الإعجابات
 export async function DELETE(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -123,25 +123,28 @@ export async function DELETE(request: NextRequest) {
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
-
     if (decoded.role !== 'DEVELOPER') {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
-    const clearAll = searchParams.get('clearAll');
+    const id = searchParams.get('id');
+    const apartmentId = searchParams.get('apartmentId');
+    const userId = searchParams.get('userId');
 
-    if (clearAll === 'true') {
-      // مسح جميع الإعجابات
-      try {
-        await db.like.deleteMany({});
-        return NextResponse.json({ success: true, message: 'تم مسح جميع الإعجابات' });
-      } catch {
-        return NextResponse.json({ error: 'حدث خطأ أثناء مسح الإعجابات' }, { status: 500 });
-      }
+    if (id) {
+      await db.like.delete({ where: { id } });
+    } else if (apartmentId && userId) {
+      await db.like.delete({
+        where: {
+          apartmentId_userId: { apartmentId, userId }
+        }
+      });
     } else {
-      return NextResponse.json({ error: 'يجب تحديد clearAll=true لمسح الكل' }, { status: 400 });
+      await db.like.deleteMany({});
     }
+
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting likes:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });

@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// مسح جميع طلبات التعديل (للمطور فقط)
+// حذف طلب تعديل أو حذف طلبات التعديل
 export async function DELETE(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -177,24 +177,23 @@ export async function DELETE(request: NextRequest) {
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
-
     if (decoded.role !== 'DEVELOPER') {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
     const clearAll = searchParams.get('clearAll');
 
-    if (clearAll === 'true') {
-      try {
-        await db.propertyEditRequest.deleteMany({});
-        return NextResponse.json({ success: true, message: 'تم مسح جميع طلبات التعديل' });
-      } catch {
-        return NextResponse.json({ error: 'حدث خطأ أثناء مسح طلبات التعديل' }, { status: 500 });
-      }
+    if (id) {
+      await db.propertyEditRequest.delete({ where: { id } });
+    } else if (clearAll === 'true') {
+      await db.propertyEditRequest.deleteMany({});
     } else {
-      return NextResponse.json({ error: 'يجب تحديد clearAll=true لمسح الكل' }, { status: 400 });
+      await db.propertyEditRequest.deleteMany({ where: { status: 'pending' } });
     }
+
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting edit requests:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });

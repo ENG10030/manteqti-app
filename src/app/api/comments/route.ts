@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// مسح جميع التعليقات (للمطور فقط)
+// حذف تعليق أو حذف جميع التعليقات
 export async function DELETE(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -116,25 +116,20 @@ export async function DELETE(request: NextRequest) {
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
-
     if (decoded.role !== 'DEVELOPER') {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
-    const clearAll = searchParams.get('clearAll');
+    const id = searchParams.get('id');
 
-    if (clearAll === 'true') {
-      // مسح جميع التعليقات
-      try {
-        await db.comment.deleteMany({});
-        return NextResponse.json({ success: true, message: 'تم مسح جميع التعليقات' });
-      } catch {
-        return NextResponse.json({ error: 'حدث خطأ أثناء مسح التعليقات' }, { status: 500 });
-      }
+    if (id) {
+      await db.comment.delete({ where: { id } });
     } else {
-      return NextResponse.json({ error: 'يجب تحديد clearAll=true لمسح الكل' }, { status: 400 });
+      await db.comment.deleteMany({});
     }
+
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting comments:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });

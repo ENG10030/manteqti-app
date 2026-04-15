@@ -15,6 +15,7 @@ async function isDeveloper(request: Request) {
   try {
     const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
     
+    // التحقق من دور DEVELOPER أو بريد المطور
     if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
 
     const user = await db.user.findUnique({
@@ -38,7 +39,6 @@ export async function GET() {
         data: {
           contactFee: 50,
           featuredFee: 100,
-          vipFee: 300,
           premiumFee: 200,
           saleDisplayFee: 100,
           rentDisplayFee: 75,
@@ -70,49 +70,49 @@ export async function PUT(request: Request) {
 
     const body = await request.json();
 
-    // تحقق من وجود البيانات
-    if (!body || typeof body !== 'object') {
-      return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 });
-    }
-
     let settings = await db.settings.findFirst();
-
-    const updateData = {
-      contactFee: body.contactFee ?? 50,
-      featuredFee: body.featuredFee ?? 100,
-      vipFee: body.vipFee ?? 300,
-      premiumFee: body.premiumFee ?? 200,
-      saleDisplayFee: body.saleDisplayFee ?? 100,
-      rentDisplayFee: body.rentDisplayFee ?? 75,
-      otherServicesFee: body.otherServicesFee ?? 50,
-      highlightFee: body.highlightFee ?? 150,
-      priorityListingFee: body.priorityListingFee ?? 200,
-      verifiedListingFee: body.verifiedListingFee ?? 250,
-      currency: body.currency || "ج.م",
-    };
 
     if (!settings) {
       settings = await db.settings.create({
-        data: updateData,
+        data: {
+          contactFee: body.contactFee ?? 50,
+          featuredFee: body.featuredFee ?? 100,
+          premiumFee: body.premiumFee ?? 200,
+          saleDisplayFee: body.saleDisplayFee ?? 100,
+          rentDisplayFee: body.rentDisplayFee ?? 75,
+          otherServicesFee: body.otherServicesFee ?? 50,
+          highlightFee: body.highlightFee ?? 150,
+          priorityListingFee: body.priorityListingFee ?? 200,
+          verifiedListingFee: body.verifiedListingFee ?? 250,
+          currency: body.currency ?? "ج.م",
+        },
       });
     } else {
       settings = await db.settings.update({
         where: { id: settings.id },
-        data: updateData,
+        data: {
+          contactFee: body.contactFee,
+          featuredFee: body.featuredFee,
+          premiumFee: body.premiumFee,
+          saleDisplayFee: body.saleDisplayFee,
+          rentDisplayFee: body.rentDisplayFee,
+          otherServicesFee: body.otherServicesFee,
+          highlightFee: body.highlightFee,
+          priorityListingFee: body.priorityListingFee,
+          verifiedListingFee: body.verifiedListingFee,
+          currency: body.currency,
+        },
       });
     }
 
-    console.log("✅ Settings updated successfully:", JSON.stringify(updateData));
-
     return NextResponse.json({
-      success: true,
       message: "تم تحديث الإعدادات بنجاح",
       settings,
     });
   } catch (error) {
-    console.error("❌ Update settings error:", error);
+    console.error("Update settings error:", error);
     return NextResponse.json(
-      { error: "حدث خطأ أثناء تحديث الإعدادات", details: String(error) },
+      { error: "حدث خطأ أثناء تحديث الإعدادات" },
       { status: 500 }
     );
   }

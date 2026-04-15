@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// حذف رسالة أو مسح جميع الرسائل (للمطور)
+// حذف رسالة أو حذف جميع الرسائل
 export async function DELETE(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -136,7 +136,6 @@ export async function DELETE(request: NextRequest) {
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
-
     if (decoded.role !== 'DEVELOPER') {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
@@ -145,22 +144,12 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get('id');
 
     if (id) {
-      // حذف رسالة واحدة
-      try {
-        await db.message.delete({ where: { id } });
-        return NextResponse.json({ success: true, message: 'تم حذف الرسالة' });
-      } catch {
-        return NextResponse.json({ error: 'الرسالة غير موجودة' }, { status: 404 });
-      }
-    } else {
-      // مسح جميع الرسائل المرسلة للمطور (receiverId: null)
-      try {
-        await db.message.deleteMany({ where: { receiverId: null } });
-        return NextResponse.json({ success: true, message: 'تم مسح جميع الرسائل' });
-      } catch {
-        return NextResponse.json({ error: 'حدث خطأ أثناء مسح الرسائل' }, { status: 500 });
-      }
+      await db.message.delete({ where: { id } });
+      return NextResponse.json({ success: true, message: 'تم حذف الرسالة' });
     }
+
+    await db.message.deleteMany({});
+    return NextResponse.json({ success: true, message: 'تم حذف جميع الرسائل' });
   } catch (error) {
     console.error('Error deleting messages:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
