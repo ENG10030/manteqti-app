@@ -549,9 +549,9 @@ export default function App() {
 
   useEffect(() => { if (currentUser) fetchUserLikes(); }, [currentUser]);
 
-  // Load favorites from localStorage
+  // Clear guest favorites from localStorage (login required)
   useEffect(() => {
-    try { const saved = localStorage.getItem('manteqti_favorites'); if (saved) setFavorites(JSON.parse(saved)); } catch {}
+    try { localStorage.removeItem('manteqti_favorites'); } catch {}
   }, []);
 
   // Load remembered identifier
@@ -859,6 +859,7 @@ export default function App() {
   const handleAddInquiry = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inquiryApartment) return;
+    if (!currentUser) { addToast('يجب تسجيل الدخول لإرسال استفسار', 'error'); setShowAuth(true); return; }
     setInquirySubmitting(true);
     try { await fetch('/api/inquiries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apartmentId: inquiryApartment.id, userId: currentUser?.id, ...inquiryForm }) }); setInquiryApartment(null); setInquiryForm({ name: '', email: '', phone: '', message: '' }); addToast('تم إرسال استفسارك!', 'success'); }
     finally { setInquirySubmitting(false); }
@@ -866,6 +867,7 @@ export default function App() {
 
   const handlePayment = async (confirmed: boolean = false) => {
     if (!paymentApartment || !paymentMethod) return;
+    if (!currentUser) { addToast('يجب تسجيل الدخول لطلب بيانات التواصل', 'error'); setPaymentApartment(null); setShowAuth(true); return; }
     if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'تأكيد الدفع', message: `هل تريد الدفع بمبلغ ${settings.contactFee} ج.م؟`, confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm: () => handlePayment(true), type: 'info' }); return; }
     setConfirmDialog(prev => ({ ...prev, loading: true }));
     setPaymentSubmitting(true);
@@ -1068,12 +1070,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
   const toggleFavorite = async (apartmentId: string) => {
     if (!currentUser) {
-      setFavorites(prev => {
-        const newFavorites = prev.includes(apartmentId) ? prev.filter(f => f !== apartmentId) : [...prev, apartmentId];
-        localStorage.setItem('manteqti_favorites', JSON.stringify(newFavorites));
-        addToast(newFavorites.includes(apartmentId) ? 'تمت الإضافة للمفضلة ❤️' : 'تمت الإزالة من المفضلة', newFavorites.includes(apartmentId) ? 'success' : 'info');
-        return newFavorites;
-      });
+      addToast('يجب تسجيل الدخول لإضافة المفضلة', 'error');
+      setShowAuth(true);
       return;
     }
     try {
@@ -1279,11 +1277,11 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </motion.button>
 
-              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium shadow-lg shadow-emerald-500/30">
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => { if (!currentUser) { addToast('يجب تسجيل الدخول لإضافة شقة', 'error'); setShowAuth(true); return; } setShowAddModal(true); }} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium shadow-lg shadow-emerald-500/30">
                 <Building2 className="h-5 w-5" /><span>إضافة شقة</span>
               </motion.button>
 
-              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setShowChat(true)} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium shadow-lg">
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => { if (!currentUser) { addToast('يجب تسجيل الدخول لاستخدام المساعد الذكي', 'error'); setShowAuth(true); return; } setShowChat(true); }} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium shadow-lg">
                 <Brain className="h-5 w-5" /><span>المساعد الذكي</span>
               </motion.button>
 
@@ -1408,7 +1406,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       </div>
                     </div>
                     <div className="flex gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                      <button onClick={() => { setSelectedApartment(apartment); fetchComments(apartment.id); setCurrentImageIndex(0); fetch(`/api/apartments/${apartment.id}/details`, { method: 'GET' }).catch(() => {}); }} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-violet-700 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:scale-[1.02] transition-all duration-300 group relative overflow-hidden">
+                      <button onClick={() => { if (!currentUser) { addToast('يجب تسجيل الدخول لعرض التفاصيل', 'error'); setShowAuth(true); return; } setSelectedApartment(apartment); fetchComments(apartment.id); setCurrentImageIndex(0); fetch(`/api/apartments/${apartment.id}/details`, { method: 'GET' }).catch(() => {}); }} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-violet-700 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:scale-[1.02] transition-all duration-300 group relative overflow-hidden">
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
                         <Eye className="h-4 w-4 group-hover:scale-110 transition-transform" />
                         <span>عرض التفاصيل</span>
@@ -1458,8 +1456,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <button onClick={() => setShowMobileMenu(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
               </div>
               <div className="space-y-3">
-                <button onClick={() => { setShowAddModal(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white"><Building2 className="h-5 w-5" />إضافة شقة</button>
-                <button onClick={() => { setShowChat(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><Brain className="h-5 w-5" />المساعد الذكي</button>
+                <button onClick={() => { if (!currentUser) { addToast('يجب تسجيل الدخول لإضافة شقة', 'error'); setShowAuth(true); return; } setShowAddModal(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white"><Building2 className="h-5 w-5" />إضافة شقة</button>
+                <button onClick={() => { if (!currentUser) { addToast('يجب تسجيل الدخول لاستخدام المساعد الذكي', 'error'); setShowAuth(true); return; } setShowChat(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><Brain className="h-5 w-5" />المساعد الذكي</button>
                 <button onClick={() => { if (isDeveloper) { fetchMessages(); setShowMessages(true); } else if (currentUser) { setShowMessages(true); } else { setShowAuth(true); } setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><MessageCircle className="h-5 w-5" />تواصل معنا</button>
                 {isDeveloper ? (
                   <>
@@ -1666,7 +1664,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <p className={`text-sm ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>ادفع {settings.contactFee} {settings.currency} للحصول على بيانات التواصل</p>
                     </div>
                   </div>
-                  <button onClick={() => setPaymentApartment(selectedApartment)} className="mt-3 w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium"><CreditCard className="h-4 w-4 inline ml-2" />طلب بيانات التواصل</button>
+                  <button onClick={() => { if (!currentUser) { addToast('يجب تسجيل الدخول لطلب بيانات التواصل', 'error'); setShowAuth(true); return; } setPaymentApartment(selectedApartment); }} className="mt-3 w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium"><CreditCard className="h-4 w-4 inline ml-2" />طلب بيانات التواصل</button>
                 </div>
               )}
 
@@ -2466,7 +2464,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
                       {settings.contactFee === 0 ? <div className={`p-2 rounded-lg bg-emerald-100 text-emerald-700`}>بيانات التواصل: مجاني ✨</div> : <div className={`p-2 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>بيانات التواصل: {settings.contactFee} {settings.currency}</div>}
                       {settings.featuredFee === 0 ? <div className={`p-2 rounded-lg bg-emerald-100 text-emerald-700`}>مميز: مجاني ✨</div> : <div className={`p-2 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>مميز: {settings.featuredFee} {settings.currency}</div>}
-                      {settings.vipFee === 0 ? <div className={`p-2 rounded-lg bg-emerald-100 text-emerald-700`}>VIP+: مجاني ✨</div> : <div className={`p-2 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>VIP+: {settings.vipFee} {settings.currency}</div>}
                     </div>
                   </div>
                   <button onClick={() => updateSettings(settings)} disabled={settingsLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium disabled:opacity-50">{settingsLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'حفظ الإعدادات'}</button>
