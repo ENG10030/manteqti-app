@@ -114,12 +114,12 @@ export async function POST(request: NextRequest) {
       content: message
     });
 
-    // Try to use AI SDK
+    // Try to use AI SDK (only works in sandbox, not on Vercel production)
     try {
-      const mod = await import('z-ai-web-dev-sdk').catch(() => null);
+      const mod: any = await import('z-ai-web-dev-sdk').catch(() => null);
       
-      if (mod && typeof mod.create === 'function') {
-        const zai = await mod.create();
+      if (mod?.default && typeof mod.default.create === 'function') {
+        const zai = await mod.default.create();
 
         const completionPromise = zai.chat.completions.create({
           messages: history,
