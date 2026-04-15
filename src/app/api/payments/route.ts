@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// حذف مدفوعة أو مسح جميع المدفوعات (للمطور)
+// حذف جميع المدفوعات (developer only)
 export async function DELETE(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -130,33 +130,16 @@ export async function DELETE(request: NextRequest) {
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
-
     if (decoded.role !== 'DEVELOPER') {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
+    // Delete all payments
+    await db.payment.deleteMany({});
 
-    if (id) {
-      // حذف مدفوعة واحدة
-      try {
-        await db.payment.delete({ where: { id } });
-        return NextResponse.json({ success: true, message: 'تم حذف المدفوعة' });
-      } catch {
-        return NextResponse.json({ error: 'المدفوعة غير موجودة' }, { status: 404 });
-      }
-    } else {
-      // مسح جميع المدفوعات
-      try {
-        await db.payment.deleteMany({});
-        return NextResponse.json({ success: true, message: 'تم مسح جميع المدفوعات' });
-      } catch {
-        return NextResponse.json({ error: 'حدث خطأ أثناء مسح المدفوعات' }, { status: 500 });
-      }
-    }
+    return NextResponse.json({ success: true, message: 'تم حذف جميع المدفوعات' });
   } catch (error) {
-    console.error('Error deleting payments:', error);
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+    console.error('Error deleting all payments:', error);
+    return NextResponse.json({ error: 'Failed to delete payments' }, { status: 500 });
   }
 }

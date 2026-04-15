@@ -122,9 +122,12 @@ export async function DELETE(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const status = searchParams.get('status');
 
     if (id) {
       await db.comment.delete({ where: { id } });
+    } else if (status) {
+      await db.comment.deleteMany({ where: { status } });
     } else {
       await db.comment.deleteMany({});
     }

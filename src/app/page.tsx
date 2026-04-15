@@ -1122,13 +1122,16 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     try { await fetch(`/api/payments/${paymentId}`, { method: 'DELETE' }); setPayments(prev => prev.filter(p => p.id !== paymentId)); fetchDevData(); addToast('تم حذف عملية الدفع', 'success'); } catch { addToast('حدث خطأ', 'error'); }
   };
   const clearAllPayments = async () => {
-    setConfirmDialog({ isOpen: true, title: 'مسح جميع المدفوعات', message: 'هل أنت متأكد من مسح جميع المدفوعات؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { for (const p of payments) await fetch(`/api/payments/${p.id}`, { method: 'DELETE' }); setPayments([]); addToast('تم مسح جميع المدفوعات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
+    setConfirmDialog({ isOpen: true, title: 'مسح جميع المدفوعات', message: 'هل أنت متأكد من مسح جميع المدفوعات؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/payments', { method: 'DELETE' }); setPayments([]); addToast('تم مسح جميع المدفوعات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
   };
   const deleteLike = async (likeId: string) => {
     try { await fetch(`/api/likes?id=${likeId}`, { method: 'DELETE' }); setLikes(prev => prev.filter(l => l.id !== likeId)); addToast('تم حذف الإعجاب', 'success'); } catch { addToast('حدث خطأ', 'error'); }
   };
   const clearAllLikes = async () => {
     setConfirmDialog({ isOpen: true, title: 'مسح جميع الإعجابات', message: 'هل أنت متأكد من مسح جميع الإعجابات؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/likes', { method: 'DELETE' }); setLikes([]); addToast('تم مسح جميع الإعجابات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
+  };
+  const clearPendingComments = async () => {
+    setConfirmDialog({ isOpen: true, title: 'مسح التعليقات المعلقة', message: 'هل أنت متأكد من مسح التعليقات المعلقة فقط؟ لا يمكن التراجع.', confirmText: 'مسح المعلقة', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/comments?status=pending', { method: 'DELETE' }); setComments(prev => prev.filter(c => c.status !== 'pending')); addToast('تم مسح التعليقات المعلقة', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
   };
   const clearAllComments = async () => {
     setConfirmDialog({ isOpen: true, title: 'مسح جميع التعليقات', message: 'هل أنت متأكد من مسح جميع التعليقات؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/comments', { method: 'DELETE' }); setComments([]); addToast('تم مسح جميع التعليقات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
@@ -1137,7 +1140,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     try { await fetch(`/api/inquiries/${inqId}`, { method: 'DELETE' }); setInquiries(prev => prev.filter(i => i.id !== inqId)); addToast('تم حذف الاستفسار', 'success'); } catch { addToast('حدث خطأ', 'error'); }
   };
   const clearAllInquiries = async () => {
-    setConfirmDialog({ isOpen: true, title: 'مسح جميع الاستفسارات', message: 'هل أنت متأكد من مسح جميع الاستفسارات؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { for (const i of inquiries) await fetch(`/api/inquiries/${i.id}`, { method: 'DELETE' }); setInquiries([]); addToast('تم مسح جميع الاستفسارات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
+    setConfirmDialog({ isOpen: true, title: 'مسح جميع الاستفسارات', message: 'هل أنت متأكد من مسح جميع الاستفسارات؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/inquiries', { method: 'DELETE' }); setInquiries([]); setPayments([]); addToast('تم مسح جميع الاستفسارات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
   };
   const deleteLog = async (logId: string) => {
     try { await fetch(`/api/logs?id=${logId}`, { method: 'DELETE' }); setOperationLogs(prev => prev.filter(l => l.id !== logId)); addToast('تم حذف السجل', 'success'); } catch { addToast('حدث خطأ', 'error'); }
@@ -1646,8 +1649,11 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               <p className={`mb-6 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{selectedApartment.description}</p>
               
               {(hasPaidForApartment(selectedApartment.id) || settings.contactFee === 0) ? (
-                <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
-                  <h3 className={`font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>بيانات التواصل</h3>
+                <div className={`p-4 rounded-xl mb-6 ${settings.contactFee === 0 ? 'bg-emerald-50 border-2 border-emerald-200' : darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>بيانات التواصل</h3>
+                    {settings.contactFee === 0 && <span className="px-3 py-1 rounded-full bg-emerald-500 text-white text-xs font-bold">مجاني ✨</span>}
+                  </div>
                   <div className="flex items-center gap-2"><Phone className="h-5 w-5 text-emerald-500" /><a href={`tel:${selectedApartment.ownerPhone}`} className="text-emerald-600 font-medium hover:underline">{selectedApartment.ownerPhone}</a></div>
                   {selectedApartment.mapLink && <a href={selectedApartment.mapLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-2 text-violet-600 hover:underline"><ExternalLink className="h-4 w-4" />عرض على الخريطة</a>}
                 </div>
@@ -1813,8 +1819,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                         <span className="text-sm font-normal text-slate-500">({comments.filter(c => c.status === 'pending').length})</span>
                       </h3>
                       {comments.filter(c => c.status === 'pending').length > 0 && (
-                        <button onClick={() => clearAllComments()} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-xs font-medium hover:bg-red-500/20 transition-colors">
-                          <Trash2 className="h-3.5 w-3.5" />مسح الكل
+                        <button onClick={() => clearPendingComments()} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-xs font-medium hover:bg-red-500/20 transition-colors">
+                          <Trash2 className="h-3.5 w-3.5" />مسح المعلقة
                         </button>
                       )}
                     </div>

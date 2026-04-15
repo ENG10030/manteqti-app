@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// حذف استفسار أو مسح جميع الاستفسارات (للمطور)
+// حذف جميع الاستفسارات
 export async function DELETE(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -122,33 +122,16 @@ export async function DELETE(request: NextRequest) {
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
-
     if (decoded.role !== 'DEVELOPER') {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
+    // Delete all inquiries (cascade will delete related payments)
+    await db.inquiry.deleteMany({});
 
-    if (id) {
-      // حذف استفسار واحد
-      try {
-        await db.inquiry.delete({ where: { id } });
-        return NextResponse.json({ success: true, message: 'تم حذف الاستفسار' });
-      } catch {
-        return NextResponse.json({ error: 'الاستفسار غير موجود' }, { status: 404 });
-      }
-    } else {
-      // مسح جميع الاستفسارات
-      try {
-        await db.inquiry.deleteMany({});
-        return NextResponse.json({ success: true, message: 'تم مسح جميع الاستفسارات' });
-      } catch {
-        return NextResponse.json({ error: 'حدث خطأ أثناء مسح الاستفسارات' }, { status: 500 });
-      }
-    }
+    return NextResponse.json({ success: true, message: 'تم حذف جميع الاستفسارات' });
   } catch (error) {
-    console.error('Error deleting inquiries:', error);
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+    console.error('Error deleting all inquiries:', error);
+    return NextResponse.json({ error: 'Failed to delete inquiries' }, { status: 500 });
   }
 }
