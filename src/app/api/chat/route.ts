@@ -3,6 +3,31 @@ import { NextRequest, NextResponse } from 'next/server';
 // Store conversations in memory (use database in production)
 const conversations = new Map<string, Array<{ role: 'assistant' | 'user'; content: string }>>();
 
+// Check if we're in development environment with SDK available
+let zaiInstance: any = null;
+let ZAI_AVAILABLE = false;
+
+async function getZAI() {
+  if (zaiInstance) return zaiInstance;
+  if (ZAI_AVAILABLE === false) return null;
+  
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = await import(/* webpackIgnore: true */ 'z-ai-web-dev-sdk' as any).catch(() => null);
+    if (!mod || !mod.default) {
+      ZAI_AVAILABLE = false;
+      return null;
+    }
+    const ZAI = mod.default;
+    zaiInstance = await ZAI.create();
+    ZAI_AVAILABLE = true;
+    return zaiInstance;
+  } catch {
+    ZAI_AVAILABLE = false;
+    return null;
+  }
+}
+
 // System prompt for real estate assistant
 const SYSTEM_PROMPT = `أنت مساعد ذكي متخصص في العقارات والشقق في مصر. اسمك "منطقتي".
 
@@ -100,75 +125,94 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Get or create conversation history
-    let history = conversations.get(sessionId) || [
-      {
-        role: 'assistant' as const,
-        content: SYSTEM_PROMPT
-      }
-    ];
-
-    // Add user message
-    history.push({
-      role: 'user',
-      content: message
-    });
-
-    // Try to use AI SDK (only works in sandbox, not on Vercel production)
+    // Try to use AI SDK
     try {
-      const mod: any = await import('z-ai-web-dev-sdk').catch(() => null);
-      
-      if (mod?.default && typeof mod.default.create === 'function') {
-        const zai = await mod.default.create();
+      const zai = await getZAI();
 
-        const completionPromise = zai.chat.completions.create({
-          messages: history,
-          thinking: { type: 'disabled' }
+      if (!zai || !ZAI_AVAILABLE) {
+        // Use fallback response when SDK is not available
+        const fallbackReply = getFallbackReply(message);
+        return NextResponse.json({
+          success: true,
+          response: fallbackReply,
+          fallback: true
         });
-
-        // 15 second timeout
-        const timeoutPromise = new Promise<null>((_, reject) => {
-          setTimeout(() => reject(new Error('AI timeout')), 15000);
-        });
-
-        const completion = await Promise.race([completionPromise, timeoutPromise]);
-
-        if (completion && completion.choices?.[0]?.message?.content) {
-          const aiResponse = completion.choices[0].message.content;
-
-          // Add AI response to history
-          history.push({ role: 'assistant', content: aiResponse });
-
-          // Keep only last 20 messages to avoid token limits
-          if (history.length > 20) {
-            history = [history[0], ...history.slice(-19)];
-          }
-
-          conversations.set(sessionId, history);
-
-          return NextResponse.json({
-            success: true,
-            response: aiResponse,
-            messageCount: history.length - 1
-          });
-        }
       }
-    } catch {
-      // SDK not available or error, use fallback
-    }
 
-    // Fallback response when SDK is not available
-    const fallbackReply = getFallbackReply(message);
-    
-    return NextResponse.json({
-      success: true,
-      response: fallbackReply,
-      fallback: true
-    });
+      // Get or create conversation history
+      let history = conversations.get(sessionId) || [
+        {
+          role: 'assistant' as const,
+          content: SYSTEM_PROMPT
+        }
+      ];
+
+      // Add user message
+      history.push({
+        role: 'user',
+        content: message
+      });
+
+      // Get completion with timeout
+      const completionPromise = zai.chat.completions.create({
+        messages: history,
+        thinking: { type: 'disabled' }
+      });
+
+      // 15 second timeout
+      const timeoutPromise = new Promise<null>((_, reject) => {
+        setTimeout(() => reject(new Error('AI timeout')), 15000);
+      });
+
+      const completion = await Promise.race([completionPromise, timeoutPromise]);
+
+      if (!completion) {
+        throw new Error('Empty completion');
+      }
+
+      const aiResponse = completion.choices[0]?.message?.content;
+
+      if (!aiResponse) {
+        throw new Error('Empty response from AI');
+      }
+
+      // Add AI response to history
+      history.push({
+        role: 'assistant',
+        content: aiResponse
+      });
+
+      // Keep only last 20 messages to avoid token limits
+      if (history.length > 20) {
+        history = [history[0], ...history.slice(-19)];
+      }
+
+      // Save updated history
+      conversations.set(sessionId, history);
+
+      return NextResponse.json({
+        success: true,
+        response: aiResponse,
+        messageCount: history.length - 1
+      });
+
+    } catch (aiError) {
+      console.error('AI error, using fallback:', aiError);
+      
+      // Use fallback response
+      const fallbackReply = getFallbackReply(message);
+      
+      return NextResponse.json({
+        success: true,
+        response: fallbackReply,
+        fallback: true
+      });
+    }
 
   } catch (error) {
     console.error('Chat error:', error);
     
+    // Return fallback instead of error
     const message = typeof body === 'object' && body?.message ? body.message : '';
     const fallbackReply = getFallbackReply(message);
     

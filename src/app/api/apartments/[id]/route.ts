@@ -33,7 +33,7 @@ export async function GET(
       where: { id },
       include: {
         user: {
-          select: { id: true, name: true },
+          select: { id: true, name: true, phone: true, email: true },
         },
       },
     });

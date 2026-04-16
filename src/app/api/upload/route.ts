@@ -10,13 +10,9 @@ export async function POST(request: NextRequest) {
     // التحقق من تسجيل الدخول
     const cookieStore = await cookies();
     const token = cookieStore.get('auth-token')?.value;
-    
-    let isDeveloper = false;
-    if (token) {
-      try {
-        const decoded = verify(token, JWT_SECRET) as any;
-        isDeveloper = decoded.role === 'DEVELOPER';
-      } catch {}
+
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
     }
 
     const formData = await request.formData();
@@ -30,15 +26,15 @@ export async function POST(request: NextRequest) {
     // التحقق من نوع الملف
     const allowedTypes = type === 'video' ? ALLOWED_VIDEO_TYPES : ALLOWED_IMAGE_TYPES;
     if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json({ 
-        error: `نوع الملف غير مدعوم. الأنواع المسموحة: ${allowedTypes.join(', ')}` 
+      return NextResponse.json({
+        error: `نوع الملف غير مدعوم. الأنواع المسموحة: ${allowedTypes.join(', ')}`
       }, { status: 400 });
     }
 
     // التحقق من حجم الملف
     if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ 
-        error: 'حجم الملف أكبر من الحد المسموح (50MB)' 
+      return NextResponse.json({
+        error: 'حجم الملف أكبر من الحد المسموح (50MB)'
       }, { status: 400 });
     }
 
@@ -62,7 +58,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Upload error:', error);
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'حدث خطأ أثناء رفع الملف',
       details: error instanceof Error ? error.message : String(error)
     }, { status: 500 });

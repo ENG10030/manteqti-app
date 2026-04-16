@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import bcrypt from 'bcryptjs';
+import { createHash } from 'crypto';
+
+function hashPassword(password: string): string {
+  return createHash('sha256').update(password).digest('hex');
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,7 +28,7 @@ export async function POST(request: NextRequest) {
 
     // Find user by email or identifier
     const user = await db.user.findFirst({
-      where: isEmail
+      where: isEmail 
         ? { email: normalizedIdentifier }
         : { identifier: normalizedIdentifier }
     });
@@ -35,16 +39,16 @@ export async function POST(request: NextRequest) {
       }, { status: 404 });
     }
 
-    // Verify current password with bcrypt
-    const isValidPassword = await bcrypt.compare(currentPassword, user.password);
-    if (!isValidPassword) {
+    // Verify current password
+    const hashedCurrentPassword = hashPassword(currentPassword);
+    if (user.password !== hashedCurrentPassword) {
       return NextResponse.json({
         error: 'كلمة المرور الحالية غير صحيحة'
       }, { status: 401 });
     }
 
-    // Update password with bcrypt
-    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+    // Update password
+    const hashedNewPassword = hashPassword(newPassword);
     await db.user.update({
       where: { id: user.id },
       data: { password: hashedNewPassword }

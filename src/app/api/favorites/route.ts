@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
         apartment: {
           include: {
             user: {
-              select: { id: true, name: true },
+              select: { id: true, name: true, phone: true },
             },
           },
         },
