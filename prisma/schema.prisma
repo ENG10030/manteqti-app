@@ -88,7 +88,7 @@ model Inquiry {
   message         String
   lifecycleStatus String   @default("new")
   createdAt       DateTime @default(now())
-  updatedAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
   user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -106,7 +106,7 @@ model Payment {
   paymentLink    String?
   userId         String?
   createdAt      DateTime @default(now())
-  updatedAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   inquiry Inquiry @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
   user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -131,7 +131,7 @@ model Comment {
   content     String
   status      String   @default("pending")
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -143,7 +143,7 @@ model Message {
   receiverId String?
   content    String
   isRead     Boolean   @default(false)
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
 }
@@ -163,7 +163,7 @@ model PropertyEditRequest {
   reviewedAt   DateTime?
   reviewNotes  String?
   createdAt    DateTime @default(now())
-  updatedAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -191,7 +191,7 @@ model Settings {
   verifiedListingFee  Int      @default(250)
   currency            String   @default("ج.م")
   createdAt           DateTime @default(now())
-  updatedAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 model OperationLog {
