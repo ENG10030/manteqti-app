@@ -6,9 +6,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
+  provider = "sqlite"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 model User {
@@ -149,22 +148,24 @@ model Message {
 }
 
 model PropertyEditRequest {
-  id           String   @id @default(cuid())
-  apartmentId  String
-  userId       String
-  editType     String   @default("update")
-  changes      String?
-  newImages    String?
-  newVideos    String?
-  newPrice     Int?
-  newStatus    String?
-  description  String?
-  status       String   @default("pending")
-  reviewedBy   String?
-  reviewedAt   DateTime?
-  reviewNotes  String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String   @id @default(cuid())
+  apartmentId    String
+  userId         String
+  editType       String   @default("update")
+  // حقل يحتوي على كل التعديلات المطلوبة كـ JSON
+  changes        String?
+  // حقول محددة للتوافق مع القديم
+  newImages      String?
+  newVideos      String?
+  newPrice       Int?
+  newStatus      String?
+  description    String?
+  status         String   @default("pending")
+  reviewedBy     String?
+  reviewedAt     DateTime?
+  reviewNotes    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -184,6 +185,7 @@ model Settings {
   contactFee          Int      @default(50)
   featuredFee         Int      @default(100)
   premiumFee          Int      @default(200)
+  vipFee              Int      @default(300)
   saleDisplayFee      Int      @default(100)
   rentDisplayFee      Int      @default(75)
   otherServicesFee    Int      @default(50)
