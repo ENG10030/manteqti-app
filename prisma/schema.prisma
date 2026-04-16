@@ -153,6 +153,7 @@ model PropertyEditRequest {
   apartmentId  String
   userId       String
   editType     String   @default("update")
+  changes      String?
   newImages    String?
   newVideos    String?
   newPrice     Int?

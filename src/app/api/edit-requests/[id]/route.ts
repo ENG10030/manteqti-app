@@ -31,15 +31,7 @@ export async function GET(
       return NextResponse.json({ error: 'طلب التعديل غير موجود' }, { status: 404 });
     }
 
-    // Parse changes JSON if available
-    let parsedChanges = null;
-    if (editRequest.changes) {
-      try {
-        parsedChanges = JSON.parse(editRequest.changes);
-      } catch {}
-    }
-
-    return NextResponse.json({ ...editRequest, parsedChanges });
+    return NextResponse.json(editRequest);
   } catch (error) {
     console.error('Error fetching edit request:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
@@ -85,24 +77,11 @@ export async function PUT(
     }
 
     if (body.action === 'approve') {
+      // الموافقة على التعديل - تطبيق التغييرات على العقار
       const updateData: Record<string, unknown> = {};
 
-      // تطبيق كل التعديلات من حقل changes (الجديد)
-      if (editRequest.changes) {
-        try {
-          const changes = JSON.parse(editRequest.changes);
-          for (const [key, value] of Object.entries(changes)) {
-            if (key === 'images' || key === 'videos') {
-              updateData[key] = typeof value === 'string' ? value : JSON.stringify(value);
-            } else {
-              updateData[key] = value;
-            }
-          }
-        } catch {}
-      }
-
-      // توافق مع الحقول القديمة
-      if (!updateData.images && editRequest.newImages) {
+      // إضافة الصور الجديدة للصور الموجودة
+      if (editRequest.newImages) {
         const existingImages = editRequest.apartment.images 
           ? JSON.parse(editRequest.apartment.images) 
           : [];
@@ -110,7 +89,8 @@ export async function PUT(
         updateData.images = JSON.stringify([...existingImages, ...newImages]);
       }
 
-      if (!updateData.videos && editRequest.newVideos) {
+      // إضافة الفيديوهات الجديدة للفيديوهات الموجودة
+      if (editRequest.newVideos) {
         const existingVideos = editRequest.apartment.videos 
           ? JSON.parse(editRequest.apartment.videos) 
           : [];
@@ -118,11 +98,13 @@ export async function PUT(
         updateData.videos = JSON.stringify([...existingVideos, ...newVideos]);
       }
 
-      if (!updateData.price && editRequest.newPrice) {
+      // تحديث السعر
+      if (editRequest.newPrice) {
         updateData.price = editRequest.newPrice;
       }
 
-      if (!updateData.status && editRequest.newStatus) {
+      // تحديث الحالة
+      if (editRequest.newStatus) {
         updateData.status = editRequest.newStatus;
       }
 
@@ -178,7 +160,7 @@ export async function PUT(
   }
 }
 
-// حذف طلب تعديل (للمطور فقط)
+// حذف طلب تعديل (للمستخدم فقط إذا كان معلقاً)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
