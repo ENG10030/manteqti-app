@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, MapPin, Bed, Bath, Phone, ExternalLink, X,
-  CreditCard, MessageSquare, Loader2, Eye, Lock,
+  CreditCard, MessageSquare, Loader2, Eye, EyeOff, Lock,
   Sun, Moon, Check, AlertCircle, RefreshCw, Star,
   TrendingUp, Filter, Heart, User, MessageCircle, ThumbsUp,
   BarChart3, DollarSign, Settings, LogOut, Menu, AlertTriangle, 
@@ -251,6 +251,11 @@ export default function App() {
 
   // Operation Logs
   const [operationLogs, setOperationLogs] = useState<any[]>([]);
+
+  // Dev Panel Enhanced Filters
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'Pending' | 'Paid' | 'Failed' | 'Refunded'>('all');
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [contactFilter, setContactFilter] = useState<'all' | 'visible' | 'hidden'>('all');
 
   const addToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -1012,13 +1017,68 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'Failed' })
       });
+      if (res.ok) { fetchDevData(); addToast('تم رفض الدفع', 'success'); }
+    } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+  };
+
+  // Toggle contact visibility for apartment (developer only)
+  const handleToggleContact = async (apartmentId: string, hidden: boolean) => {
+    try {
+      const res = await fetch(`/api/apartments/${apartmentId}/toggle-contact`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hidden })
+      });
+      const data = await res.json();
       if (res.ok) {
+        addToast(data.message || (hidden ? 'تم إخفاء بيانات التواصل' : 'تم إظهار بيانات التواصل'), 'success');
+        fetchApartments();
         fetchDevData();
-        addToast('تم رفض الدفع', 'success');
+      } else {
+        addToast(data.error || 'حدث خطأ', 'error');
       }
-    } finally {
-      setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+    } catch {
+      addToast('حدث خطأ', 'error');
     }
+  };
+
+  // Comprehensive user management (developer only)
+  const handleManageUser = async (userId: string, action: string, reason?: string) => {
+    const actionMessages: Record<string, { confirm: string; message: string }> = {
+      'block': { confirm: 'حظر المستخدم', message: 'سيتم حظر المستخدم وإخفاء جميع عقاراته' },
+      'unblock': { confirm: 'إلغاء الحظر', message: 'سيتم إلغاء حظر المستخدم وإعادة عقاراته للمراجعة' },
+      'revoke-contact': { confirm: 'إلغاء صلاحيات التواصل', message: 'سيتم إلغاء جميع صلاحيات بيانات التواصل للمستخدم واسترداد المبالغ المدفوعة' },
+      'hide-apartments': { confirm: 'إخفاء العقارات', message: 'سيتم إخفاء جميع عقارات المستخدم' },
+      'delete': { confirm: '⚠️ حذف المستخدم نهائياً', message: 'سيتم حذف المستخدم وكل بياناته نهائياً (عقارات، رسائل، مدفوعات). لا يمكن التراجع!' },
+    };
+    const am = actionMessages[action];
+    if (!am) return;
+    setConfirmDialog({
+      isOpen: true, title: am.confirm, message: am.message,
+      confirmText: 'تأكيد', cancelText: 'إلغاء',
+      type: action === 'delete' ? 'danger' : 'warning',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, loading: true }));
+        try {
+          const res = await fetch('/api/users/manage', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, action, reason })
+          });
+          const data = await res.json();
+          if (res.ok) {
+            addToast(data.message, 'success');
+            fetchAllUsers(); fetchBlockedUsers(); fetchDevData(); fetchApartments();
+          } else {
+            addToast(data.error || 'حدث خطأ', 'error');
+          }
+        } catch {
+          addToast('حدث خطأ في الاتصال', 'error');
+        } finally {
+          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+        }
+      },
+    });
   };
 
   // Handle AI assistant for developer
@@ -1720,6 +1780,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               <div className="absolute top-4 left-4 flex gap-2">
                 <span className={`px-3 py-1 rounded-full text-sm font-medium text-white ${selectedApartment.type === 'rent' ? 'bg-emerald-500' : 'bg-blue-500'}`}>{selectedApartment.type === 'rent' ? 'للإيجار' : 'للبيع'}</span>
                 <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusConfig[selectedApartment.status]?.bgColor} ${statusConfig[selectedApartment.status]?.color}`}>{statusConfig[selectedApartment.status]?.label}</span>
+                {isDeveloper && (selectedApartment as any).contactHidden && <span className="px-3 py-1 rounded-full text-sm font-medium bg-red-500 text-white">📱 بيانات التواصل مخفية</span>}
               </div>
             </div>
             <div className="p-6">
@@ -1778,6 +1839,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 {isDeveloper && (
                   <>
                     <button onClick={() => setEditApartment(selectedApartment)} className={`py-3 px-4 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>تعديل</button>
+                    <button onClick={() => handleToggleContact(selectedApartment.id, !(selectedApartment as any).contactHidden)} className={`py-3 px-4 rounded-xl font-medium ${(selectedApartment as any).contactHidden ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-red-500/10 text-red-500 hover:bg-red-500/20'}`}>{(selectedApartment as any).contactHidden ? 'إظهار بيانات التواصل' : 'إخفاء بيانات التواصل'}</button>
                     <button onClick={() => handleDeleteApartment(selectedApartment.id)} className="py-3 px-4 rounded-xl bg-red-500/10 text-red-500 font-medium hover:bg-red-500/20">حذف</button>
                   </>
                 )}
@@ -1877,10 +1939,10 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <button onClick={() => setShowDevPanel(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
               </div>
               <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
-                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل' }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'blocked', icon: Ban, label: 'محظورين' }, { id: 'settings', icon: Settings, label: 'الإعدادات' } ].map(tab => (
+                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.filter(p => p.status === 'Pending').length || undefined }, { id: 'messages', icon: MessageCircle, label: 'الرسائل', count: messages.filter(m => !m.isRead).length || undefined }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'blocked', icon: Ban, label: 'محظورين', count: blockedUsers.length || undefined }, { id: 'settings', icon: Settings, label: 'الإعدادات' } ].map(tab => (
                   <button key={tab.id} onClick={() => setDevTab(tab.id as any)} className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-all ${devTab === tab.id ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                     <tab.icon className="h-4 w-4" />{tab.label}
-                    {tab.count !== undefined && tab.count > 0 && <span className={`px-2 py-0.5 rounded-full text-xs ${devTab === tab.id ? 'bg-white/20' : 'bg-amber-500 text-white'}`}>{tab.count}</span>}
+                    {tab.count !== undefined && tab.count > 0 && <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${devTab === tab.id ? 'bg-white/20' : (tab.id === 'payments' || tab.id === 'pending' || tab.id === 'messages' ? 'bg-red-500 text-white animate-pulse' : 'bg-amber-500 text-white')}`}>{tab.count}</span>}
                   </button>
                 ))}
               </div>
@@ -1950,21 +2012,47 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               {/* Apartments Tab */}
               {devTab === 'apartments' && (
                 <div className="space-y-4">
-                  {allApartments.slice(0, 20).map(apt => (
-                    <div key={apt.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <img src={apt.imageUrl || apt.images?.[0] || '/generated-images/apt1.png'} alt={apt.title} className="w-16 h-12 object-cover rounded" />
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h3 className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
-                              {apt.isVip && <span className="px-2 py-0.5 rounded-full text-xs bg-gradient-to-r from-purple-500 to-pink-600 text-white">VIP+</span>}
-                              {apt.isFeatured && !apt.isVip && <span className="px-2 py-0.5 rounded-full text-xs bg-gradient-to-r from-amber-500 to-orange-600 text-white">مميز</span>}
+                  {/* فلتر حالة بيانات التواصل */}
+                  <div className="flex gap-2 flex-wrap items-center">
+                    <span className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>فلتر بيانات التواصل:</span>
+                    {[{ key: 'all' as const, label: 'الكل', count: allApartments.length }, { key: 'visible' as const, label: 'ظاهرة', count: allApartments.filter(a => !(a as any).contactHidden).length }, { key: 'hidden' as const, label: 'مخفية', count: allApartments.filter(a => (a as any).contactHidden).length }].map(f => (
+                      <button key={f.key} onClick={() => setContactFilter(f.key)} className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${contactFilter === f.key ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/30' : (darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')}`}>
+                        {f.label}
+                        <span className={`px-1.5 py-0.5 rounded-full text-xs ${contactFilter === f.key ? 'bg-white/20 text-white' : (darkMode ? 'bg-slate-600 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>{f.count}</span>
+                      </button>
+                    ))}
+                    {allApartments.filter(a => (a as any).contactHidden).length > 0 && (
+                      <button onClick={async () => {
+                        const hiddenApts = allApartments.filter(a => (a as any).contactHidden);
+                        for (const apt of hiddenApts) {
+                          await fetch(`/api/apartments/${apt.id}/toggle-contact`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hidden: false }) });
+                        }
+                        fetchApartments(); fetchDevData();
+                        addToast(`تم إظهار بيانات التواصل لـ ${hiddenApts.length} عقار`, 'success');
+                      }} className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all mr-auto ${darkMode ? 'bg-emerald-900/30 text-emerald-400 hover:bg-emerald-900/50 border border-emerald-700/50' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200'}`}>
+                        <Phone className="h-3.5 w-3.5" />إظهار الكل
+                      </button>
+                    )}
+                  </div>
+                  {(() => {
+                    const filteredApts = contactFilter === 'all' ? allApartments : contactFilter === 'hidden' ? allApartments.filter(a => (a as any).contactHidden) : allApartments.filter(a => !(a as any).contactHidden);
+                    if (filteredApts.length === 0) return <div className="text-center py-12"><Building2 className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>{contactFilter === 'all' ? 'لا توجد عقارات' : contactFilter === 'hidden' ? 'لا توجد عقارات مخفية بيانات التواصل' : 'لا توجد عقارات ظاهرة بيانات التواصل'}</p></div>;
+                    return filteredApts.slice(0, 30).map(apt => (
+                    <div key={apt.id} className={`p-4 rounded-xl border transition-all ${darkMode ? 'bg-slate-700/50 border-slate-600/50' : 'bg-white border-slate-200'} hover:shadow-md`}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <img src={apt.imageUrl || apt.images?.[0] || '/generated-images/apt1.png'} alt={apt.title} className="w-16 h-12 object-cover rounded-lg shrink-0" />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className={`font-medium truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
+                              {apt.isVip && <span className="px-2 py-0.5 rounded-full text-xs bg-gradient-to-r from-purple-500 to-pink-600 text-white shrink-0">VIP+</span>}
+                              {apt.isFeatured && !apt.isVip && <span className="px-2 py-0.5 rounded-full text-xs bg-gradient-to-r from-amber-500 to-orange-600 text-white shrink-0">مميز</span>}
+                              {(apt as any).contactHidden && <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700 flex items-center gap-1 shrink-0"><EyeOff className="h-3 w-3" />التواصل مخفي</span>}
                             </div>
                             <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.price.toLocaleString()} {settings.currency} • {statusConfig[apt.status]?.label}</p>
                           </div>
                         </div>
-                        <div className="flex flex-wrap gap-2 items-center">
+                        <div className="flex flex-wrap gap-2 items-center shrink-0">
                           <select value={apt.status} onChange={(e) => { 
                             const newStatus = e.target.value;
                             if (newStatus === 'sold' || newStatus === 'rented') {
@@ -1990,14 +2078,18 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                             }
                           }} className={`px-3 py-1 rounded-lg text-sm ${darkMode ? 'bg-slate-600 text-white' : 'bg-white border'}`}><option value="available">متاح</option><option value="preview">في معاينة</option><option value="reserved">محجوز</option><option value="sold">تم البيع</option><option value="rented">تم التأجير</option><option value="unavailable">غير متاح</option></select>
                           <div className="flex gap-1">
-                            <button onClick={() => { apt.isVip = !apt.isVip; setAllApartments([...allApartments]); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isVip: apt.isVip }) }); addToast(apt.isVip ? 'تم إضافة VIP+' : 'تم إزالة VIP+', 'success'); }} className={`p-1 rounded ${apt.isVip ? 'bg-purple-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-200 text-slate-600'}`} title="VIP+"><Diamond className="h-4 w-4" /></button>
-                            <button onClick={() => { apt.isFeatured = !apt.isFeatured; setAllApartments([...allApartments]); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isFeatured: apt.isFeatured }) }); addToast(apt.isFeatured ? 'تم إضافة مميز' : 'تم إزالة مميز', 'success'); }} className={`p-1 rounded ${apt.isFeatured && !apt.isVip ? 'bg-amber-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-200 text-slate-600'}`} title="مميز"><Star className="h-4 w-4" /></button>
-                            <button onClick={() => handleDeleteApartment(apt.id)} className="p-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20"><Trash2 className="h-4 w-4" /></button>
+                            <button onClick={() => { apt.isVip = !apt.isVip; setAllApartments([...allApartments]); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isVip: apt.isVip }) }); addToast(apt.isVip ? 'تم إضافة VIP+' : 'تم إزالة VIP+', 'success'); }} className={`p-1.5 rounded-lg transition-all ${apt.isVip ? 'bg-purple-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300 hover:bg-purple-600 hover:text-white' : 'bg-slate-200 text-slate-600 hover:bg-purple-500 hover:text-white'}`} title="VIP+"><Diamond className="h-4 w-4" /></button>
+                            <button onClick={() => { apt.isFeatured = !apt.isFeatured; setAllApartments([...allApartments]); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isFeatured: apt.isFeatured }) }); addToast(apt.isFeatured ? 'تم إضافة مميز' : 'تم إزالة مميز', 'success'); }} className={`p-1.5 rounded-lg transition-all ${apt.isFeatured && !apt.isVip ? 'bg-amber-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300 hover:bg-amber-600 hover:text-white' : 'bg-slate-200 text-slate-600 hover:bg-amber-500 hover:text-white'}`} title="مميز"><Star className="h-4 w-4" /></button>
+                            <button onClick={() => handleToggleContact(apt.id, !(apt as any).contactHidden)} className={`p-1.5 rounded-lg transition-all ${(apt as any).contactHidden ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white'}`} title={(apt as any).contactHidden ? 'بيانات التواصل مخفية - اضغط لإظهارها' : 'بيانات التواصل ظاهرة - اضغط لإخفائها'}>
+                              {(apt as any).contactHidden ? <EyeOff className="h-4 w-4" /> : <Phone className="h-4 w-4" />}
+                            </button>
+                            <button onClick={() => handleDeleteApartment(apt.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all"><Trash2 className="h-4 w-4" /></button>
                           </div>
                         </div>
                       </div>
                     </div>
-                  ))}
+                    ));
+                  })()}
                 </div>
               )}
 
@@ -2032,45 +2124,93 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               {/* Payments Tab */}
               {devTab === 'payments' && (
                 <div className="space-y-4">
-                  {/* طلبات بيانات التواصل */}
-                  <div className={`p-4 rounded-xl mb-4 ${darkMode ? 'bg-blue-900/20 border border-blue-700' : 'bg-blue-50 border border-blue-200'}`}>
-                    <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}><MessageCircle className="h-5 w-5" />طلبات بيانات التواصل ({inquiries.filter(i => i.lifecycleStatus === 'New').length} جديدة)</h3>
-                    {inquiries.filter(i => i.lifecycleStatus === 'New').length === 0 ? (
-                      <p className={`text-sm ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>لا توجد طلبات جديدة</p>
-                    ) : (
-                      <div className="space-y-3">
+                  {/* ملخص المدفوعات */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className={`p-3 rounded-xl ${darkMode ? 'bg-amber-900/20 border border-amber-700/50' : 'bg-amber-50 border border-amber-200'}`}>
+                      <p className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>قيد الانتظار</p>
+                      <p className={`text-2xl font-bold ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>{payments.filter(p => p.status === 'Pending').length}</p>
+                      <p className={`text-xs ${darkMode ? 'text-amber-400/70' : 'text-amber-600/70'}`}>{payments.filter(p => p.status === 'Pending').reduce((s, p) => s + p.amount, 0).toLocaleString()} {settings.currency}</p>
+                    </div>
+                    <div className={`p-3 rounded-xl ${darkMode ? 'bg-emerald-900/20 border border-emerald-700/50' : 'bg-emerald-50 border border-emerald-200'}`}>
+                      <p className={`text-xs ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>مؤكدة</p>
+                      <p className={`text-2xl font-bold ${darkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>{payments.filter(p => p.status === 'Paid').length}</p>
+                      <p className={`text-xs ${darkMode ? 'text-emerald-400/70' : 'text-emerald-600/70'}`}>{payments.filter(p => p.status === 'Paid').reduce((s, p) => s + p.amount, 0).toLocaleString()} {settings.currency}</p>
+                    </div>
+                    <div className={`p-3 rounded-xl ${darkMode ? 'bg-red-900/20 border border-red-700/50' : 'bg-red-50 border border-red-200'}`}>
+                      <p className={`text-xs ${darkMode ? 'text-red-400' : 'text-red-600'}`}>مرفوضة</p>
+                      <p className={`text-2xl font-bold ${darkMode ? 'text-red-300' : 'text-red-700'}`}>{payments.filter(p => p.status === 'Failed').length}</p>
+                      <p className={`text-xs ${darkMode ? 'text-red-400/70' : 'text-red-600/70'}`}>{payments.filter(p => p.status === 'Failed').reduce((s, p) => s + p.amount, 0).toLocaleString()} {settings.currency}</p>
+                    </div>
+                    <div className={`p-3 rounded-xl ${darkMode ? 'bg-orange-900/20 border border-orange-700/50' : 'bg-orange-50 border border-orange-200'}`}>
+                      <p className={`text-xs ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>مستردة</p>
+                      <p className={`text-2xl font-bold ${darkMode ? 'text-orange-300' : 'text-orange-700'}`}>{payments.filter(p => p.status === 'Refunded').length}</p>
+                      <p className={`text-xs ${darkMode ? 'text-orange-400/70' : 'text-orange-600/70'}`}>{payments.filter(p => p.status === 'Refunded').reduce((s, p) => s + p.amount, 0).toLocaleString()} {settings.currency}</p>
+                    </div>
+                  </div>
+
+                  {/* فلتر المدفوعات */}
+                  <div className="flex gap-2 flex-wrap">
+                    {[{ key: 'all', label: 'الكل', count: payments.length }, { key: 'Pending', label: 'قيد الانتظار', count: payments.filter(p => p.status === 'Pending').length }, { key: 'Paid', label: 'مؤكدة', count: payments.filter(p => p.status === 'Paid').length }, { key: 'Failed', label: 'مرفوضة', count: payments.filter(p => p.status === 'Failed').length }, { key: 'Refunded', label: 'مستردة', count: payments.filter(p => p.status === 'Refunded').length }].map(f => (
+                      <button key={f.key} onClick={() => setPaymentFilter(f.key as any)} className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${paymentFilter === f.key ? 'bg-violet-500 text-white shadow-lg shadow-violet-500/30' : (darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')}`}>
+                        {f.label}
+                        <span className={`px-1.5 py-0.5 rounded-full text-xs ${paymentFilter === f.key ? 'bg-white/20 text-white' : (darkMode ? 'bg-slate-600 text-slate-400' : 'bg-slate-200 text-slate-500')}`}>{f.count}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* طلبات بيانات التواصل الجديدة */}
+                  {inquiries.filter(i => i.lifecycleStatus === 'New').length > 0 && (
+                    <div className={`p-4 rounded-xl ${darkMode ? 'bg-blue-900/20 border border-blue-700' : 'bg-blue-50 border border-blue-200'}`}>
+                      <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}><MessageCircle className="h-5 w-5" />طلبات بيانات التواصل ({inquiries.filter(i => i.lifecycleStatus === 'New').length} جديدة)</h3>
+                      <div className="space-y-3 max-h-64 overflow-y-auto">
                         {inquiries.filter(i => i.lifecycleStatus === 'New').map(inq => (
-                          <div key={inq.id} className={`p-3 rounded-lg ${darkMode ? 'bg-slate-700' : 'bg-white'} flex items-center justify-between`}>
+                          <div key={inq.id} className={`p-3 rounded-lg ${darkMode ? 'bg-slate-700' : 'bg-white'} flex items-center justify-between`}
+                            style={inq.id === inquiries.find(i => i.lifecycleStatus === 'New')?.id ? undefined : undefined}>
                             <div>
                               <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{inq.name}</p>
-                              <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{inq.apartment?.title} • {new Date(inq.createdAt).toLocaleDateString('ar-EG')}</p>
+                              <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{inq.email} • {inq.phone}</p>
+                              <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{inq.apartment?.title || 'عقار محذوف'} • {new Date(inq.createdAt).toLocaleDateString('ar-EG')}</p>
                             </div>
-                            <div className="flex gap-2">
-                              <button onClick={() => handleApproveInquiry(inq.id)} className="px-3 py-1 rounded-lg bg-emerald-500 text-white text-sm hover:bg-emerald-600 flex items-center gap-1"><Check className="h-3 w-3" />اعتماد</button>
-                              <button onClick={() => { fetchMessages(); setShowMessages(true); }} className="px-3 py-1 rounded-lg bg-violet-500 text-white text-sm hover:bg-violet-600 flex items-center gap-1"><MessageSquare className="h-3 w-3" />رد</button>
+                            <div className="flex gap-2 shrink-0">
+                              <button onClick={() => handleApproveInquiry(inq.id)} className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-sm hover:bg-emerald-600 flex items-center gap-1"><Check className="h-3 w-3" />اعتماد</button>
+                              <button onClick={() => { fetchMessages(); setShowMessages(true); }} className="px-3 py-1.5 rounded-lg bg-violet-500 text-white text-sm hover:bg-violet-600 flex items-center gap-1"><MessageSquare className="h-3 w-3" />رد</button>
                             </div>
                           </div>
                         ))}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
+
                   {/* المدفوعات */}
-                  {payments.length === 0 ? <div className="text-center py-12"><CreditCard className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد مدفوعات</p></div> : payments.map(payment => (
-                    <div key={payment.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                      <div className="flex items-center justify-between">
-                        <div><p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{payment.amount} ج.م - {payment.method}</p><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{payment.inquiry?.name} • {new Date(payment.createdAt).toLocaleDateString('ar-EG')}</p></div>
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2 py-1 rounded-full text-xs ${payment.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : payment.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{payment.status === 'Paid' ? 'مدفوع' : payment.status === 'Pending' ? 'قيد الانتظار' : 'مرفوض'}</span>
-                          {payment.status === 'Pending' && (
-                            <div className="flex gap-1">
-                              <button onClick={() => handleConfirmPayment(payment.id)} className="p-1 rounded bg-emerald-500 text-white" title="تأكيد الدفع وإظهار بيانات التواصل"><Check className="h-4 w-4" /></button>
-                              <button onClick={() => handleRejectPayment(payment.id)} className="p-1 rounded bg-red-500 text-white"><X className="h-4 w-4" /></button>
-                            </div>
-                          )}
+                  {(() => {
+                    const filteredPayments = paymentFilter === 'all' ? payments : payments.filter(p => p.status === paymentFilter);
+                    if (filteredPayments.length === 0) return <div className="text-center py-12"><CreditCard className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>{paymentFilter === 'all' ? 'لا توجد مدفوعات' : `لا توجد مدفوعات ${paymentFilter === 'Pending' ? 'قيد الانتظار' : paymentFilter === 'Paid' ? 'مؤكدة' : paymentFilter === 'Failed' ? 'مرفوضة' : 'مستردة'}`}</p></div>;
+                    return filteredPayments.map(payment => (
+                    <div key={payment.id} className={`p-4 rounded-xl border transition-all ${payment.status === 'Pending' ? (darkMode ? 'bg-amber-900/10 border-amber-700/50 shadow-lg shadow-amber-900/20' : 'bg-amber-50 border-amber-200 shadow-md') : payment.status === 'Paid' ? (darkMode ? 'bg-emerald-900/10 border-emerald-700/30' : 'bg-emerald-50/50 border-emerald-200/50') : payment.status === 'Refunded' ? (darkMode ? 'bg-orange-900/10 border-orange-700/50' : 'bg-orange-50 border-orange-200') : payment.status === 'Failed' ? (darkMode ? 'bg-red-900/10 border-red-700/50' : 'bg-red-50 border-red-200') : (darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-200')}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <p className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'}`}>{payment.amount.toLocaleString()} {settings.currency}</p>
+                            {payment.method && <span className={`px-2 py-0.5 rounded-full text-xs ${darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>{payment.method}</span>}
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${payment.status === 'Paid' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400' : payment.status === 'Pending' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400' : payment.status === 'Refunded' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-400' : 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-400'}`}>
+                              {payment.status === 'Paid' ? '✓ مدفوع' : payment.status === 'Pending' ? '⏳ قيد الانتظار' : payment.status === 'Refunded' ? '↩ مسترد' : '✗ مرفوض'}
+                            </span>
+                          </div>
+                          <p className={`text-sm font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{payment.inquiry?.name || 'مستخدم'}</p>
+                          <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{payment.inquiry?.email || ''} {payment.inquiry?.phone ? `• ${payment.inquiry.phone}` : ''}</p>
+                          <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>عقار: {payment.inquiry?.apartment?.title || 'محذوف'} • {new Date(payment.createdAt).toLocaleDateString('ar-EG')} - {new Date(payment.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</p>
+                          {payment.transactionRef && <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>رقم العملية: {payment.transactionRef}</p>}
                         </div>
+                        {payment.status === 'Pending' && (
+                          <div className="flex flex-col gap-2 shrink-0">
+                            <button onClick={() => handleConfirmPayment(payment.id)} className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 text-white text-sm font-medium hover:from-emerald-600 hover:to-green-700 flex items-center gap-1.5 shadow-lg shadow-emerald-500/30" title="تأكيد الدفع وإظهار بيانات التواصل"><Check className="h-4 w-4" />تأكيد</button>
+                            <button onClick={() => handleRejectPayment(payment.id)} className="px-4 py-2 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 text-white text-sm font-medium hover:from-red-600 hover:to-rose-700 flex items-center gap-1.5" title="رفض الدفع"><X className="h-4 w-4" />رفض</button>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  ))}
+                    ));
+                  })()}
                 </div>
               )}
 
@@ -2129,24 +2269,124 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               {/* Users Tab */}
               {devTab === 'users' && (
                 <div className="space-y-4">
-                  {allUsers.length === 0 ? <div className="text-center py-12"><User className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا يوجد مستخدمين</p></div> : allUsers.map(u => (
-                    <div key={u.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'} flex items-center justify-between`}>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{u.name}</p>
-                          {u.isBlocked && <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">محظور</span>}
+                  {/* إحصائيات المستخدمين */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-violet-900/20 border border-violet-700/50' : 'bg-violet-50 border border-violet-200'}`}>
+                      <p className={`text-2xl font-bold ${darkMode ? 'text-violet-300' : 'text-violet-700'}`}>{allUsers.length}</p>
+                      <p className={`text-xs ${darkMode ? 'text-violet-400' : 'text-violet-600'}`}>إجمالي المستخدمين</p>
+                    </div>
+                    <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-emerald-900/20 border border-emerald-700/50' : 'bg-emerald-50 border border-emerald-200'}`}>
+                      <p className={`text-2xl font-bold ${darkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>{allUsers.filter(u => !u.isBlocked).length}</p>
+                      <p className={`text-xs ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>نشط</p>
+                    </div>
+                    <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-red-900/20 border border-red-700/50' : 'bg-red-50 border border-red-200'}`}>
+                      <p className={`text-2xl font-bold ${darkMode ? 'text-red-300' : 'text-red-700'}`}>{allUsers.filter(u => u.isBlocked).length}</p>
+                      <p className={`text-xs ${darkMode ? 'text-red-400' : 'text-red-600'}`}>محظور</p>
+                    </div>
+                  </div>
+
+                  {/* بحث المستخدمين */}
+                  <div className="relative">
+                    <Search className={`absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 ${darkMode ? 'text-slate-400' : 'text-slate-400'}`} />
+                    <input
+                      type="text"
+                      placeholder="بحث بالاسم أو البريد الإلكتروني..."
+                      value={userSearchQuery}
+                      onChange={(e) => setUserSearchQuery(e.target.value)}
+                      className={`w-full pr-10 pl-4 py-2.5 rounded-xl border text-sm transition-all ${darkMode ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-violet-500' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-violet-500'} focus:outline-none focus:ring-2 focus:ring-violet-500/20`}
+                    />
+                  </div>
+
+                  {/* قائمة المستخدمين */}
+                  {(() => {
+                    const filteredUsers = allUsers.filter(u =>
+                      !userSearchQuery ||
+                      u.name.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                      (u.identifier || u.email || '').toLowerCase().includes(userSearchQuery.toLowerCase())
+                    );
+                    if (filteredUsers.length === 0) return <div className="text-center py-12"><Users className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>{userSearchQuery ? 'لا توجد نتائج للبحث' : 'لا يوجد مستخدمين'}</p></div>;
+                    return filteredUsers.map(u => {
+                    const userAptCount = allApartments.filter(a => a.createdBy === u.id).length;
+                    const userPendingCount = allApartments.filter(a => a.createdBy === u.id && a.status === 'pending').length;
+                    const userInquiryCount = inquiries.filter(i => i.userId === u.id).length;
+                    const userContactedCount = inquiries.filter(i => i.userId === u.id && i.lifecycleStatus === 'Contacted').length;
+                    const userPaymentCount = payments.filter(p => p.userId === u.id).length;
+                    const userPaidCount = payments.filter(p => p.userId === u.id && p.status === 'Paid').length;
+                    const userBlockedApts = allApartments.filter(a => a.createdBy === u.id && a.status === 'hidden').length;
+                    return (
+                    <div key={u.id} className={`p-4 rounded-xl border transition-all ${u.isBlocked ? (darkMode ? 'bg-red-900/10 border-red-700/50' : 'bg-red-50 border-red-200') : (darkMode ? 'bg-slate-700/50 border-slate-600/50' : 'bg-white border-slate-200')} hover:shadow-md`}>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-11 h-11 rounded-full flex items-center justify-center text-white font-bold ${u.isBlocked ? 'bg-gradient-to-br from-red-500 to-rose-600' : 'bg-gradient-to-br from-violet-500 to-purple-600'}`}>{u.name?.charAt(0) || 'م'}</div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{u.name}</p>
+                              {u.isBlocked && <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700 flex items-center gap-1"><Ban className="h-3 w-3" />محظور</span>}
+                              {userContactedCount > 0 && <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700 flex items-center gap-1"><Eye className="h-3 w-3" />{userContactedCount} صلاحية تواصل</span>}
+                            </div>
+                            <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{u.identifier || u.email}</p>
+                            <p className={`text-xs mt-0.5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>انضم {new Date(u.createdAt).toLocaleDateString('ar-EG')}</p>
+                          </div>
                         </div>
-                        <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{u.identifier || u.email}</p>
+                        <div className="flex gap-1.5 shrink-0">
+                          {!u.isBlocked && userAptCount > 0 && (
+                            <button onClick={() => handleManageUser(u.id, 'show-apartments')} className={`p-2 rounded-lg text-xs transition-all ${darkMode ? 'bg-slate-600 text-slate-300 hover:bg-emerald-600 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-emerald-500 hover:text-white'}`} title="إظهار العقارات"><Eye className="h-3.5 w-3.5" /></button>
+                          )}
+                          {!u.isBlocked && userAptCount > 0 && (
+                            <button onClick={() => handleManageUser(u.id, 'hide-apartments')} className={`p-2 rounded-lg text-xs transition-all ${darkMode ? 'bg-slate-600 text-slate-300 hover:bg-orange-600 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-orange-500 hover:text-white'}`} title="إخفاء العقارات"><EyeOff className="h-3.5 w-3.5" /></button>
+                          )}
+                          <button onClick={() => handleManageUser(u.id, 'revoke-contact')} className={`p-2 rounded-lg text-xs transition-all ${darkMode ? 'bg-slate-600 text-slate-300 hover:bg-amber-600 hover:text-white' : 'bg-slate-100 text-slate-600 hover:bg-amber-500 hover:text-white'}`} title="إلغاء صلاحيات التواصل"><Phone className="h-3.5 w-3.5" /></button>
+                          <button onClick={() => handleManageUser(u.id, 'delete')} className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white text-xs transition-all" title="حذف نهائي"><Trash2 className="h-3.5 w-3.5" /></button>
+                        </div>
                       </div>
-                      <div className="flex gap-2">
+                      {/* إحصائيات المستخدم */}
+                      <div className={`grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3`}>
+                        <div className={`px-2 py-1.5 rounded-lg text-center ${darkMode ? 'bg-slate-600/50' : 'bg-slate-50'}`}>
+                          <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>عقارات</p>
+                          <p className={`font-bold text-sm ${darkMode ? 'text-white' : 'text-slate-800'}`}>{userAptCount}</p>
+                        </div>
+                        <div className={`px-2 py-1.5 rounded-lg text-center ${darkMode ? 'bg-slate-600/50' : 'bg-slate-50'}`}>
+                          <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>استفسارات</p>
+                          <p className={`font-bold text-sm ${darkMode ? 'text-white' : 'text-slate-800'}`}>{userInquiryCount}</p>
+                        </div>
+                        <div className={`px-2 py-1.5 rounded-lg text-center ${darkMode ? 'bg-slate-600/50' : 'bg-slate-50'}`}>
+                          <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>مدفوعات</p>
+                          <p className={`font-bold text-sm ${darkMode ? 'text-white' : 'text-slate-800'}`}>{userPaidCount} / {userPaymentCount}</p>
+                        </div>
+                        <div className={`px-2 py-1.5 rounded-lg text-center ${darkMode ? 'bg-slate-600/50' : 'bg-slate-50'}`}>
+                          <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>مخفية</p>
+                          <p className={`font-bold text-sm ${userBlockedApts > 0 ? 'text-red-500' : (darkMode ? 'text-white' : 'text-slate-800')}`}>{userBlockedApts}</p>
+                        </div>
+                      </div>
+                      {/* حالة الصلاحيات */}
+                      <div className={`flex items-center gap-3 flex-wrap text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'} mb-3`}>
+                        <span className={`flex items-center gap-1 ${u.isBlocked ? 'text-red-500' : 'text-emerald-500'}`}>
+                          {u.isBlocked ? <XCircle className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                          {u.isBlocked ? 'محظور' : 'نشط'}
+                        </span>
+                        <span className={`flex items-center gap-1 ${userContactedCount > 0 ? 'text-emerald-500' : (darkMode ? 'text-slate-500' : 'text-slate-400')}`}>
+                          <Phone className="h-3.5 w-3.5" />
+                          {userContactedCount > 0 ? `له صلاحية تواصل (${userContactedCount})` : 'بدون صلاحية تواصل'}
+                        </span>
+                        {userPendingCount > 0 && <span className="flex items-center gap-1 text-amber-500"><Hourglass className="h-3.5 w-3.5" />{userPendingCount} قيد المراجعة</span>}
+                      </div>
+                      {/* أزرار الإجراءات */}
+                      <div className="flex flex-wrap gap-2">
                         {u.isBlocked ? (
-                          <button onClick={() => unblockUser(u.id)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm">إلغاء الحظر</button>
+                          <button onClick={() => handleManageUser(u.id, 'unblock')} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-green-600 text-white text-xs hover:from-emerald-600 hover:to-green-700 flex items-center gap-1 shadow-sm"><CheckCircle2 className="h-3 w-3" />إلغاء الحظر</button>
                         ) : (
-                          <button onClick={() => blockUser(u.id, 'حظر من المطور')} className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm">حظر</button>
+                          <button onClick={() => handleManageUser(u.id, 'block')} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-red-500 to-rose-600 text-white text-xs hover:from-red-600 hover:to-rose-700 flex items-center gap-1 shadow-sm"><Ban className="h-3 w-3" />حظر</button>
                         )}
+                        <button onClick={() => handleManageUser(u.id, 'revoke-contact')} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 text-white text-xs hover:from-amber-600 hover:to-orange-700 flex items-center gap-1 shadow-sm"><Eye className="h-3 w-3" />إلغاء صلاحيات التواصل</button>
+                        {!u.isBlocked && userAptCount > 0 && (
+                          <button onClick={() => handleManageUser(u.id, 'hide-apartments')} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-orange-500 to-amber-600 text-white text-xs hover:from-orange-600 hover:to-amber-700 flex items-center gap-1 shadow-sm"><EyeOff className="h-3 w-3" />إخفاء العقارات</button>
+                        )}
+                        <button onClick={() => handleManageUser(u.id, 'delete')} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-red-700 to-red-800 text-white text-xs hover:from-red-800 hover:to-red-900 flex items-center gap-1 shadow-sm"><Trash2 className="h-3 w-3" />حذف نهائي</button>
                       </div>
                     </div>
-                  ))}
+                    );
+                    });
+                  })()}
                 </div>
               )}
 
