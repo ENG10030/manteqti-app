@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getCurrentUser } from "@/lib/auth"
+import { authenticateRequest, isDeveloperOrAdmin } from "@/lib/auth"
 import { db } from "@/lib/db"
 
 // الموافقة على / رفض عقار
@@ -8,9 +8,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await getCurrentUser(request)
+    const auth = authenticateRequest(request)
 
-    if (!user || user.role !== "DEVELOPER") {
+    if (!auth || !isDeveloperOrAdmin(auth.user)) {
       return NextResponse.json(
         { error: "غير مصرح لك بهذا الإجراء" },
         { status: 403 }
@@ -18,16 +18,15 @@ export async function POST(
     }
 
     const { id: apartmentId } = await params
-    
-    let body: any = {};
-    try {
-      body = await request.json();
-    } catch {
-      // لو مفيش body، نفترض approve
-      body = { action: "approve" };
-    }
 
-    const { action } = body // "approve" or "reject"
+    // ✅ Handle empty body gracefully
+    let action = "approve"
+    try {
+      const body = await request.json()
+      action = body.action || "approve"
+    } catch {
+      // Empty body - default to approve
+    }
 
     const apartment = await db.apartment.findUnique({
       where: { id: apartmentId }
@@ -40,12 +39,12 @@ export async function POST(
       )
     }
 
-    if (action === "approve" || !action) {
+    if (action === "approve") {
       const updatedApartment = await db.apartment.update({
         where: { id: apartmentId },
         data: {
           status: "available",
-          approvedBy: user.id,
+          approvedBy: auth.user.id,
           approvedAt: new Date()
         }
       })
@@ -72,13 +71,13 @@ export async function POST(
 
     } else {
       return NextResponse.json(
-        { error: "إجراء غير صالح - استخدم action: approve أو reject" },
+        { error: "إجراء غير صالح. استخدم approve أو reject" },
         { status: 400 }
       )
     }
 
-  } catch (error: any) {
-    console.error("Approve apartment error:", error?.message || error);
+  } catch (error) {
+    console.error("Approve apartment error:", error)
     return NextResponse.json(
       { error: "حدث خطأ أثناء معالجة الطلب" },
       { status: 500 }

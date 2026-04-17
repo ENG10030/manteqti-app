@@ -5,6 +5,20 @@ import { verify } from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
+// Helper: get authenticated user from token
+async function getAuthUser(request: NextRequest): Promise<{ userId: string; role: string } | null> {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) return null;
+    
+    const decoded = verify(token, JWT_SECRET) as { userId: string; role: string };
+    return { userId: decoded.userId, role: decoded.role || 'USER' };
+  } catch {
+    return null;
+  }
+}
+
 // جلب التعليقات
 export async function GET(request: NextRequest) {
   try {
@@ -25,7 +39,7 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             name: true,
-            identifier: true,
+            // Don't expose email/identifier in public comments
           }
         },
         apartment: {
@@ -45,9 +59,16 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// إضافة تعليق جديد
+// إضافة تعليق جديد - يتطلب تسجيل الدخول
 export async function POST(request: NextRequest) {
   try {
+    const auth = await getAuthUser(request);
+    
+    // ✅ Require authentication for commenting
+    if (!auth) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول لإضافة تعليق' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { apartmentId, content } = body;
 
@@ -55,29 +76,41 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 });
     }
 
-    // JWT verification for developer status
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    let isDeveloper = false;
-    let userId = body.userId;
-
-    if (token) {
-      try {
-        const decoded = verify(token, JWT_SECRET) as any;
-        if (decoded.role === 'DEVELOPER') isDeveloper = true;
-        if (decoded.userId) userId = decoded.userId;
-      } catch {}
+    // Validate comment length
+    if (content.trim().length < 2) {
+      return NextResponse.json({ error: 'التعليق قصير جداً' }, { status: 400 });
+    }
+    if (content.length > 1000) {
+      return NextResponse.json({ error: 'التعليق طويل جداً (الحد الأقصى 1000 حرف)' }, { status: 400 });
     }
 
-    if (!userId) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    // Verify apartment exists
+    const apartment = await db.apartment.findUnique({
+      where: { id: apartmentId },
+    });
+
+    if (!apartment) {
+      return NextResponse.json({ error: 'العقار غير موجود' }, { status: 404 });
     }
+
+    // Check if user is blocked
+    const user = await db.user.findUnique({
+      where: { id: auth.userId },
+      select: { isBlocked: true },
+    });
+
+    if (user?.isBlocked) {
+      return NextResponse.json({ error: 'تم حظر حسابك' }, { status: 403 });
+    }
+
+    const isDeveloper = auth.role === 'DEVELOPER';
 
     const comment = await db.comment.create({
       data: {
         apartmentId,
-        userId,
-        content,
+        // ✅ Use token userId, not body userId
+        userId: auth.userId,
+        content: content.trim(),
         status: isDeveloper ? 'approved' : 'pending',
       },
       include: {
@@ -85,7 +118,6 @@ export async function POST(request: NextRequest) {
           select: {
             id: true,
             name: true,
-            identifier: true,
           }
         }
       }
@@ -98,43 +130,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error creating comment:', error);
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
-  }
-}
-
-// حذف تعليق أو حذف جميع التعليقات
-export async function DELETE(request: NextRequest) {
-  try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
-    if (decoded.role !== 'DEVELOPER') {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-    const status = searchParams.get('status');
-
-    if (id) {
-      await db.comment.delete({ where: { id } });
-    } else if (status) {
-      await db.comment.deleteMany({ where: { status } });
-    } else {
-      await db.comment.deleteMany({});
-    }
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error deleting comments:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }

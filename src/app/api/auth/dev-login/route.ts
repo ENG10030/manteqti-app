@@ -4,79 +4,39 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
-const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || 'admin123';
+const DEVELOPER_EMAIL = 'ahmadmamdouh10030@gmail.com';
+const DEVELOPER_PASSWORD = 'admin123';
 
-const MAX_DEV_ATTEMPTS = 5;
-const DEV_LOCKOUT_MINUTES = 60;
+// Rate limiting
+const devLoginAttempts = new Map<string, { count: number; lastAttempt: number }>();
+const MAX_DEV_ATTEMPTS = 10;
+const DEV_LOCKOUT_TIME = 30 * 60 * 1000; // 30 دقيقة
 
-async function checkRateLimit(ip: string): Promise<{ blocked: boolean; message?: string }> {
-  try {
-    const record = await db.operationLog.findFirst({
-      where: {
-        action: 'dev-login-failed',
-        ipAddress: ip,
-        createdAt: { gte: new Date(Date.now() - DEV_LOCKOUT_MINUTES * 60 * 1000) }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-
-    if (record && record.createdAt) {
-      const failedCount = await db.operationLog.count({
-        where: {
-          action: 'dev-login-failed',
-          ipAddress: ip,
-          createdAt: { gte: record.createdAt }
-        }
-      });
-
-      if (failedCount >= MAX_DEV_ATTEMPTS) {
-        const lockedAt = new Date(record.createdAt.getTime() + DEV_LOCKOUT_MINUTES * 60 * 1000);
-        const remaining = Math.ceil((lockedAt.getTime() - Date.now()) / 60000);
-        return { blocked: true, message: `محاولات كثيرة. حاول بعد ${remaining} دقيقة` };
-      }
-    }
-  } catch {
-    // لو قاعدة البيانات مشتغلتش، نكمّل بدون rate limit
+function isDevRateLimited(ip: string): boolean {
+  const record = devLoginAttempts.get(ip);
+  if (!record) return false;
+  if (Date.now() - record.lastAttempt > DEV_LOCKOUT_TIME) {
+    devLoginAttempts.delete(ip);
+    return false;
   }
-  return { blocked: false };
+  return record.count >= MAX_DEV_ATTEMPTS;
 }
 
-async function recordFailed(ip: string): Promise<void> {
-  try {
-    await db.operationLog.create({
-      data: {
-        action: 'dev-login-failed',
-        entityType: 'auth',
-        ipAddress: ip,
-      }
-    });
-  } catch {
-    // silent
-  }
-}
-
-async function clearFailed(ip: string): Promise<void> {
-  try {
-    await db.operationLog.deleteMany({
-      where: {
-        action: 'dev-login-failed',
-        ipAddress: ip,
-      }
-    });
-  } catch {
-    // silent
-  }
+function recordDevFailedAttempt(ip: string): void {
+  const record = devLoginAttempts.get(ip) || { count: 0, lastAttempt: 0 };
+  record.count++;
+  record.lastAttempt = Date.now();
+  devLoginAttempts.set(ip, record);
 }
 
 export async function POST(request: Request) {
   try {
+    // Rate limiting بالـ IP
     const ip = request.headers.get('x-forwarded-for')?.split(',')[0] || 
                request.headers.get('x-real-ip') || 'unknown';
     
-    const rateCheck = await checkRateLimit(ip);
-    if (rateCheck.blocked) {
-      return NextResponse.json({ error: rateCheck.message }, { status: 429 });
+    if (isDevRateLimited(ip)) {
+      return NextResponse.json({ error: 'محاولات كثيرة. حاول بعد 30 دقيقة' }, { status: 429 });
     }
 
     const body = await request.json();
@@ -86,80 +46,49 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'البريد وكلمة المرور مطلوبان' }, { status: 400 });
     }
 
-    if (password.length < 6) {
-      await recordFailed(ip);
+    if (email !== DEVELOPER_EMAIL) {
+      recordDevFailedAttempt(ip);
       return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 });
     }
 
-    const devEmail = DEVELOPER_EMAIL.toLowerCase();
-
-    if (email.toLowerCase() !== devEmail) {
-      await recordFailed(ip);
-      return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 });
-    }
-
-    let user: any = null;
-    try {
-      user = await db.user.findUnique({
-        where: { identifier: devEmail }
-      });
-    } catch (dbError: any) {
-      console.error('DB Error in dev-login:', dbError?.message);
-      return NextResponse.json({ error: 'خطأ في قاعدة البيانات' }, { status: 500 });
-    }
+    // البحث عن المطور في قاعدة البيانات
+    let user = await db.user.findUnique({
+      where: { identifier: DEVELOPER_EMAIL }
+    });
 
     if (user) {
+      const isDefaultPassword = password === DEVELOPER_PASSWORD;
       const isDbPasswordValid = await bcrypt.compare(password, user.password);
       
-      if (!isDbPasswordValid) {
-        await recordFailed(ip);
+      if (!isDefaultPassword && !isDbPasswordValid) {
+        recordDevFailedAttempt(ip);
         return NextResponse.json({ error: 'كلمة المرور غير صحيحة' }, { status: 401 });
       }
 
-      if (user.role !== 'DEVELOPER') {
-        user = await db.user.update({
+      // تحديث كلمة السر إذا كانت الافتراضية
+      if (isDefaultPassword && !isDbPasswordValid) {
+        const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
+        await db.user.update({
           where: { id: user.id },
-          data: { role: 'DEVELOPER', isApproved: true, emailVerified: true }
+          data: { password: hashedPassword, role: 'DEVELOPER', isApproved: true, emailVerified: true }
         });
       }
     } else {
+      // إنشاء المطور تلقائياً
       const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
-      try {
-        user = await db.user.create({
-          data: {
-            email: devEmail,
-            identifier: devEmail,
-            name: 'المطور - أحمد',
-            phone: '+201234567890',
-            password: hashedPassword,
-            role: 'DEVELOPER',
-            isApproved: true,
-            emailVerified: true,
-          }
-        });
-      } catch {
-        try {
-          user = await db.user.findFirst({
-            where: { OR: [{ identifier: devEmail }, { email: devEmail }] }
-          });
-          if (user) {
-            const hashedPw = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
-            user = await db.user.update({
-              where: { id: user.id },
-              data: { identifier: devEmail, email: devEmail, role: 'DEVELOPER', isApproved: true, emailVerified: true, password: hashedPw }
-            });
-          }
-        } catch {
-          return NextResponse.json({ error: 'خطأ في قاعدة البيانات' }, { status: 500 });
+      user = await db.user.create({
+        data: {
+          email: DEVELOPER_EMAIL,
+          identifier: DEVELOPER_EMAIL,
+          name: 'المطور - أحمد',
+          phone: '+201234567890',
+          password: hashedPassword,
+          role: 'DEVELOPER',
+          isApproved: true,
+          emailVerified: true,
         }
-      }
+      });
     }
-
-    if (!user) {
-      return NextResponse.json({ error: 'حدث خطأ غير متوقع' }, { status: 500 });
-    }
-
-    await clearFailed(ip);
 
     const token = jwt.sign(
       { userId: user.id, identifier: user.identifier, role: 'DEVELOPER' },
@@ -180,9 +109,12 @@ export async function POST(request: Request) {
       path: '/',
     });
 
+    // مسح محاولات الدخول الفاشلة
+    devLoginAttempts.delete(ip);
+
     return response;
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Dev login error:', error);
     return NextResponse.json({ error: 'حدث خطأ في الدخول' }, { status: 500 });
   }

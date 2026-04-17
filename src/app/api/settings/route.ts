@@ -76,17 +76,17 @@ export async function PUT(request: Request) {
     if (!settings) {
       settings = await db.settings.create({
         data: {
-          contactFee: body.contactFee ?? 50,
-          featuredFee: body.featuredFee ?? 100,
-          premiumFee: body.premiumFee ?? 200,
-          vipFee: body.vipFee ?? 300,
-          saleDisplayFee: body.saleDisplayFee ?? 100,
-          rentDisplayFee: body.rentDisplayFee ?? 75,
-          otherServicesFee: body.otherServicesFee ?? 50,
-          highlightFee: body.highlightFee ?? 150,
-          priorityListingFee: body.priorityListingFee ?? 200,
-          verifiedListingFee: body.verifiedListingFee ?? 250,
-          currency: body.currency ?? "ج.م",
+          contactFee: body.contactFee || 50,
+          featuredFee: body.featuredFee || 100,
+          premiumFee: body.premiumFee || 200,
+          vipFee: body.vipFee || 300,
+          saleDisplayFee: body.saleDisplayFee || 100,
+          rentDisplayFee: body.rentDisplayFee || 75,
+          otherServicesFee: body.otherServicesFee || 50,
+          highlightFee: body.highlightFee || 150,
+          priorityListingFee: body.priorityListingFee || 200,
+          verifiedListingFee: body.verifiedListingFee || 250,
+          currency: body.currency || "ج.م",
         },
       });
     } else {

@@ -107,31 +107,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create inquiry' }, { status: 500 });
   }
 }
-
-// حذف جميع الاستفسارات
-export async function DELETE(request: NextRequest) {
-  try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
-    if (decoded.role !== 'DEVELOPER') {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
-    }
-
-    // Delete all inquiries (cascade will delete related payments)
-    await db.inquiry.deleteMany({});
-
-    return NextResponse.json({ success: true, message: 'تم حذف جميع الاستفسارات' });
-  } catch (error) {
-    console.error('Error deleting all inquiries:', error);
-    return NextResponse.json({ error: 'Failed to delete inquiries' }, { status: 500 });
-  }
-}

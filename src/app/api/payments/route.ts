@@ -5,26 +5,34 @@ import { verify } from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
-export async function GET() {
+// Helper: get authenticated user from token
+async function getAuthUser(request: NextRequest): Promise<{ userId: string; role: string } | null> {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
+    if (!token) return null;
+    
+    const decoded = verify(token, JWT_SECRET) as { userId: string; role: string };
+    return { userId: decoded.userId, role: decoded.role || 'USER' };
+  } catch {
+    return null;
+  }
+}
+
+// GET - جلب المدفوعات
+export async function GET(request: NextRequest) {
+  try {
+    const auth = await getAuthUser(request);
+    if (!auth) {
       return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
     }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
 
-    // المطور فقط يرى كل المدفوعات، المستخدم يرى مدفوعاته فقط
-    const isDeveloper = decoded.role === 'DEVELOPER';
+    const isDeveloper = auth.role === 'DEVELOPER';
 
-    const where: any = {};
+    // المطور يرى كل المدفوعات، المستخدم العادي يرى مدفوعاته فقط
+    const where: Record<string, unknown> = {};
     if (!isDeveloper) {
-      where.userId = decoded.userId;
+      where.userId = auth.userId;
     }
 
     const payments = await db.payment.findMany({
@@ -48,10 +56,16 @@ export async function GET() {
       amount: p.amount,
       transactionRef: p.transactionRef,
       paymentLink: p.paymentLink,
+      userId: p.userId,
       createdAt: p.createdAt.toISOString(),
       inquiry: p.inquiry ? {
         id: p.inquiry.id,
         apartmentId: p.inquiry.apartmentId,
+        // PII protection: hide email/phone from non-developers
+        name: p.inquiry.name,
+        email: isDeveloper ? p.inquiry.email : undefined,
+        phone: isDeveloper ? p.inquiry.phone : undefined,
+        message: isDeveloper ? p.inquiry.message : undefined,
         apartment: p.inquiry.apartment ? {
           id: p.inquiry.apartment.id,
           title: p.inquiry.apartment.title,
@@ -65,32 +79,37 @@ export async function GET() {
   }
 }
 
+// POST - إنشاء دفعة (المطور فقط أو النظام)
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
+    const auth = await getAuthUser(request);
+    if (!auth) {
       return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
     }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+
+    // Only developers can create payments
+    if (auth.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
 
     const data = await request.json();
 
+    // Validate required fields
+    if (!data.inquiryId || !data.method || !data.amount) {
+      return NextResponse.json({ error: 'بيانات الدفعة مطلوبة' }, { status: 400 });
+    }
+
+    // ✅ Use token userId as the payer
     const payment = await db.payment.create({
       data: {
         inquiryId: data.inquiryId,
         method: data.method,
         status: data.status || 'Pending',
         inquiryStatus: data.inquiryStatus || 'Contacted',
-        amount: data.amount,
-        transactionRef: data.transactionRef,
-        paymentLink: data.paymentLink,
-        userId: data.userId
+        amount: parseInt(data.amount) || 0,
+        transactionRef: data.transactionRef || null,
+        paymentLink: data.paymentLink || null,
+        userId: data.userId || auth.userId
       }
     });
 

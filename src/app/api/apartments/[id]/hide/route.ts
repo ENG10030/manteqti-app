@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getCurrentUser } from "@/lib/auth"
+import { authenticateRequest, isDeveloperOrAdmin } from "@/lib/auth"
 import { db } from "@/lib/db"
 
 // إخفاء / إظهار عقار
@@ -8,9 +8,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await getCurrentUser(request)
+    const auth = authenticateRequest(request)
 
-    if (!user || user.role !== "DEVELOPER") {
+    if (!auth || !isDeveloperOrAdmin(auth.user)) {
       return NextResponse.json(
         { error: "غير مصرح لك بهذا الإجراء" },
         { status: 403 }
@@ -18,15 +18,15 @@ export async function POST(
     }
 
     const { id: apartmentId } = await params
-    
-    let body: any = {};
-    try {
-      body = await request.json();
-    } catch {
-      body = { action: "hide" };
-    }
 
-    const { action } = body
+    // ✅ Handle empty body gracefully
+    let action = "hide"
+    try {
+      const body = await request.json()
+      action = body.action || "hide"
+    } catch {
+      // Empty body - default to hide
+    }
 
     const apartment = await db.apartment.findUnique({
       where: { id: apartmentId }
@@ -39,10 +39,12 @@ export async function POST(
       )
     }
 
-    if (action === "hide" || !action) {
+    if (action === "hide") {
       const updatedApartment = await db.apartment.update({
         where: { id: apartmentId },
-        data: { status: "hidden" }
+        data: {
+          status: "hidden"
+        }
       })
 
       return NextResponse.json({
@@ -54,7 +56,9 @@ export async function POST(
     } else if (action === "show") {
       const updatedApartment = await db.apartment.update({
         where: { id: apartmentId },
-        data: { status: "available" }
+        data: {
+          status: "available"
+        }
       })
 
       return NextResponse.json({
@@ -65,13 +69,13 @@ export async function POST(
 
     } else {
       return NextResponse.json(
-        { error: "إجراء غير صالح - استخدم action: hide أو show" },
+        { error: "إجراء غير صالح. استخدم hide أو show" },
         { status: 400 }
       )
     }
 
-  } catch (error: any) {
-    console.error("Hide/show apartment error:", error?.message || error);
+  } catch (error) {
+    console.error("Hide/show apartment error:", error)
     return NextResponse.json(
       { error: "حدث خطأ أثناء معالجة الطلب" },
       { status: 500 }

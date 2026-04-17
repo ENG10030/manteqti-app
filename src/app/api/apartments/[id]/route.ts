@@ -28,12 +28,21 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const user = await getCurrentUser(request);
+    const isDeveloper = user?.role === "DEVELOPER";
+    const isOwner = user?.id === undefined ? false : false; // will determine after query
 
     const apartment = await db.apartment.findUnique({
       where: { id },
       include: {
         user: {
-          select: { id: true, name: true, phone: true, email: true },
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+            isBlocked: true,
+          },
         },
       },
     });
@@ -42,7 +51,24 @@ export async function GET(
       return NextResponse.json({ error: "العقار غير موجود" }, { status: 404 });
     }
 
-    return NextResponse.json({ apartment });
+    // PII Protection: Determine what the requester can see
+    const isApartmentOwner = user?.id === apartment.createdBy;
+    const canSeePII = isDeveloper || isApartmentOwner;
+
+    // Build safe response
+    const safeApartment = {
+      ...apartment,
+      user: canSeePII
+        ? apartment.user
+        : {
+            id: apartment.user.id,
+            name: apartment.user.name,
+          },
+      // Hide ownerPhone from non-owners and non-developers
+      ...(canSeePII ? {} : { ownerPhone: "" }),
+    };
+
+    return NextResponse.json({ apartment: safeApartment });
   } catch (error) {
     console.error("Get apartment error:", error);
     return NextResponse.json(

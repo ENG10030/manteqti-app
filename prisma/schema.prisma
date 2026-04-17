@@ -1,5 +1,5 @@
 // Manteqti - PostgreSQL Schema for Vercel production
-// For local SQLite development, change provider to "sqlite"
+// IMPORTANT: provider MUST be "postgresql" for Vercel/Supabase
 
 generator client {
   provider = "prisma-client-js"

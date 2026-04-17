@@ -30,15 +30,17 @@ export async function GET(request: Request) {
     const area = searchParams.get("area");
     const user = await getCurrentUser(request);
     const isDeveloper = user?.role === "DEVELOPER";
-    const isUser = !!user;
+    const isAuthenticated = !!user;
 
     const where: any = {};
 
+    // المطور يرى جميع العقارات، المستخدم العادي يرى العقارات المتاحة والموافق عليها فقط
     if (status) {
       where.status = status;
     } else if (!isDeveloper) {
       where.status = { in: ["available", "reserved", "sold", "rented"] };
     }
+    // المطور يرى كل الحالات (لا نضيف شرط للحالة)
 
     if (type && type !== "all") {
       where.type = type;
@@ -48,7 +50,7 @@ export async function GET(request: Request) {
       where.area = area;
     }
 
-    // استبعاد عقارات المحظورين
+    // استبعاد عقارات المحظورين للمستخدمين العاديين
     if (!isDeveloper) {
       const blockedUsers = await db.user.findMany({
         where: { isBlocked: true },
@@ -64,7 +66,13 @@ export async function GET(request: Request) {
       where,
       include: {
         user: {
-          select: { id: true, name: true },
+          select: {
+            id: true,
+            name: true,
+            email: isDeveloper ? true : false,
+            phone: isDeveloper ? true : false,
+            isBlocked: isDeveloper ? true : false,
+          },
         },
       },
       orderBy: [
@@ -74,17 +82,24 @@ export async function GET(request: Request) {
       ],
     });
 
-    // حماية PII: إخفاء بيانات حساسة
-    const safeApartments = apartments.map((apt: any) => {
-      const result: any = { ...apt };
+    // PII Protection: Strip sensitive data based on auth level
+    const safeApartments = apartments.map((apt) => {
+      const apartmentData = { ...apt };
 
-      if (!isUser && !isDeveloper) {
-        // غير مسجل دخول: إخفاء رقم التليفون وبيانات المالك
-        result.ownerPhone = null;
+      // Hide ownerPhone for unauthenticated users and regular users
+      // Only developers and the apartment owner can see ownerPhone
+      if (!isDeveloper && (!isAuthenticated || apt.createdBy !== user?.id)) {
+        apartmentData.ownerPhone = "";
       }
-      // المستخدم والمطور يرى رقم التليفون
 
-      return result;
+      // For non-developers, ensure user email is not present
+      // (already excluded by Prisma select, but double-safety)
+      if (!isDeveloper && apartmentData.user) {
+        const { email: _e, phone: _p, isBlocked: _b, ...safeUser } = (apartmentData.user as any);
+        apartmentData.user = safeUser;
+      }
+
+      return apartmentData;
     });
 
     return NextResponse.json(safeApartments);
@@ -137,6 +152,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // المطور ينشر مباشرة، المستخدم العادي يرسل للمراجعة
     const status = user.role === "DEVELOPER" ? "available" : "pending";
 
     const apartment = await db.apartment.create({

@@ -5,12 +5,35 @@ import { verify } from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
-// جلب طلب تعديل محدد
+// Helper: get authenticated user from token
+async function getAuthUser(request: NextRequest): Promise<{ userId: string; role: string } | null> {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) return null;
+    
+    const decoded = verify(token, JWT_SECRET) as { userId: string; role: string };
+    return { userId: decoded.userId, role: decoded.role || 'USER' };
+  } catch {
+    return null;
+  }
+}
+
+// جلب طلب تعديل محدد (المطور فقط)
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+
+    if (auth.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+    }
+
     const { id } = await params;
 
     const editRequest = await db.propertyEditRequest.findUnique({
@@ -31,45 +54,37 @@ export async function GET(
       return NextResponse.json({ error: 'طلب التعديل غير موجود' }, { status: 404 });
     }
 
-    // Parse changes JSON if available
-    let parsedChanges = null;
-    if (editRequest.changes) {
-      try {
-        parsedChanges = JSON.parse(editRequest.changes);
-      } catch {}
-    }
-
-    return NextResponse.json({ ...editRequest, parsedChanges });
+    return NextResponse.json(editRequest);
   } catch (error) {
     console.error('Error fetching edit request:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }
 
-// الموافقة أو الرفض على طلب التعديل
+// الموافقة أو الرفض على طلب التعديل (المطور فقط)
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
+    const auth = await getAuthUser(request);
+    if (!auth) {
       return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
     }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
 
-    if (decoded.role !== 'DEVELOPER') {
+    if (auth.role !== 'DEVELOPER') {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
 
     const { id } = await params;
-    const body = await request.json();
+
+    // ✅ Handle body parsing gracefully
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {
+      // Empty body
+    }
 
     const editRequest = await db.propertyEditRequest.findUnique({
       where: { id },
@@ -85,44 +100,46 @@ export async function PUT(
     }
 
     if (body.action === 'approve') {
+      // الموافقة على التعديل - تطبيق التغييرات على العقار
       const updateData: Record<string, unknown> = {};
 
-      // تطبيق كل التعديلات من حقل changes (الجديد)
-      if (editRequest.changes) {
+      // إضافة الصور الجديدة للصور الموجودة
+      if (editRequest.newImages) {
         try {
-          const changes = JSON.parse(editRequest.changes);
-          for (const [key, value] of Object.entries(changes)) {
-            if (key === 'images' || key === 'videos') {
-              updateData[key] = typeof value === 'string' ? value : JSON.stringify(value);
-            } else {
-              updateData[key] = value;
-            }
+          const existingImages = editRequest.apartment.images 
+            ? JSON.parse(editRequest.apartment.images) 
+            : [];
+          const newImages = JSON.parse(editRequest.newImages);
+          if (Array.isArray(newImages)) {
+            updateData.images = JSON.stringify([...existingImages, ...newImages]);
           }
-        } catch {}
+        } catch (parseError) {
+          console.error('Error parsing images:', parseError);
+        }
       }
 
-      // توافق مع الحقول القديمة
-      if (!updateData.images && editRequest.newImages) {
-        const existingImages = editRequest.apartment.images 
-          ? JSON.parse(editRequest.apartment.images) 
-          : [];
-        const newImages = JSON.parse(editRequest.newImages);
-        updateData.images = JSON.stringify([...existingImages, ...newImages]);
+      // إضافة الفيديوهات الجديدة للفيديوهات الموجودة
+      if (editRequest.newVideos) {
+        try {
+          const existingVideos = editRequest.apartment.videos 
+            ? JSON.parse(editRequest.apartment.videos) 
+            : [];
+          const newVideos = JSON.parse(editRequest.newVideos);
+          if (Array.isArray(newVideos)) {
+            updateData.videos = JSON.stringify([...existingVideos, ...newVideos]);
+          }
+        } catch (parseError) {
+          console.error('Error parsing videos:', parseError);
+        }
       }
 
-      if (!updateData.videos && editRequest.newVideos) {
-        const existingVideos = editRequest.apartment.videos 
-          ? JSON.parse(editRequest.apartment.videos) 
-          : [];
-        const newVideos = JSON.parse(editRequest.newVideos);
-        updateData.videos = JSON.stringify([...existingVideos, ...newVideos]);
-      }
-
-      if (!updateData.price && editRequest.newPrice) {
+      // تحديث السعر
+      if (editRequest.newPrice) {
         updateData.price = editRequest.newPrice;
       }
 
-      if (!updateData.status && editRequest.newStatus) {
+      // تحديث الحالة
+      if (editRequest.newStatus) {
         updateData.status = editRequest.newStatus;
       }
 
@@ -139,7 +156,7 @@ export async function PUT(
         where: { id },
         data: {
           status: 'approved',
-          reviewedBy: body.reviewedBy || 'developer',
+          reviewedBy: auth.userId,
           reviewedAt: new Date(),
           reviewNotes: body.reviewNotes || null,
         },
@@ -157,7 +174,7 @@ export async function PUT(
         where: { id },
         data: {
           status: 'rejected',
-          reviewedBy: body.reviewedBy || 'developer',
+          reviewedBy: auth.userId,
           reviewedAt: new Date(),
           reviewNotes: body.reviewNotes || null,
         },
@@ -170,33 +187,26 @@ export async function PUT(
       });
 
     } else {
-      return NextResponse.json({ error: 'إجراء غير صحيح' }, { status: 400 });
+      return NextResponse.json({ error: 'إجراء غير صحيح. استخدم approve أو reject' }, { status: 400 });
     }
   } catch (error) {
     console.error('Error updating edit request:', error);
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+    return NextResponse.json({ error: 'حدث خطأ أثناء معالجة طلب التعديل' }, { status: 500 });
   }
 }
 
-// حذف طلب تعديل (للمطور فقط)
+// حذف طلب تعديل (المطور فقط)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
+    const auth = await getAuthUser(request);
+    if (!auth) {
       return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
     }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
 
-    if (decoded.role !== 'DEVELOPER') {
+    if (auth.role !== 'DEVELOPER') {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
 
@@ -221,6 +231,6 @@ export async function DELETE(
     return NextResponse.json({ success: true, message: 'تم حذف طلب التعديل' });
   } catch (error) {
     console.error('Error deleting edit request:', error);
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+    return NextResponse.json({ error: 'حدث خطأ أثناء حذف طلب التعديل' }, { status: 500 });
   }
 }

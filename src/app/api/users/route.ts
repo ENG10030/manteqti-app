@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getCurrentUser } from "@/lib/auth"
+import { authenticateRequest, isDeveloperOrAdmin } from "@/lib/auth"
 import { db } from "@/lib/db"
 
 // جلب جميع المستخدمين (للمطور فقط)
 export async function GET(request: NextRequest) {
   try {
-    const user = await getCurrentUser(request)
+    const auth = authenticateRequest(request)
 
-    if (!user || user.role !== "DEVELOPER") {
+    if (!auth || !isDeveloperOrAdmin(auth.user)) {
       return NextResponse.json(
         { error: "غير مصرح لك بهذا الإجراء" },
         { status: 403 }
@@ -55,11 +55,10 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST محمية - لا يسمح بإنشاء مستخدم مباشرة من هنا
-// التسجيل لازم يتم من /api/auth/register فقط
+// ❌ POST محظور - يجب استخدام صفحة التسجيل
 export async function POST(request: NextRequest) {
   return NextResponse.json(
-    { error: "يرجى استخدام صفحة التسجيل" },
+    { error: "يرجى استخدام صفحة التسجيل لإنشاء حساب جديد" },
     { status: 403 }
   )
 }
