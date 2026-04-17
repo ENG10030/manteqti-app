@@ -58,12 +58,14 @@ export async function GET(
     // Build safe response
     const safeApartment = {
       ...apartment,
-      user: canSeePII
-        ? apartment.user
-        : {
-            id: apartment.user.id,
-            name: apartment.user.name,
-          },
+      user: apartment.user
+        ? (canSeePII
+          ? apartment.user
+          : {
+              id: apartment.user.id,
+              name: apartment.user.name,
+            })
+        : null,
       // Hide ownerPhone from non-owners and non-developers
       ...(canSeePII ? {} : { ownerPhone: "" }),
     };
