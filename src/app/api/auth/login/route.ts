@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
-import crypto from "crypto";
-import { sendOTPEmail } from "@/lib/email";
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
@@ -46,30 +44,6 @@ export async function POST(request: Request) {
     if (user.isBlocked) {
       return NextResponse.json(
         { error: "تم حظر حسابك. يرجى التواصل مع الإدارة" },
-        { status: 403 }
-      );
-    }
-
-    // Check email verification (developers bypass this check)
-    if (!user.emailVerified && user.role !== 'DEVELOPER') {
-      // Generate new OTP and send it
-      const otp = crypto.randomInt(100000, 999999).toString();
-      const otpExpires = new Date(Date.now() + 30 * 60 * 1000);
-      
-      await db.user.update({
-        where: { id: user.id },
-        data: { otp, otpExpires }
-      });
-
-      // Send OTP via email service (Resend) or fallback to console.log in dev
-      await sendOTPEmail({ to: user.email || user.identifier, otp, type: 'login' });
-
-      return NextResponse.json(
-        { 
-          error: "يجب تأكيد البريد الإلكتروني أولاً",
-          emailVerificationRequired: true,
-          email: user.email,
-        },
         { status: 403 }
       );
     }

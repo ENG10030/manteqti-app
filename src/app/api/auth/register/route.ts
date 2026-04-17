@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import { sendOTPEmail } from "@/lib/email";
 
 // قائمة نطاقات البريد المؤقتة المحظورة
 const BLOCKED_DOMAINS = [
@@ -109,10 +108,6 @@ export async function POST(request: Request) {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const isDeveloper = userEmail === "ahmadmamdouh10030@gmail.com";
-    
-    // Generate OTP for email verification
-    const otp = crypto.randomInt(100000, 999999).toString();
-    const otpExpires = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
 
     const user = await db.user.create({
       data: {
@@ -123,18 +118,12 @@ export async function POST(request: Request) {
         identifier: userEmail,
         role: isDeveloper ? "DEVELOPER" : "USER",
         isApproved: true,
-        emailVerified: false,
-        otp,
-        otpExpires,
+        emailVerified: true,
       },
     });
 
-    // Send OTP via email service (Resend) or fallback to console.log in dev
-    await sendOTPEmail({ to: userEmail, otp, type: 'registration' });
-
     return NextResponse.json({
       message: "تم إنشاء الحساب بنجاح",
-      emailVerificationRequired: true,
       user: {
         id: user.id,
         email: user.email,
