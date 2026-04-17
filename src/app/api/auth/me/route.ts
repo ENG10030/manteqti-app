@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     const token = cookies.get("auth-token");
 
     if (!token) {
-      return NextResponse.json({ user: null });
+      return NextResponse.json({ user: null }, { status: 401 });
     }
 
     const decoded = verify(token, JWT_SECRET) as { userId: string };
@@ -36,11 +36,11 @@ export async function GET(request: Request) {
     });
 
     if (!user) {
-      return NextResponse.json({ user: null });
+      return NextResponse.json({ user: null }, { status: 401 });
     }
 
     return NextResponse.json({ user });
   } catch (error) {
-    return NextResponse.json({ user: null });
+    return NextResponse.json({ user: null }, { status: 401 });
   }
 }

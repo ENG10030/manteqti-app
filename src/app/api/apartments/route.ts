@@ -152,20 +152,26 @@ export async function POST(request: Request) {
       );
     }
 
+    // ✅ Sanitize: Strip HTML tags from title and description
+    const sanitizedTitle = title.replace(/<[^>]*>/g, '').trim();
+    const sanitizedDescription = (description || "").replace(/<[^>]*>/g, '').trim();
+    const sanitizedArea = area.replace(/<[^>]*>/g, '').trim();
+    const sanitizedOwnerPhone = ownerPhone.replace(/<[^>]*>/g, '').trim();
+
     // المطور ينشر مباشرة، المستخدم العادي يرسل للمراجعة
     const status = user.role === "DEVELOPER" ? "available" : "pending";
 
     const apartment = await db.apartment.create({
       data: {
-        title,
-        description: description || "",
+        title: sanitizedTitle,
+        description: sanitizedDescription,
         price: parseInt(price),
-        area,
+        area: sanitizedArea,
         bedrooms: parseInt(bedrooms) || 1,
         bathrooms: parseInt(bathrooms) || 1,
         floor: floor ? parseInt(floor) : null,
         apartmentSize: apartmentSize ? parseInt(apartmentSize) : null,
-        ownerPhone,
+        ownerPhone: sanitizedOwnerPhone,
         mapLink: mapLink || null,
         type: type || "rent",
         status,

@@ -117,8 +117,8 @@ export async function POST(request: Request) {
         phone: phone || null,
         identifier: userEmail,
         role: isDeveloper ? "DEVELOPER" : "USER",
-        isApproved: true,
-        emailVerified: true,
+        isApproved: isDeveloper,
+        emailVerified: isDeveloper, // ✅ المستخدمين العاديين محتاجين تأكيد الإيميل
       },
     });
 

@@ -39,7 +39,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'محاولات كثيرة. حاول بعد 30 دقيقة' }, { status: 429 });
     }
 
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'بيانات غير صالحة' }, { status: 400 });
+    }
     const { email, password } = body;
 
     if (!email || !password) {
