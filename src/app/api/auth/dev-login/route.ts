@@ -66,14 +66,8 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 });
       }
 
-      // تحديث كلمة السر إذا كانت الافتراضية
-      if (isDefaultPassword && !isDbPasswordValid) {
-        const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
-        await db.user.update({
-          where: { id: user.id },
-          data: { password: hashedPassword, role: 'DEVELOPER', isApproved: true, emailVerified: true }
-        });
-      }
+      // ✅ لو المطور غير كلمة السر، الـ admin123 مش هيشتغل تاني
+      // الـ admin123 بيشتغل بس لو كلمة السر في الداتابيز لا تزال admin123
     } else {
       // إنشاء المطور تلقائياً
       const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
