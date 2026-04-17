@@ -23,36 +23,21 @@ export async function GET(request: NextRequest) {
     const tokenUserId = decoded.userId;
     const isDeveloper = decoded.role === 'DEVELOPER';
 
-    let messages;
-
-    if (isDeveloper) {
-      // المطور يرى جميع الرسائل المرسلة إليه
-      messages = await db.message.findMany({
-        where: { receiverId: null },
-        include: {
-          sender: {
-            select: { id: true, name: true, identifier: true }
-          }
-        },
-        orderBy: { createdAt: 'desc' }
-      });
-    } else {
-      // المستخدم يرى رسائله فقط (filter by token userId)
-      messages = await db.message.findMany({
-        where: {
-          OR: [
-            { senderId: tokenUserId },
-            { receiverId: tokenUserId }
-          ]
-        },
-        include: {
-          sender: {
-            select: { id: true, name: true, identifier: true }
-          }
-        },
-        orderBy: { createdAt: 'desc' }
-      });
+    // ✅ Restrict GET to developers only
+    if (!isDeveloper) {
+      return NextResponse.json({ error: 'غير مصرح بهذا الإجراء' }, { status: 403 });
     }
+
+    // المطور يرى جميع الرسائل المرسلة إليه
+    const messages = await db.message.findMany({
+      where: { receiverId: null },
+      include: {
+        sender: {
+          select: { id: true, name: true, identifier: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
 
     return NextResponse.json(messages);
   } catch (error) {

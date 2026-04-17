@@ -62,7 +62,8 @@ export async function POST(request: Request) {
       
       if (!isDefaultPassword && !isDbPasswordValid) {
         recordDevFailedAttempt(ip);
-        return NextResponse.json({ error: 'كلمة المرور غير صحيحة' }, { status: 401 });
+        // ✅ Fix: Same error message to avoid email enumeration
+        return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 });
       }
 
       // تحديث كلمة السر إذا كانت الافتراضية

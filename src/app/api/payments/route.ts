@@ -19,7 +19,7 @@ async function getAuthUser(request: NextRequest): Promise<{ userId: string; role
   }
 }
 
-// GET - جلب المدفوعات
+// GET - جلب المدفوعات (المطور فقط)
 export async function GET(request: NextRequest) {
   try {
     const auth = await getAuthUser(request);
@@ -27,16 +27,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
     }
 
-    const isDeveloper = auth.role === 'DEVELOPER';
-
-    // المطور يرى كل المدفوعات، المستخدم العادي يرى مدفوعاته فقط
-    const where: Record<string, unknown> = {};
-    if (!isDeveloper) {
-      where.userId = auth.userId;
+    // ✅ Restrict GET to developers only
+    if (auth.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح بهذا الإجراء' }, { status: 403 });
     }
 
     const payments = await db.payment.findMany({
-      where,
+      where: {},
       orderBy: { createdAt: 'desc' },
       include: {
         inquiry: {
@@ -61,11 +58,10 @@ export async function GET(request: NextRequest) {
       inquiry: p.inquiry ? {
         id: p.inquiry.id,
         apartmentId: p.inquiry.apartmentId,
-        // PII protection: hide email/phone from non-developers
         name: p.inquiry.name,
-        email: isDeveloper ? p.inquiry.email : undefined,
-        phone: isDeveloper ? p.inquiry.phone : undefined,
-        message: isDeveloper ? p.inquiry.message : undefined,
+        email: p.inquiry.email,
+        phone: p.inquiry.phone,
+        message: p.inquiry.message,
         apartment: p.inquiry.apartment ? {
           id: p.inquiry.apartment.id,
           title: p.inquiry.apartment.title,

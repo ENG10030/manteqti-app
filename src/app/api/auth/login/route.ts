@@ -38,9 +38,18 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { email, identifier, password } = body;
 
-    const loginIdentifier = (email || identifier || "").toLowerCase().trim();
+    // ✅ Fix: Validate input types to prevent injection
+    const loginIdentifier = (email || identifier || "");
+    if (typeof loginIdentifier !== "string" || typeof password !== "string") {
+      return NextResponse.json(
+        { error: "بيانات غير صالحة" },
+        { status: 400 }
+      );
+    }
 
-    if (!loginIdentifier || !password) {
+    const trimmedIdentifier = loginIdentifier.toLowerCase().trim();
+
+    if (!trimmedIdentifier || !password) {
       return NextResponse.json(
         { error: "البريد الإلكتروني وكلمة المرور مطلوبان" },
         { status: 400 }
@@ -48,7 +57,7 @@ export async function POST(request: Request) {
     }
 
     // Rate limiting check
-    if (isRateLimited(loginIdentifier)) {
+    if (isRateLimited(trimmedIdentifier)) {
       return NextResponse.json(
         { error: "محاولات كثيرة. حاول بعد 15 دقيقة" },
         { status: 429 }
@@ -56,11 +65,11 @@ export async function POST(request: Request) {
     }
 
     const user = await db.user.findUnique({
-      where: { identifier: loginIdentifier },
+      where: { identifier: trimmedIdentifier },
     });
 
     if (!user) {
-      recordFailedAttempt(loginIdentifier);
+      recordFailedAttempt(trimmedIdentifier);
       return NextResponse.json(
         { error: "البريد الإلكتروني أو كلمة المرور غير صحيحة" },
         { status: 401 }
@@ -70,7 +79,7 @@ export async function POST(request: Request) {
     const isValidPassword = await bcrypt.compare(password, user.password);
 
     if (!isValidPassword) {
-      recordFailedAttempt(loginIdentifier);
+      recordFailedAttempt(trimmedIdentifier);
       return NextResponse.json(
         { error: "البريد الإلكتروني أو كلمة المرور غير صحيحة" },
         { status: 401 }
@@ -85,7 +94,7 @@ export async function POST(request: Request) {
     }
 
     // مسح محاولات الدخول الفاشلة
-    clearAttempts(loginIdentifier);
+    clearAttempts(trimmedIdentifier);
 
     const token = sign(
       { userId: user.id, identifier: user.identifier, role: user.role },
