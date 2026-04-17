@@ -4,8 +4,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-const DEVELOPER_EMAIL = 'ahmadmamdouh10030@gmail.com';
-const DEVELOPER_PASSWORD = 'admin123';
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
+const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || 'manteqtiMyD3v$tr0ng!2024@';
 
 // Rate limiting
 const devLoginAttempts = new Map<string, { count: number; lastAttempt: number }>();
