@@ -7,36 +7,53 @@ const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
 const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || 'admin123';
 
-// Rate limiting
-const devLoginAttempts = new Map<string, { count: number; lastAttempt: number }>();
-const MAX_DEV_ATTEMPTS = 10;
-const DEV_LOCKOUT_TIME = 30 * 60 * 1000; // 30 دقيقة
+// Rate limiting أقوى
+const devLoginAttempts = new Map<string, { count: number; lastAttempt: number; lockedUntil: number }>();
+const MAX_DEV_ATTEMPTS = 5;
+const DEV_LOCKOUT_TIME = 60 * 60 * 1000; // ساعة كاملة
 
-function isDevRateLimited(ip: string): boolean {
+function checkDevRateLimit(ip: string): { blocked: boolean; message?: string } {
   const record = devLoginAttempts.get(ip);
-  if (!record) return false;
-  if (Date.now() - record.lastAttempt > DEV_LOCKOUT_TIME) {
-    devLoginAttempts.delete(ip);
-    return false;
+  if (!record) return { blocked: false };
+  
+  if (record.lockedUntil && Date.now() < record.lockedUntil) {
+    const remaining = Math.ceil((record.lockedUntil - Date.now()) / 60000);
+    return { blocked: true, message: `محاولات كثيرة. حاول بعد ${remaining} دقيقة` };
   }
-  return record.count >= MAX_DEV_ATTEMPTS;
+  
+  if (record.lockedUntil && Date.now() >= record.lockedUntil) {
+    devLoginAttempts.delete(ip);
+    return { blocked: false };
+  }
+  
+  return { blocked: false };
 }
 
-function recordDevFailedAttempt(ip: string): void {
-  const record = devLoginAttempts.get(ip) || { count: 0, lastAttempt: 0 };
+function recordDevFailed(ip: string): void {
+  const record = devLoginAttempts.get(ip) || { count: 0, lastAttempt: 0, lockedUntil: 0 };
   record.count++;
   record.lastAttempt = Date.now();
+  
+  if (record.count >= MAX_DEV_ATTEMPTS) {
+    record.lockedUntil = Date.now() + DEV_LOCKOUT_TIME;
+  }
+  
   devLoginAttempts.set(ip, record);
+}
+
+function clearDevAttempts(ip: string): void {
+  devLoginAttempts.delete(ip);
 }
 
 export async function POST(request: Request) {
   try {
-    // Rate limiting بالـ IP
     const ip = request.headers.get('x-forwarded-for')?.split(',')[0] || 
                request.headers.get('x-real-ip') || 'unknown';
     
-    if (isDevRateLimited(ip)) {
-      return NextResponse.json({ error: 'محاولات كثيرة. حاول بعد 30 دقيقة' }, { status: 429 });
+    // Rate limiting
+    const rateCheck = checkDevRateLimit(ip);
+    if (rateCheck.blocked) {
+      return NextResponse.json({ error: rateCheck.message }, { status: 429 });
     }
 
     const body = await request.json();
@@ -46,14 +63,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'البريد وكلمة المرور مطلوبان' }, { status: 400 });
     }
 
-    // السماح بالدخول بأي من الإيميلات المطلوبة
-    const validEmails = [DEVELOPER_EMAIL, 'ahmadmamdouh10030@gmail.com'].map(e => e.toLowerCase());
-    if (!validEmails.includes(email.toLowerCase())) {
-      recordDevFailedAttempt(ip);
+    if (!password || password.length < 6) {
+      recordDevFailed(ip);
       return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 });
     }
 
     const devEmail = DEVELOPER_EMAIL.toLowerCase();
+
+    if (email.toLowerCase() !== devEmail) {
+      recordDevFailed(ip);
+      return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 });
+    }
 
     // البحث عن المطور في قاعدة البيانات
     let user: any = null;
@@ -63,33 +83,21 @@ export async function POST(request: Request) {
       });
     } catch (dbError: any) {
       console.error('DB Error in dev-login:', dbError?.message);
+      return NextResponse.json({ 
+        error: 'خطأ في قاعدة البيانات',
+        hint: 'تأكد من اتصال قاعدة البيانات'
+      }, { status: 500 });
     }
 
     if (user) {
-      const isDefaultPassword = password === DEVELOPER_PASSWORD;
-      const isEnvPassword = process.env.DEVELOPER_PASSWORD && password === process.env.DEVELOPER_PASSWORD;
       const isDbPasswordValid = await bcrypt.compare(password, user.password);
       
-      if (!isDefaultPassword && !isEnvPassword && !isDbPasswordValid) {
-        recordDevFailedAttempt(ip);
+      if (!isDbPasswordValid) {
+        recordDevFailed(ip);
         return NextResponse.json({ error: 'كلمة المرور غير صحيحة' }, { status: 401 });
       }
 
-      // تحديث كلمة السر والدور لو محتاج
-      if ((isDefaultPassword || isEnvPassword) && !isDbPasswordValid) {
-        const hashedPassword = await bcrypt.hash(password, 10);
-        user = await db.user.update({
-          where: { id: user.id },
-          data: { 
-            password: hashedPassword, 
-            role: 'DEVELOPER', 
-            isApproved: true, 
-            emailVerified: true 
-          }
-        });
-      }
-
-      // تحديث الدور لو مش DEVELOPER
+      // تحديث الدور لو محتاج
       if (user.role !== 'DEVELOPER') {
         user = await db.user.update({
           where: { id: user.id },
@@ -97,7 +105,7 @@ export async function POST(request: Request) {
         });
       }
     } else {
-      // إنشاء المطور تلقائياً
+      // إنشاء المطور تلقائياً فقط لو كلمة السر مطابقة للـ env
       const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
       try {
         user = await db.user.create({
@@ -114,8 +122,6 @@ export async function POST(request: Request) {
         });
       } catch (createError: any) {
         console.error('Create user error:', createError?.message);
-        // لو الـ create فشل (مثلاً لأن الـ user موجود بالفعل بـ email مختلف)
-        // نحاول نعمل find مرة تانية
         try {
           user = await db.user.findFirst({
             where: { 
@@ -126,7 +132,6 @@ export async function POST(request: Request) {
             }
           });
           if (user) {
-            // تحديث البيانات
             const hashedPw = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
             user = await db.user.update({
               where: { id: user.id },
@@ -142,17 +147,7 @@ export async function POST(request: Request) {
           }
         } catch (retryError: any) {
           console.error('Retry error:', retryError?.message);
-          return NextResponse.json({ 
-            error: 'خطأ في قاعدة البيانات', 
-            details: process.env.NODE_ENV !== 'production' ? retryError?.message : 'تأكد من أن DATABASE_URL صحيح على Vercel ومضاف كـ All Environments'
-          }, { status: 500 });
-        }
-        
-        if (!user) {
-          return NextResponse.json({ 
-            error: 'لم يتم إنشاء حساب المطور',
-            hint: 'تأكد من تشغيل init-db أولاً: /api/init-db?setupKey=manteqti-setup-2024'
-          }, { status: 500 });
+          return NextResponse.json({ error: 'خطأ في قاعدة البيانات' }, { status: 500 });
         }
       }
     }
@@ -180,17 +175,11 @@ export async function POST(request: Request) {
       path: '/',
     });
 
-    // مسح محاولات الدخول الفاشلة
-    devLoginAttempts.delete(ip);
-
+    clearDevAttempts(ip);
     return response;
 
   } catch (error: any) {
     console.error('Dev login error:', error);
-    return NextResponse.json({ 
-      error: 'حدث خطأ في الدخول',
-      details: process.env.NODE_ENV !== 'production' ? error?.message : undefined,
-      hint: 'تأكد من أن DATABASE_URL و DIRECT_DATABASE_URL موجودين كـ All Environments على Vercel'
-    }, { status: 500 });
+    return NextResponse.json({ error: 'حدث خطأ في الدخول' }, { status: 500 });
   }
 }

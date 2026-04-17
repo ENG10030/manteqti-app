@@ -19,9 +19,9 @@ export async function GET() {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
 
+    // المطور فقط يرى كل المدفوعات، المستخدم يرى مدفوعاته فقط
     const isDeveloper = decoded.role === 'DEVELOPER';
 
-    // المطور يرى كل المدفوعات، المستخدم العادي يرى مدفوعاته فقط
     const where: any = {};
     if (!isDeveloper) {
       where.userId = decoded.userId;
@@ -48,15 +48,10 @@ export async function GET() {
       amount: p.amount,
       transactionRef: p.transactionRef,
       paymentLink: p.paymentLink,
-      userId: p.userId,
       createdAt: p.createdAt.toISOString(),
       inquiry: p.inquiry ? {
         id: p.inquiry.id,
         apartmentId: p.inquiry.apartmentId,
-        name: p.inquiry.name,
-        email: p.inquiry.email,
-        phone: p.inquiry.phone,
-        message: p.inquiry.message,
         apartment: p.inquiry.apartment ? {
           id: p.inquiry.apartment.id,
           title: p.inquiry.apartment.title,
@@ -113,33 +108,5 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error creating payment:', error);
     return NextResponse.json({ error: 'Failed to create payment' }, { status: 500 });
-  }
-}
-
-// حذف جميع المدفوعات (developer only)
-export async function DELETE(request: NextRequest) {
-  try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
-    if (decoded.role !== 'DEVELOPER') {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
-    }
-
-    // Delete all payments
-    await db.payment.deleteMany({});
-
-    return NextResponse.json({ success: true, message: 'تم حذف جميع المدفوعات' });
-  } catch (error) {
-    console.error('Error deleting all payments:', error);
-    return NextResponse.json({ error: 'Failed to delete payments' }, { status: 500 });
   }
 }

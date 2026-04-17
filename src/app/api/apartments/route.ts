@@ -30,16 +30,15 @@ export async function GET(request: Request) {
     const area = searchParams.get("area");
     const user = await getCurrentUser(request);
     const isDeveloper = user?.role === "DEVELOPER";
+    const isUser = !!user;
 
     const where: any = {};
 
-    // المطور يرى جميع العقارات، المستخدم العادي يرى العقارات المتاحة والموافق عليها فقط
     if (status) {
       where.status = status;
     } else if (!isDeveloper) {
       where.status = { in: ["available", "reserved", "sold", "rented"] };
     }
-    // المطور يرى كل الحالات (لا نضيف شرط للحالة)
 
     if (type && type !== "all") {
       where.type = type;
@@ -49,7 +48,7 @@ export async function GET(request: Request) {
       where.area = area;
     }
 
-    // استبعاد عقارات المحظورين للمستخدمين العاديين
+    // استبعاد عقارات المحظورين
     if (!isDeveloper) {
       const blockedUsers = await db.user.findMany({
         where: { isBlocked: true },
@@ -65,7 +64,7 @@ export async function GET(request: Request) {
       where,
       include: {
         user: {
-          select: { id: true, name: true, email: true },
+          select: { id: true, name: true },
         },
       },
       orderBy: [
@@ -75,7 +74,20 @@ export async function GET(request: Request) {
       ],
     });
 
-    return NextResponse.json(apartments);
+    // حماية PII: إخفاء بيانات حساسة
+    const safeApartments = apartments.map((apt: any) => {
+      const result: any = { ...apt };
+
+      if (!isUser && !isDeveloper) {
+        // غير مسجل دخول: إخفاء رقم التليفون وبيانات المالك
+        result.ownerPhone = null;
+      }
+      // المستخدم والمطور يرى رقم التليفون
+
+      return result;
+    });
+
+    return NextResponse.json(safeApartments);
   } catch (error) {
     console.error("Get apartments error:", error);
     return NextResponse.json(
@@ -125,7 +137,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // المطور ينشر مباشرة، المستخدم العادي يرسل للمراجعة
     const status = user.role === "DEVELOPER" ? "available" : "pending";
 
     const apartment = await db.apartment.create({
