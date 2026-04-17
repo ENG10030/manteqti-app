@@ -43,7 +43,7 @@ interface Apartment {
 
 interface Inquiry { id: string; apartmentId: string; userId?: string; name: string; email: string; phone: string; message: string; lifecycleStatus: string; createdAt: string; apartment?: { id: string; title: string; price: number; type: string } | null; payment?: { id: string; status: string; method: string } | null; }
 
-interface Payment { id: string; inquiryId: string; method: string; status: string; amount: number; userId?: string; createdAt: string; inquiry?: { id: string; apartmentId: string; name: string; email: string; phone: string; apartment?: { id: string; title: string; price: number } | null } | null; }
+interface Payment { id: string; inquiryId: string; method: string; status: string; amount: number; userId?: string; transactionRef?: string; paymentLink?: string; inquiryStatus?: string; createdAt: string; inquiry?: { id: string; apartmentId: string; name: string; email?: string; phone?: string; message?: string; apartment?: { id: string; title: string; price: number } | null } | null; }
 
 interface ApartmentDetails {
   id: string; title: string; price: number; area: string; bedrooms: number; bathrooms: number;
