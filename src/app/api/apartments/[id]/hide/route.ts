@@ -1,21 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { verify } from "jsonwebtoken"
+import { getCurrentUser } from "@/lib/auth"
 import { db } from "@/lib/db"
-
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-
-async function getCurrentUser(request: Request) {
-  const cookieHeader = request.headers.get("cookie");
-  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
-  const token = cookies.get("auth-token");
-  if (!token) return null;
-  try {
-    const decoded = verify(token, JWT_SECRET) as { userId: string };
-    return await db.user.findUnique({ where: { id: decoded.userId } });
-  } catch {
-    return null;
-  }
-}
 
 // إخفاء / إظهار عقار
 export async function POST(
@@ -24,7 +9,7 @@ export async function POST(
 ) {
   try {
     const user = await getCurrentUser(request)
-    
+
     if (!user || user.role !== "DEVELOPER") {
       return NextResponse.json(
         { error: "غير مصرح لك بهذا الإجراء" },
@@ -33,8 +18,15 @@ export async function POST(
     }
 
     const { id: apartmentId } = await params
-    const body = await request.json()
-    const { action } = body // "hide" or "show"
+    
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {
+      body = { action: "hide" };
+    }
+
+    const { action } = body
 
     const apartment = await db.apartment.findUnique({
       where: { id: apartmentId }
@@ -47,12 +39,10 @@ export async function POST(
       )
     }
 
-    if (action === "hide") {
+    if (action === "hide" || !action) {
       const updatedApartment = await db.apartment.update({
         where: { id: apartmentId },
-        data: {
-          status: "hidden"
-        }
+        data: { status: "hidden" }
       })
 
       return NextResponse.json({
@@ -64,9 +54,7 @@ export async function POST(
     } else if (action === "show") {
       const updatedApartment = await db.apartment.update({
         where: { id: apartmentId },
-        data: {
-          status: "available"
-        }
+        data: { status: "available" }
       })
 
       return NextResponse.json({
@@ -77,13 +65,13 @@ export async function POST(
 
     } else {
       return NextResponse.json(
-        { error: "إجراء غير صالح" },
+        { error: "إجراء غير صالح - استخدم action: hide أو show" },
         { status: 400 }
       )
     }
 
-  } catch (error) {
-    console.error("Hide/show apartment error:", error)
+  } catch (error: any) {
+    console.error("Hide/show apartment error:", error?.message || error);
     return NextResponse.json(
       { error: "حدث خطأ أثناء معالجة الطلب" },
       { status: 500 }

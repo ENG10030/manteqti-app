@@ -7,42 +7,66 @@ const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
 const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || 'admin123';
 
-// Rate limiting أقوى
-const devLoginAttempts = new Map<string, { count: number; lastAttempt: number; lockedUntil: number }>();
 const MAX_DEV_ATTEMPTS = 5;
-const DEV_LOCKOUT_TIME = 60 * 60 * 1000; // ساعة كاملة
+const DEV_LOCKOUT_MINUTES = 60;
 
-function checkDevRateLimit(ip: string): { blocked: boolean; message?: string } {
-  const record = devLoginAttempts.get(ip);
-  if (!record) return { blocked: false };
-  
-  if (record.lockedUntil && Date.now() < record.lockedUntil) {
-    const remaining = Math.ceil((record.lockedUntil - Date.now()) / 60000);
-    return { blocked: true, message: `محاولات كثيرة. حاول بعد ${remaining} دقيقة` };
+async function checkRateLimit(ip: string): Promise<{ blocked: boolean; message?: string }> {
+  try {
+    const record = await db.operationLog.findFirst({
+      where: {
+        action: 'dev-login-failed',
+        ipAddress: ip,
+        createdAt: { gte: new Date(Date.now() - DEV_LOCKOUT_MINUTES * 60 * 1000) }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (record && record.createdAt) {
+      const failedCount = await db.operationLog.count({
+        where: {
+          action: 'dev-login-failed',
+          ipAddress: ip,
+          createdAt: { gte: record.createdAt }
+        }
+      });
+
+      if (failedCount >= MAX_DEV_ATTEMPTS) {
+        const lockedAt = new Date(record.createdAt.getTime() + DEV_LOCKOUT_MINUTES * 60 * 1000);
+        const remaining = Math.ceil((lockedAt.getTime() - Date.now()) / 60000);
+        return { blocked: true, message: `محاولات كثيرة. حاول بعد ${remaining} دقيقة` };
+      }
+    }
+  } catch {
+    // لو قاعدة البيانات مشتغلتش، نكمّل بدون rate limit
   }
-  
-  if (record.lockedUntil && Date.now() >= record.lockedUntil) {
-    devLoginAttempts.delete(ip);
-    return { blocked: false };
-  }
-  
   return { blocked: false };
 }
 
-function recordDevFailed(ip: string): void {
-  const record = devLoginAttempts.get(ip) || { count: 0, lastAttempt: 0, lockedUntil: 0 };
-  record.count++;
-  record.lastAttempt = Date.now();
-  
-  if (record.count >= MAX_DEV_ATTEMPTS) {
-    record.lockedUntil = Date.now() + DEV_LOCKOUT_TIME;
+async function recordFailed(ip: string): Promise<void> {
+  try {
+    await db.operationLog.create({
+      data: {
+        action: 'dev-login-failed',
+        entityType: 'auth',
+        ipAddress: ip,
+      }
+    });
+  } catch {
+    // silent
   }
-  
-  devLoginAttempts.set(ip, record);
 }
 
-function clearDevAttempts(ip: string): void {
-  devLoginAttempts.delete(ip);
+async function clearFailed(ip: string): Promise<void> {
+  try {
+    await db.operationLog.deleteMany({
+      where: {
+        action: 'dev-login-failed',
+        ipAddress: ip,
+      }
+    });
+  } catch {
+    // silent
+  }
 }
 
 export async function POST(request: Request) {
@@ -50,8 +74,7 @@ export async function POST(request: Request) {
     const ip = request.headers.get('x-forwarded-for')?.split(',')[0] || 
                request.headers.get('x-real-ip') || 'unknown';
     
-    // Rate limiting
-    const rateCheck = checkDevRateLimit(ip);
+    const rateCheck = await checkRateLimit(ip);
     if (rateCheck.blocked) {
       return NextResponse.json({ error: rateCheck.message }, { status: 429 });
     }
@@ -63,19 +86,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'البريد وكلمة المرور مطلوبان' }, { status: 400 });
     }
 
-    if (!password || password.length < 6) {
-      recordDevFailed(ip);
+    if (password.length < 6) {
+      await recordFailed(ip);
       return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 });
     }
 
     const devEmail = DEVELOPER_EMAIL.toLowerCase();
 
     if (email.toLowerCase() !== devEmail) {
-      recordDevFailed(ip);
+      await recordFailed(ip);
       return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 });
     }
 
-    // البحث عن المطور في قاعدة البيانات
     let user: any = null;
     try {
       user = await db.user.findUnique({
@@ -83,21 +105,17 @@ export async function POST(request: Request) {
       });
     } catch (dbError: any) {
       console.error('DB Error in dev-login:', dbError?.message);
-      return NextResponse.json({ 
-        error: 'خطأ في قاعدة البيانات',
-        hint: 'تأكد من اتصال قاعدة البيانات'
-      }, { status: 500 });
+      return NextResponse.json({ error: 'خطأ في قاعدة البيانات' }, { status: 500 });
     }
 
     if (user) {
       const isDbPasswordValid = await bcrypt.compare(password, user.password);
       
       if (!isDbPasswordValid) {
-        recordDevFailed(ip);
+        await recordFailed(ip);
         return NextResponse.json({ error: 'كلمة المرور غير صحيحة' }, { status: 401 });
       }
 
-      // تحديث الدور لو محتاج
       if (user.role !== 'DEVELOPER') {
         user = await db.user.update({
           where: { id: user.id },
@@ -105,7 +123,6 @@ export async function POST(request: Request) {
         });
       }
     } else {
-      // إنشاء المطور تلقائياً فقط لو كلمة السر مطابقة للـ env
       const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
       try {
         user = await db.user.create({
@@ -120,33 +137,19 @@ export async function POST(request: Request) {
             emailVerified: true,
           }
         });
-      } catch (createError: any) {
-        console.error('Create user error:', createError?.message);
+      } catch {
         try {
           user = await db.user.findFirst({
-            where: { 
-              OR: [
-                { identifier: devEmail },
-                { email: devEmail }
-              ]
-            }
+            where: { OR: [{ identifier: devEmail }, { email: devEmail }] }
           });
           if (user) {
             const hashedPw = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
             user = await db.user.update({
               where: { id: user.id },
-              data: {
-                identifier: devEmail,
-                email: devEmail,
-                role: 'DEVELOPER',
-                isApproved: true,
-                emailVerified: true,
-                password: hashedPw,
-              }
+              data: { identifier: devEmail, email: devEmail, role: 'DEVELOPER', isApproved: true, emailVerified: true, password: hashedPw }
             });
           }
-        } catch (retryError: any) {
-          console.error('Retry error:', retryError?.message);
+        } catch {
           return NextResponse.json({ error: 'خطأ في قاعدة البيانات' }, { status: 500 });
         }
       }
@@ -155,6 +158,8 @@ export async function POST(request: Request) {
     if (!user) {
       return NextResponse.json({ error: 'حدث خطأ غير متوقع' }, { status: 500 });
     }
+
+    await clearFailed(ip);
 
     const token = jwt.sign(
       { userId: user.id, identifier: user.identifier, role: 'DEVELOPER' },
@@ -175,7 +180,6 @@ export async function POST(request: Request) {
       path: '/',
     });
 
-    clearDevAttempts(ip);
     return response;
 
   } catch (error: any) {
