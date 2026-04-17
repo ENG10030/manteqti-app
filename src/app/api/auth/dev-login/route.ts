@@ -56,15 +56,13 @@ export async function POST(request: Request) {
     const devEmail = DEVELOPER_EMAIL.toLowerCase();
 
     // البحث عن المطور في قاعدة البيانات
-    let user = null;
+    let user: any = null;
     try {
       user = await db.user.findUnique({
         where: { identifier: devEmail }
       });
     } catch (dbError: any) {
       console.error('DB Error in dev-login:', dbError?.message);
-      // لو قاعدة البيانات مش شغالة، نحاول نعمل الـ user جديد
-      // هذا ممكن يحل مشكلة عدم وجود الجداول
     }
 
     if (user) {
