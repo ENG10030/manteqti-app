@@ -12,15 +12,13 @@ import {
   ChevronLeft, ChevronRight, Plus, Trash2, ShieldCheck, Hourglass,
   Send, Bot, Home, Crown, Diamond, Ban, Brain, Search,
   Play, Upload, Link, Activity, Wallet, PieChart, Layers, Key, ArrowUp,
-  Download, Smartphone, Banknote, Zap,
-  Clock, Sparkles, Share2, Calendar, BookOpen, Users, Edit
+  Download, RefreshCw as RefreshCwIcon, Smartphone, Banknote, Zap,
+  Clock, Sparkles, Share2, Calendar, BookOpen, Users
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
 
-// Developer credentials
-const DEVELOPER_EMAIL = 'ahmadmamdouh10030@gmail.com';
-
-// CONTACT_FEE is now dynamic from settings
+// تم إزالة الرسوم الثابتة - يتم جلبها من الإعدادات
+// isDeveloper يتم تحديده من الـ API response (/api/auth/me) بدل المقارنة بالإيميل
 
 // Status configuration
 const statusConfig: Record<string, { label: string; color: string; bgColor: string; dotColor: string }> = {
@@ -47,6 +45,15 @@ interface Inquiry { id: string; apartmentId: string; userId?: string; name: stri
 
 interface Payment { id: string; inquiryId: string; method: string; status: string; amount: number; userId?: string; createdAt: string; inquiry?: { id: string; apartmentId: string; name: string; email: string; phone: string; apartment?: { id: string; title: string; price: number } | null } | null; }
 
+interface ApartmentDetails {
+  id: string; title: string; price: number; area: string; bedrooms: number; bathrooms: number;
+  description: string; ownerPhone: string; mapLink: string; imageUrl?: string; images?: string[];
+  amenities?: string[]; isFeatured?: boolean; type: string; status: string;
+  views: number; createdAt: string; contactRevealed: boolean;
+  userInquiryStatus?: { id: string; lifecycleStatus: string; paymentStatus: string | null; hasPayment: boolean } | null;
+  inquiries: any[];
+}
+
 interface Toast { id: string; message: string; type: 'success' | 'error' | 'info'; }
 interface User { id: string; identifier: string; name: string; emailVerified?: boolean; }
 
@@ -56,7 +63,6 @@ interface PropertyEditRequest {
   apartmentId: string;
   userId: string;
   editType: string;
-  changes?: string;
   newImages?: string[];
   newVideos?: string[];
   newPrice?: number;
@@ -67,7 +73,7 @@ interface PropertyEditRequest {
   reviewedAt?: string;
   reviewNotes?: string;
   createdAt: string;
-  apartment?: { id: string; title: string; price: number; status: string; images?: string; videos?: string; type: string; area?: string; bedrooms?: number; bathrooms?: number; description?: string; ownerPhone?: string; floor?: number | null; apartmentSize?: number | null; mapLink?: string; };
+  apartment?: { id: string; title: string; price: number; status: string; images?: string; videos?: string; type: string; };
   user?: { id: string; name: string; identifier: string; };
 }
 
@@ -91,7 +97,7 @@ function ConfirmDialog({ isOpen, title, message, confirmText = 'تأكيد', can
   const buttons = { danger: 'bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700', warning: 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700', info: 'bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800' };
   return (
     <AnimatePresence>
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onCancel}>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onCancel}>
         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()}
           className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
           <div className="text-center">
@@ -141,7 +147,7 @@ export default function App() {
   const [messageLoading, setMessageLoading] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState<Array<{ id: string; userId: string; reason: string | null; blockedAt: string; user: { id: string; name: string; identifier: string } }>>([]);
-  const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; identifier: string; email: string; isBlocked: boolean; blockReason?: string | null; createdAt: string; role?: string }>>([]);
+  const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; identifier: string; email: string; isBlocked: boolean; blockReason?: string | null; createdAt: string }>>([]);
   const [selectedApartment, setSelectedApartment] = useState<Apartment | null>(null);
   const [editApartment, setEditApartment] = useState<Apartment | null>(null);
   const [inquiryApartment, setInquiryApartment] = useState<Apartment | null>(null);
@@ -178,8 +184,6 @@ export default function App() {
   const [aptSubmitting, setAptSubmitting] = useState(false);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
-  const [editImageUrls, setEditImageUrls] = useState<string[]>([]);
-  const [editVideoUrls, setEditVideoUrls] = useState<string[]>([]);
   const [inquiryForm, setInquiryForm] = useState({ name: '', email: '', phone: '', message: '' });
   const [inquirySubmitting, setInquirySubmitting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>('');
@@ -192,6 +196,8 @@ export default function App() {
   const [devPasswordChange, setDevPasswordChange] = useState({ current: '', new: '', confirm: '' });
   const [favorites, setFavorites] = useState<string[]>([]);
   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; type: 'danger' | 'warning' | 'info'; loading?: boolean; confirmText?: string; cancelText?: string; }>({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+  const [selectedApartmentDetails, setSelectedApartmentDetails] = useState<ApartmentDetails | null>(null);
+  const [requestContactLoading, setRequestContactLoading] = useState(false);
   const [settings, setSettings] = useState<{ 
     contactFee: number; 
     featuredFee: number; 
@@ -219,7 +225,7 @@ export default function App() {
   });
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'favorites' | 'payments' | 'messages' | 'comments' | 'inquiries' | 'editRequests' | 'users' | 'blocked' | 'settings' | 'logs'>('stats');
+  const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'favorites' | 'payments' | 'messages' | 'users' | 'blocked' | 'settings' | 'logs' | 'editRequests'>('stats');
   const [likes, setLikes] = useState<Array<{ id: string; apartmentId: string; userId: string; user: { id: string; name: string }; apartment: { id: string; title: string } | null; createdAt: string }>>([]);
   const [comments, setComments] = useState<Array<{ id: string; apartmentId: string; userId: string; content: string; status: string; user: { id: string; name: string }; createdAt: string }>>([]);
   const [newComment, setNewComment] = useState('');
@@ -230,25 +236,13 @@ export default function App() {
   const [showEditRequestModal, setShowEditRequestModal] = useState(false);
   const [selectedApartmentForEdit, setSelectedApartmentForEdit] = useState<Apartment | null>(null);
   const [editRequestForm, setEditRequestForm] = useState({
-    title: '',
-    price: '',
-    area: '',
-    bedrooms: '1',
-    bathrooms: '1',
-    floor: '',
-    apartmentSize: '',
-    description: '',
-    ownerPhone: '',
-    mapLink: '',
-    type: 'rent' as 'rent' | 'sale',
+    newImages: [] as string[],
+    newVideos: [] as string[],
+    newPrice: '',
+    newStatus: '',
+    description: ''
   });
-  const [editRequestImageUrls, setEditRequestImageUrls] = useState<string[]>([]);
-  const [editRequestVideoUrls, setEditRequestVideoUrls] = useState<string[]>([]);
-  const [editRequestNotes, setEditRequestNotes] = useState('');
   const [editRequestLoading, setEditRequestLoading] = useState(false);
-  // Review notes for dev panel
-  const [reviewNotesInput, setReviewNotesInput] = useState<Record<string, string>>({});
-  const [expandedEditRequest, setExpandedEditRequest] = useState<string | null>(null);
 
   // AI Action States
   const [aiAction, setAiAction] = useState<string | null>(null);
@@ -264,16 +258,31 @@ export default function App() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
-  const hasPaidForApartment = useCallback((apartmentId: string) => isDeveloper || userPaidApartments.includes(apartmentId), [userPaidApartments, isDeveloper]);
+  const hasPaidForApartment = useCallback((apartmentId: string) => {
+    // تحقق من تفاصيل العقار إذا كانت متاحة
+    if (selectedApartmentDetails && selectedApartmentDetails.id === apartmentId) {
+      return selectedApartmentDetails.contactRevealed;
+    }
+    return isDeveloper || userPaidApartments.includes(apartmentId);
+  }, [userPaidApartments, isDeveloper, selectedApartmentDetails]);
 
-  // Fetch current user and settings on mount
+  const fetchApartmentDetails = async (apartmentId: string) => {
+    try {
+      const res = await fetch(`/api/apartments/${apartmentId}/details`);
+      const data = await res.json();
+      if (res.ok) {
+        setSelectedApartmentDetails(data);
+      }
+    } catch {}
+  };
+
+  // Fetch current user on mount
   useEffect(() => {
-    fetchSettings();
     fetch('/api/auth/me').then(r => r.json()).then(data => {
       if (data.user) {
         setCurrentUser(data.user);
         if (data.user.isBlocked) setIsBlocked(true);
-        if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
+        if (data.user.role === 'DEVELOPER') setIsDeveloper(true);
       }
     });
   }, []);
@@ -327,6 +336,21 @@ export default function App() {
     } catch {}
   };
 
+  // Fetch settings (available for ALL users, not just developer)
+  const settingsIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const startSettingsPolling = useCallback(() => {
+    fetchSettings();
+    // Poll every 30 seconds for real-time settings updates
+    settingsIntervalRef.current = setInterval(fetchSettings, 30000);
+    return () => { if (settingsIntervalRef.current) clearInterval(settingsIntervalRef.current); };
+  }, []);
+
+  useEffect(() => {
+    const cleanup = startSettingsPolling();
+    return cleanup;
+  }, [startSettingsPolling]);
+
   // Fetch developer data
   const fetchDevData = async () => {
     if (!isDeveloper) return;
@@ -343,22 +367,19 @@ export default function App() {
     try {
       const res = await fetch('/api/settings');
       const data = await res.json();
-      if (res.ok) {
-        const s = data.settings || data;
-        setSettings({
-          contactFee: s.contactFee ?? 50,
-          featuredFee: s.featuredFee ?? 100,
-          premiumFee: s.premiumFee ?? 200,
-          vipFee: s.vipFee ?? 300,
-          saleDisplayFee: s.saleDisplayFee ?? 100,
-          rentDisplayFee: s.rentDisplayFee ?? 75,
-          otherServicesFee: s.otherServicesFee ?? 50,
-          highlightFee: s.highlightFee ?? 150,
-          priorityListingFee: s.priorityListingFee ?? 200,
-          verifiedListingFee: s.verifiedListingFee ?? 250,
-          currency: s.currency ?? 'ج.م'
-        });
-      }
+      if (res.ok) setSettings({ 
+        contactFee: data.contactFee || data.settings?.contactFee || 50, 
+        featuredFee: data.featuredFee || data.settings?.featuredFee || 100, 
+        premiumFee: data.premiumFee || data.settings?.premiumFee || 200, 
+        vipFee: data.vipFee || data.settings?.vipFee || 300,
+        saleDisplayFee: data.saleDisplayFee || data.settings?.saleDisplayFee || 100,
+        rentDisplayFee: data.rentDisplayFee || data.settings?.rentDisplayFee || 75,
+        otherServicesFee: data.otherServicesFee || data.settings?.otherServicesFee || 50,
+        highlightFee: data.highlightFee || data.settings?.highlightFee || 150,
+        priorityListingFee: data.priorityListingFee || data.settings?.priorityListingFee || 200,
+        verifiedListingFee: data.verifiedListingFee || data.settings?.verifiedListingFee || 250,
+        currency: data.currency || data.settings?.currency || 'ج.م'
+      });
     } catch {}
   };
 
@@ -408,33 +429,6 @@ export default function App() {
     } catch {}
   };
 
-  // Open edit request modal (pre-fill form with apartment values)
-  const openEditRequestModal = (apartment: Apartment) => {
-    setSelectedApartmentForEdit(apartment);
-    // Parse existing images/videos
-    let existingImages: string[] = [];
-    let existingVideos: string[] = [];
-    try { existingImages = apartment.images ? (Array.isArray(apartment.images) ? apartment.images : JSON.parse(apartment.images as string)) : []; } catch {}
-    try { existingVideos = apartment.videos ? (Array.isArray(apartment.videos) ? apartment.videos : JSON.parse(apartment.videos as string)) : []; } catch {}
-    setEditRequestForm({
-      title: apartment.title || '',
-      price: apartment.price ? String(apartment.price) : '',
-      area: apartment.area || '',
-      bedrooms: apartment.bedrooms ? String(apartment.bedrooms) : '1',
-      bathrooms: apartment.bathrooms ? String(apartment.bathrooms) : '1',
-      floor: apartment.floor ? String(apartment.floor) : '',
-      apartmentSize: apartment.apartmentSize ? String(apartment.apartmentSize) : '',
-      description: apartment.description || '',
-      ownerPhone: apartment.ownerPhone || '',
-      mapLink: apartment.mapLink || '',
-      type: apartment.type || 'rent',
-    });
-    setEditRequestImageUrls(existingImages);
-    setEditRequestVideoUrls(existingVideos);
-    setEditRequestNotes('');
-    setShowEditRequestModal(true);
-  };
-
   // Submit edit request (for publishers)
   const submitEditRequest = async () => {
     if (!selectedApartmentForEdit || !currentUser) return;
@@ -446,19 +440,11 @@ export default function App() {
         body: JSON.stringify({
           apartmentId: selectedApartmentForEdit.id,
           userId: currentUser.id,
-          title: editRequestForm.title,
-          price: editRequestForm.price,
-          area: editRequestForm.area,
-          bedrooms: editRequestForm.bedrooms,
-          bathrooms: editRequestForm.bathrooms,
-          floor: editRequestForm.floor,
-          apartmentSize: editRequestForm.apartmentSize,
-          ownerPhone: editRequestForm.ownerPhone,
-          mapLink: editRequestForm.mapLink,
-          type: editRequestForm.type,
-          images: editRequestImageUrls,
-          videos: editRequestVideoUrls,
-          description: editRequestForm.description + (editRequestNotes ? '\n---\nملاحظات: ' + editRequestNotes : ''),
+          newImages: editRequestForm.newImages,
+          newVideos: editRequestForm.newVideos,
+          newPrice: editRequestForm.newPrice ? parseInt(editRequestForm.newPrice) : null,
+          newStatus: editRequestForm.newStatus || null,
+          description: editRequestForm.description,
         }),
       });
       const data = await res.json();
@@ -466,10 +452,7 @@ export default function App() {
         addToast('تم إرسال طلب التعديل بنجاح! سيتم مراجعته من قبل المطور.', 'success');
         setShowEditRequestModal(false);
         setSelectedApartmentForEdit(null);
-        setEditRequestForm({ title: '', price: '', area: '', bedrooms: '1', bathrooms: '1', floor: '', apartmentSize: '', description: '', ownerPhone: '', mapLink: '', type: 'rent' });
-        setEditRequestImageUrls([]);
-        setEditRequestVideoUrls([]);
-        setEditRequestNotes('');
+        setEditRequestForm({ newImages: [], newVideos: [], newPrice: '', newStatus: '', description: '' });
       } else {
         addToast(data.error || 'حدث خطأ', 'error');
       }
@@ -522,7 +505,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (isDeveloper) { fetchDevData(); fetchSettings(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
+    if (isDeveloper) { fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
   }, [isDeveloper]);
 
   // Fetch likes
@@ -602,9 +585,9 @@ export default function App() {
 
   useEffect(() => { if (currentUser) fetchUserLikes(); }, [currentUser]);
 
-  // Clear guest favorites from localStorage (login required)
+  // Load favorites from localStorage
   useEffect(() => {
-    try { localStorage.removeItem('manteqti_favorites'); } catch {}
+    try { const saved = localStorage.getItem('manteqti_favorites'); if (saved) setFavorites(JSON.parse(saved)); } catch {}
   }, []);
 
   // Load remembered identifier
@@ -898,48 +881,8 @@ export default function App() {
     e.preventDefault();
     if (!editApartment) return;
     setEditSubmitting(true);
-    try {
-      const body: Record<string, unknown> = {
-        title: editApartment.title,
-        price: editApartment.price,
-        area: editApartment.area,
-        bedrooms: editApartment.bedrooms,
-        bathrooms: editApartment.bathrooms,
-        floor: editApartment.floor,
-        apartmentSize: editApartment.apartmentSize,
-        ownerPhone: editApartment.ownerPhone,
-        status: editApartment.status,
-        type: editApartment.type,
-        description: editApartment.description,
-        mapLink: editApartment.mapLink,
-        images: Array.isArray(editImageUrls) && editImageUrls.length > 0 ? JSON.stringify(editImageUrls) : editApartment.images,
-        videos: Array.isArray(editVideoUrls) && editVideoUrls.length > 0 ? JSON.stringify(editVideoUrls) : editApartment.videos,
-      };
-
-      await fetch(`/api/apartments/${editApartment.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      fetchApartments();
-      setEditApartment(null);
-      setEditImageUrls([]);
-      setEditVideoUrls([]);
-      addToast('تم تحديث الشقة', 'success');
-    }
+    try { await fetch(`/api/apartments/${editApartment.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editApartment) }); fetchApartments(); setEditApartment(null); addToast('تم تحديث الشقة', 'success'); }
     finally { setEditSubmitting(false); }
-  };
-
-  // فتح نموذج تعديل شقة - للمستخدم العادي يفتح طلب تعديل، للمطور يعدل مباشرة
-  const openEditApartment = (apartment: Apartment) => {
-    // Parse existing images/videos
-    let existingImages: string[] = [];
-    let existingVideos: string[] = [];
-    try { existingImages = apartment.images ? (Array.isArray(apartment.images) ? apartment.images : JSON.parse(apartment.images as string)) : []; } catch {}
-    try { existingVideos = apartment.videos ? (Array.isArray(apartment.videos) ? apartment.videos : JSON.parse(apartment.videos as string)) : []; } catch {}
-    setEditImageUrls(existingImages);
-    setEditVideoUrls(existingVideos);
-    setEditApartment(apartment);
   };
 
   const handleUpdateStatus = async (id: string, newStatus: string, confirmed: boolean = false) => {
@@ -952,32 +895,69 @@ export default function App() {
   const handleAddInquiry = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inquiryApartment) return;
-    if (!currentUser) { addToast('يجب تسجيل الدخول لإرسال استفسار', 'error'); setShowAuth(true); return; }
     setInquirySubmitting(true);
     try { await fetch('/api/inquiries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apartmentId: inquiryApartment.id, userId: currentUser?.id, ...inquiryForm }) }); setInquiryApartment(null); setInquiryForm({ name: '', email: '', phone: '', message: '' }); addToast('تم إرسال استفسارك!', 'success'); }
     finally { setInquirySubmitting(false); }
   };
 
-  const handlePayment = async (confirmed: boolean = false) => {
-    if (!paymentApartment || !paymentMethod) return;
-    if (!currentUser) { addToast('يجب تسجيل الدخول لطلب بيانات التواصل', 'error'); setPaymentApartment(null); setShowAuth(true); return; }
-    if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'تأكيد الدفع', message: `هل تريد الدفع بمبلغ ${settings.contactFee} ج.م؟`, confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm: () => handlePayment(true), type: 'info' }); return; }
-    setConfirmDialog(prev => ({ ...prev, loading: true }));
-    setPaymentSubmitting(true);
+  const handleRequestContact = async () => {
+    if (!paymentApartment || !currentUser) return;
+    setRequestContactLoading(true);
     try {
-      const inqRes = await fetch('/api/inquiries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apartmentId: paymentApartment.id, userId: currentUser?.id, name: currentUser?.name || 'زائر', email: currentUser?.identifier || 'guest@example.com', phone: 'N/A', message: 'طلب بيانات تواصل' }) });
-      const inquiry = await inqRes.json();
-      await fetch('/api/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inquiryId: inquiry.id, method: paymentMethod, status: 'Pending', amount: settings.contactFee, userId: currentUser?.id }) });
-      setPaymentApartment(null); setPaymentMethod('');
-      addToast('تم إرسال طلب الدفع!', 'success');
-    } finally { setPaymentSubmitting(false); setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+      const res = await fetch('/api/inquiries/request-contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apartmentId: paymentApartment.id })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (data.alreadyApproved) {
+          addToast('بيانات التواصل متاحة لك بالفعل! حدّث الصفحة لمشاهدتها', 'success');
+          // إعادة جلب التفاصيل
+          if (paymentApartment) fetchApartmentDetails(paymentApartment.id);
+        } else if (data.pendingInquiry) {
+          addToast('لديك طلب معلق بالفعل. سيتم الرد عليك قريباً', 'info');
+        } else {
+          addToast('تم إرسال طلب بيانات التواصل! تحقق من الرسائل لمعرفة طريقة الدفع', 'success');
+          fetchMessages();
+        }
+        setPaymentApartment(null);
+      } else {
+        addToast(data.error || 'حدث خطأ', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الاتصال', 'error');
+    } finally {
+      setRequestContactLoading(false);
+    }
   };
 
   const handleConfirmPayment = async (paymentId: string, confirmed: boolean = false) => {
-    if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'تأكيد الدفع', message: 'هل أنت متأكد؟', confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm: () => handleConfirmPayment(paymentId, true), type: 'info' }); return; }
+    if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'تأكيد الدفع', message: 'هل أنت متأكد؟ سيتم إظهار بيانات التواصل للمستخدم', confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm: () => handleConfirmPayment(paymentId, true), type: 'info' }); return; }
     setConfirmDialog(prev => ({ ...prev, loading: true }));
-    try { await fetch(`/api/payments/${paymentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Paid' }) }); fetchDevData(); addToast('تم تأكيد الدفع', 'success'); }
+    try {
+      // تحديث حالة الدفع + حالة الاستفسار
+      await fetch(`/api/payments/${paymentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Paid', inquiryStatus: 'Contacted' }) });
+      // تحديث حالة الاستفسار أيضاً
+      const payment = payments.find(p => p.id === paymentId);
+      if (payment?.inquiryId) {
+        await fetch(`/api/inquiries/${payment.inquiryId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lifecycleStatus: 'Contacted' }) });
+      }
+      fetchDevData();
+      addToast('تم تأكيد الدفع! بيانات التواصل ظاهرة للمستخدم الآن ✅', 'success');
+    }
     finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+  };
+
+  // اعتماد طلب بيانات تواصل (بدون دفع - مجاني أو بعد الدفع اليدوي)
+  const handleApproveInquiry = async (inquiryId: string) => {
+    try {
+      await fetch(`/api/inquiries/${inquiryId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lifecycleStatus: 'Contacted' }) });
+      fetchDevData();
+      addToast('تم اعتماد الطلب! بيانات التواصل ظاهرة للمستخدم الآن ✅', 'success');
+    } catch {
+      addToast('حدث خطأ', 'error');
+    }
   };
 
   // Handle reject payment (developer only)
@@ -1081,6 +1061,19 @@ export default function App() {
     return uploadedUrls;
   };
 
+  // Delete like (developer only)
+  const deleteLike = async (likeId: string) => {
+    try {
+      const res = await fetch(`/api/likes/${likeId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        fetchAllLikes();
+        addToast('تم حذف الإعجاب', 'success');
+      }
+    } catch {
+      addToast('حدث خطأ', 'error');
+    }
+  };
 
   const handleSendMessage = async () => {
     if (!chatInput.trim() || chatLoading) return;
@@ -1094,6 +1087,30 @@ export default function App() {
       if (data.success) setChatMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
     } catch { addToast('حدث خطأ', 'error'); }
     finally { setChatLoading(false); }
+  };
+
+  // Send reply from developer panel (sends actual message)
+  const handleDevReply = async (msg: { senderId: string; id: string }, replyText: string) => {
+    if (!currentUser || !replyText.trim()) return;
+    setMessageLoading(true);
+    try {
+      const res = await fetch('/api/messages', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ senderId: currentUser.id, receiverId: msg.senderId, content: replyText }) 
+      });
+      const data = await res.json();
+      if (res.ok) {
+        fetchMessages(); // refresh messages
+        addToast('تم إرسال الرد بنجاح ✅', 'success');
+      } else {
+        addToast(data.error || 'حدث خطأ في إرسال الرد', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الاتصال', 'error');
+    } finally {
+      setMessageLoading(false);
+    }
   };
 
   const sendMessage = async () => {
@@ -1161,29 +1178,14 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     try { await fetch(`/api/block?userId=${userId}`, { method: 'DELETE' }); addToast('تم إلغاء الحظر', 'success'); fetchBlockedUsers(); fetchAllUsers(); } catch { addToast('حدث خطأ', 'error'); }
   };
 
-  const changeUserRole = async (userId: string, newRole: string, userName: string, currentRole?: string) => {
-    const roleLabel = newRole === 'DEVELOPER' ? 'مطور' : 'مستخدم';
-    setConfirmDialog({
-      isOpen: true, title: 'تغيير دور المستخدم',
-      message: `هل تريد تغيير دور "${userName}" من "${currentRole === 'DEVELOPER' ? 'مطور' : 'مستخدم'}" إلى "${roleLabel}"؟`,
-      confirmText: 'تأكيد', cancelText: 'إلغاء',
-      onConfirm: async () => {
-        setConfirmDialog(prev => ({ ...prev, loading: true }));
-        try {
-          const res = await fetch(`/api/users/${userId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: newRole }) });
-          if (res.ok) { addToast(`تم تغيير دور "${userName}" إلى ${roleLabel}`, 'success'); fetchAllUsers(); }
-          else { const data = await res.json(); addToast(data.error || 'حدث خطأ', 'error'); }
-        } catch { addToast('حدث خطأ', 'error'); }
-        finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
-      },
-      type: 'warning',
-    });
-  };
-
   const toggleFavorite = async (apartmentId: string) => {
     if (!currentUser) {
-      addToast('يجب تسجيل الدخول لإضافة المفضلة', 'error');
-      setShowAuth(true);
+      setFavorites(prev => {
+        const newFavorites = prev.includes(apartmentId) ? prev.filter(f => f !== apartmentId) : [...prev, apartmentId];
+        localStorage.setItem('manteqti_favorites', JSON.stringify(newFavorites));
+        addToast(newFavorites.includes(apartmentId) ? 'تمت الإضافة للمفضلة ❤️' : 'تمت الإزالة من المفضلة', newFavorites.includes(apartmentId) ? 'success' : 'info');
+        return newFavorites;
+      });
       return;
     }
     try {
@@ -1198,7 +1200,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
         const data = await res.json();
         if (data.success) { setLikes(prev => [...prev, data.like]); setFavorites(prev => [...prev, apartmentId]); addToast('تمت الإضافة للمفضلة ❤️', 'success'); }
       }
-      fetchUserLikes(); // ensure sync
     } catch { addToast('حدث خطأ', 'error'); }
   };
 
@@ -1219,110 +1220,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
   };
 
   const deleteComment = async (commentId: string) => {
-    setConfirmDialog({ isOpen: true, title: 'حذف التعليق', message: 'هل أنت متأكد من حذف هذا التعليق؟', confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { try { await fetch(`/api/comments/${commentId}`, { method: 'DELETE' }); fetchAllComments(); addToast('تم حذف التعليق', 'success'); } catch { addToast('حدث خطأ', 'error'); } setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }, type: 'danger' });
+    try { await fetch(`/api/comments/${commentId}`, { method: 'DELETE' }); fetchAllComments(); addToast('تم حذف التعليق', 'success'); } catch { addToast('حدث خطأ', 'error'); }
   };
-
-  // ===== Clear All & Individual Delete Handlers =====
-  const deleteMessage = async (msgId: string) => {
-    setConfirmDialog({ isOpen: true, title: 'حذف الرسالة', message: 'هل أنت متأكد من حذف هذه الرسالة؟', confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { try { await fetch(`/api/messages?id=${msgId}`, { method: 'DELETE' }); setMessages(prev => prev.filter(m => m.id !== msgId)); addToast('تم حذف الرسالة', 'success'); } catch { addToast('حدث خطأ', 'error'); } setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }, type: 'danger' });
-  };
-  const clearAllMessages = async () => {
-    setConfirmDialog({ isOpen: true, title: 'مسح جميع الرسائل', message: 'هل أنت متأكد من مسح جميع الرسائل؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/messages', { method: 'DELETE' }); setMessages([]); addToast('تم مسح جميع الرسائل', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
-  };
-  const deletePayment = async (paymentId: string) => {
-    setConfirmDialog({ isOpen: true, title: 'حذف عملية الدفع', message: 'هل أنت متأكد من حذف عملية الدفع هذه؟', confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { try { await fetch(`/api/payments/${paymentId}`, { method: 'DELETE' }); setPayments(prev => prev.filter(p => p.id !== paymentId)); fetchDevData(); addToast('تم حذف عملية الدفع', 'success'); } catch { addToast('حدث خطأ', 'error'); } setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }, type: 'danger' });
-  };
-  const clearAllPayments = async () => {
-    setConfirmDialog({ isOpen: true, title: 'مسح جميع المدفوعات', message: 'هل أنت متأكد من مسح جميع المدفوعات؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/payments', { method: 'DELETE' }); setPayments([]); addToast('تم مسح جميع المدفوعات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
-  };
-  const deleteLike = async (likeId: string) => {
-    setConfirmDialog({ isOpen: true, title: 'حذف الإعجاب', message: 'هل أنت متأكد من حذف هذا الإعجاب؟', confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { try { await fetch(`/api/likes?id=${likeId}`, { method: 'DELETE' }); setLikes(prev => prev.filter(l => l.id !== likeId)); addToast('تم حذف الإعجاب', 'success'); } catch { addToast('حدث خطأ', 'error'); } setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }, type: 'danger' });
-  };
-  const clearAllLikes = async () => {
-    setConfirmDialog({ isOpen: true, title: 'مسح جميع الإعجابات', message: 'هل أنت متأكد من مسح جميع الإعجابات؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/likes', { method: 'DELETE' }); setLikes([]); addToast('تم مسح جميع الإعجابات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
-  };
-  const clearPendingComments = async () => {
-    setConfirmDialog({ isOpen: true, title: 'مسح التعليقات المعلقة', message: 'هل أنت متأكد من مسح التعليقات المعلقة فقط؟ لا يمكن التراجع.', confirmText: 'مسح المعلقة', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/comments?status=pending', { method: 'DELETE' }); setComments(prev => prev.filter(c => c.status !== 'pending')); addToast('تم مسح التعليقات المعلقة', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
-  };
-  const clearAllComments = async () => {
-    setConfirmDialog({ isOpen: true, title: 'مسح جميع التعليقات', message: 'هل أنت متأكد من مسح جميع التعليقات؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/comments', { method: 'DELETE' }); setComments([]); addToast('تم مسح جميع التعليقات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
-  };
-  const deleteInquiry = async (inqId: string) => {
-    setConfirmDialog({ isOpen: true, title: 'حذف الاستفسار', message: 'هل أنت متأكد من حذف هذا الاستفسار؟', confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { try { await fetch(`/api/inquiries/${inqId}`, { method: 'DELETE' }); setInquiries(prev => prev.filter(i => i.id !== inqId)); addToast('تم حذف الاستفسار', 'success'); } catch { addToast('حدث خطأ', 'error'); } setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }, type: 'danger' });
-  };
-  const clearAllInquiries = async () => {
-    setConfirmDialog({ isOpen: true, title: 'مسح جميع الاستفسارات', message: 'هل أنت متأكد من مسح جميع الاستفسارات؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/inquiries', { method: 'DELETE' }); setInquiries([]); setPayments([]); addToast('تم مسح جميع الاستفسارات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
-  };
-  const deleteLog = async (logId: string) => {
-    setConfirmDialog({ isOpen: true, title: 'حذف السجل', message: 'هل أنت متأكد من حذف هذا السجل؟', confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { try { await fetch(`/api/logs?id=${logId}`, { method: 'DELETE' }); setOperationLogs(prev => prev.filter(l => l.id !== logId)); addToast('تم حذف السجل', 'success'); } catch { addToast('حدث خطأ', 'error'); } setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }, type: 'danger' });
-  };
-  const clearAllLogs = async () => {
-    setConfirmDialog({ isOpen: true, title: 'مسح سجل العمليات', message: 'هل أنت متأكد من مسح جميع سجلات العمليات؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/logs', { method: 'DELETE' }); setOperationLogs([]); addToast('تم مسح سجل العمليات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
-  };
-  const deleteEditRequest = async (reqId: string) => {
-    setConfirmDialog({ isOpen: true, title: 'حذف طلب التعديل', message: 'هل أنت متأكد من حذف طلب التعديل هذا؟', confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { try { await fetch(`/api/edit-requests/${reqId}`, { method: 'DELETE' }); setEditRequests(prev => prev.filter(r => r.id !== reqId)); addToast('تم حذف طلب التعديل', 'success'); } catch { addToast('حدث خطأ', 'error'); } setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }, type: 'danger' });
-  };
-  const clearAllEditRequests = async () => {
-    setConfirmDialog({ isOpen: true, title: 'مسح طلبات التعديل', message: 'هل أنت متأكد من مسح جميع طلبات التعديل المعلقة؟ لا يمكن التراجع.', confirmText: 'مسح الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch('/api/edit-requests', { method: 'DELETE' }); setEditRequests(prev => prev.filter(r => r.status !== 'pending')); addToast('تم مسح طلبات التعديل المعلقة', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
-  };
-  const rejectAllPending = async () => {
-    setConfirmDialog({ isOpen: true, title: 'رفض جميع العقارات المعلقة', message: 'هل أنت متأكد من رفض جميع العقارات قيد المراجعة؟ لا يمكن التراجع.', confirmText: 'رفض الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { for (const apt of pendingApartments) { await fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reject' }) }); } fetchApartments(); addToast('تم رفض جميع العقارات المعلقة', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
-  };
-  const clearAllApartments = async () => {
-    setConfirmDialog({ isOpen: true, title: 'حذف جميع العقارات', message: `هل أنت متأكد من حذف جميع العقارات؟ لا يمكن التراجع عن هذا الإجراء!\n\nسيتم حذف ${allApartments.length} عقار.`, confirmText: 'حذف الكل', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { for (const apt of allApartments) { try { await fetch(`/api/apartments/${apt.id}`, { method: 'DELETE' }); } catch {} } setAllApartments([]); setApartments([]); setMyPendingApartments([]); addToast('تم حذف جميع العقارات', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
-  };
-  const deleteUser = async (userId: string, userName: string) => {
-    setConfirmDialog({ isOpen: true, title: 'حذف المستخدم', message: `هل أنت متأكد من حذف المستخدم "${userName}"؟\n\nسيتم حذف جميع بياناته بما في ذلك العقارات والرسائل والإعجابات.`, confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch(`/api/users/${userId}`, { method: 'DELETE' }); setAllUsers(prev => prev.filter(u => u.id !== userId)); fetchAllUsers(); fetchDevData(); fetchBlockedUsers(); fetchApartments(); addToast('تم حذف المستخدم', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' });
-  };
-
-  // Refresh function for current dev tab
-  const refreshDevTab = useCallback(async () => {
-    if (!isDeveloper) return;
-    addToast('جاري التحديث...', 'info');
-    if (devTab === 'stats') { fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchAllUsers(); fetchBlockedUsers(); fetchEditRequests(); fetchOperationLogs(); }
-    if (devTab === 'pending' || devTab === 'apartments') fetchApartments();
-    if (devTab === 'favorites') fetchAllLikes();
-    if (devTab === 'inquiries') fetchDevData();
-    if (devTab === 'payments') fetchDevData();
-    if (devTab === 'messages') fetchMessages();
-    if (devTab === 'comments') fetchAllComments();
-    if (devTab === 'editRequests') fetchEditRequests();
-    if (devTab === 'users') { fetchAllUsers(); fetchBlockedUsers(); }
-    if (devTab === 'blocked') { fetchBlockedUsers(); fetchAllUsers(); }
-    if (devTab === 'logs') fetchOperationLogs();
-    if (devTab === 'settings') fetchSettings();
-  }, [devTab, isDeveloper]);
-
-  // Re-fetch data when switching dev tabs
-  useEffect(() => {
-    if (!isDeveloper) return;
-    if (devTab === 'favorites') fetchAllLikes();
-    if (devTab === 'payments') fetchDevData();
-    if (devTab === 'messages') fetchMessages();
-    if (devTab === 'users') { fetchAllUsers(); fetchBlockedUsers(); }
-    if (devTab === 'blocked') fetchBlockedUsers();
-    if (devTab === 'editRequests') fetchEditRequests();
-    if (devTab === 'logs') fetchOperationLogs();
-    if (devTab === 'comments') fetchAllComments();
-    if (devTab === 'inquiries') fetchDevData();
-  }, [devTab]);
-
-  // Auto-refresh developer panel data every 30 seconds
-  useEffect(() => {
-    if (!showDevPanel || !isDeveloper) return;
-    const interval = setInterval(() => {
-      if (devTab === 'favorites') fetchAllLikes();
-      if (devTab === 'messages') fetchMessages();
-      if (devTab === 'inquiries' || devTab === 'payments') fetchDevData();
-      if (devTab === 'comments') fetchAllComments();
-      if (devTab === 'editRequests') fetchEditRequests();
-      if (devTab === 'logs') fetchOperationLogs();
-      if (devTab === 'pending' || devTab === 'apartments') fetchApartments();
-      if (devTab === 'users') { fetchAllUsers(); fetchBlockedUsers(); }
-      if (devTab === 'blocked') fetchBlockedUsers();
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [showDevPanel, isDeveloper, devTab]);
 
   // Loading state
   if (loading) return (
@@ -1435,11 +1334,11 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <Building2 className="h-5 w-5" /><span>إضافة شقة</span>
               </motion.button>
 
-              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => { if (!currentUser) { addToast('يجب تسجيل الدخول لاستخدام المساعد الذكي', 'error'); setShowAuth(true); return; } setShowChat(true); }} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium shadow-lg">
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setShowChat(true)} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium shadow-lg">
                 <Brain className="h-5 w-5" /><span>المساعد الذكي</span>
               </motion.button>
 
-              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => { if (isDeveloper) { fetchMessages(); setShowMessages(true); } else if (currentUser) { setShowMessages(true); } else { setShowAuth(true); } }} className={`flex items-center gap-2 px-4 py-3 rounded-xl font-medium ${isDeveloper ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg' : darkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'} shadow-lg relative`}>
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => { if (currentUser) { fetchMessages(); setShowMessages(true); } else { setShowAuth(true); } }} className={`flex items-center gap-2 px-4 py-3 rounded-xl font-medium ${isDeveloper ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg' : darkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'} shadow-lg relative`}>
                 <MessageCircle className="h-5 w-5" /><span className="hidden lg:inline">{isDeveloper ? 'الرسائل' : 'تواصل معنا'}</span>
                 {isDeveloper && messages.filter(m => !m.isRead).length > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">{messages.filter(m => !m.isRead).length}</span>}
               </motion.button>
@@ -1560,7 +1459,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       </div>
                     </div>
                     <div className="flex gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                      <button onClick={() => { if (!currentUser) { addToast('يجب تسجيل الدخول لعرض التفاصيل', 'error'); setShowAuth(true); return; } setSelectedApartment(apartment); fetchComments(apartment.id); setCurrentImageIndex(0); fetch(`/api/apartments/${apartment.id}/details`, { method: 'GET' }).catch(() => {}); }} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-violet-700 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:scale-[1.02] transition-all duration-300 group relative overflow-hidden">
+                      <button onClick={() => { setSelectedApartment(apartment); setSelectedApartmentDetails(null); fetchComments(apartment.id); setCurrentImageIndex(0); fetchApartmentDetails(apartment.id); }} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-violet-700 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:scale-[1.02] transition-all duration-300 group relative overflow-hidden">
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
                         <Eye className="h-4 w-4 group-hover:scale-110 transition-transform" />
                         <span>عرض التفاصيل</span>
@@ -1611,12 +1510,12 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               </div>
               <div className="space-y-3">
                 <button onClick={() => { setShowAddModal(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white"><Building2 className="h-5 w-5" />إضافة شقة</button>
-                <button onClick={() => { if (!currentUser) { addToast('يجب تسجيل الدخول لاستخدام المساعد الذكي', 'error'); setShowAuth(true); return; } setShowChat(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><Brain className="h-5 w-5" />المساعد الذكي</button>
-                <button onClick={() => { if (isDeveloper) { fetchMessages(); setShowMessages(true); } else if (currentUser) { setShowMessages(true); } else { setShowAuth(true); } setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><MessageCircle className="h-5 w-5" />تواصل معنا</button>
+                <button onClick={() => { setShowChat(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><Brain className="h-5 w-5" />المساعد الذكي</button>
+                <button onClick={() => { if (currentUser) { fetchMessages(); setShowMessages(true); } else { setShowAuth(true); } setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><MessageCircle className="h-5 w-5" />تواصل معنا</button>
                 {isDeveloper ? (
                   <>
         <button onClick={() => { setShowDevPanel(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white"><ShieldCheck className="h-5 w-5" />لوحة المطور{pendingApartments.length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-white/20 text-xs">{pendingApartments.length}</span>}</button>
-    <button onClick={() => { setShowMessages(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'} relative`}><MessageCircle className="h-5 w-5" />الرسائل{messages.filter(m => !m.isRead).length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-red-500 text-white text-xs">{messages.filter(m => !m.isRead).length}</span>}</button>
+    <button onClick={() => { fetchMessages(); setShowMessages(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'} relative`}><MessageCircle className="h-5 w-5" />الرسائل{messages.filter(m => !m.isRead).length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-red-500 text-white text-xs">{messages.filter(m => !m.isRead).length}</span>}</button>
     <button onClick={() => { handleLogout(); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-red-400' : 'bg-slate-100 text-red-500'}`}><LogOut className="h-5 w-5" />تسجيل الخروج</button>
   </>
 ) : currentUser ? (
@@ -1658,7 +1557,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                         <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
                         <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.area} • {apt.price.toLocaleString()} ج.م</p>
                       </div>
-                      <button onClick={() => { setConfirmDialog({ isOpen: true, title: 'حذف العقار', message: `هل أنت متأكد من حذف "${apt.title}"؟\nلا يمكن التراجع عن هذا الإجراء.`, confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { await fetch(`/api/apartments/${apt.id}`, { method: 'DELETE' }); fetchMyPendingApartments(); fetchApartments(); addToast('تم حذف العقار', 'success'); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'danger' }); }} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600"><Trash2 className="h-4 w-4" /></button>
+                      <button onClick={async () => { if (confirm('هل تريد حذف هذا العقار؟')) { await fetch(`/api/apartments/${apt.id}`, { method: 'DELETE' }); fetchMyPendingApartments(); fetchApartments(); addToast('تم حذف العقار', 'success'); } }} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600"><Trash2 className="h-4 w-4" /></button>
                     </div>
                   </div>
                 ))}</div>
@@ -1800,25 +1699,35 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               <p className="text-3xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent mb-4">{selectedApartment.price.toLocaleString()} ج.م{selectedApartment.type === 'rent' && <span className="text-sm text-slate-500"> /شهر</span>}</p>
               <p className={`mb-6 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{selectedApartment.description}</p>
               
-              {(hasPaidForApartment(selectedApartment.id) || settings.contactFee === 0) ? (
-                <div className={`p-4 rounded-xl mb-6 ${settings.contactFee === 0 ? 'bg-emerald-50 border-2 border-emerald-200' : darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>بيانات التواصل</h3>
-                    {settings.contactFee === 0 && <span className="px-3 py-1 rounded-full bg-emerald-500 text-white text-xs font-bold">مجاني ✨</span>}
+              {selectedApartmentDetails?.contactRevealed || hasPaidForApartment(selectedApartment.id) ? (
+                <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
+                  <h3 className={`font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>بيانات التواصل</h3>
+                  <div className="flex items-center gap-2"><Phone className="h-5 w-5 text-emerald-500" /><a href={`tel:${selectedApartmentDetails?.ownerPhone || selectedApartment.ownerPhone}`} className="text-emerald-600 font-medium hover:underline">{selectedApartmentDetails?.ownerPhone || selectedApartment.ownerPhone}</a></div>
+                  {selectedApartmentDetails?.mapLink && <a href={selectedApartmentDetails.mapLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-2 text-violet-600 hover:underline"><ExternalLink className="h-4 w-4" />عرض على الخريطة</a>}
+                </div>
+              ) : selectedApartmentDetails?.userInquiryStatus ? (
+                // طلب موجود - في انتظار الموافقة
+                <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-blue-900/20 border border-blue-700' : 'bg-blue-50 border border-blue-200'}`}>
+                  <div className="flex items-center gap-3">
+                    <Hourglass className="h-6 w-6 text-blue-500 animate-spin" style={{ animationDuration: '3s' }} />
+                    <div>
+                      <p className={`font-medium ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>طلبك قيد المراجعة</p>
+                      <p className={`text-sm ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>تم إرسال طلبك. تحقق من الرسائل لمعرفة طريقة الدفع والموافقة</p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2"><Phone className="h-5 w-5 text-emerald-500" /><a href={`tel:${selectedApartment.ownerPhone}`} className="text-emerald-600 font-medium hover:underline">{selectedApartment.ownerPhone}</a></div>
-                  {selectedApartment.mapLink && <a href={selectedApartment.mapLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-2 text-violet-600 hover:underline"><ExternalLink className="h-4 w-4" />عرض على الخريطة</a>}
+                  <button onClick={() => { fetchMessages(); setShowMessages(true); }} className="mt-3 w-full py-2 rounded-xl bg-gradient-to-r from-blue-500 to-violet-600 text-white font-medium"><MessageSquare className="h-4 w-4 inline ml-2" />فتح الرسائل</button>
                 </div>
               ) : (
+                // لم يتم الطلب بعد
                 <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-amber-900/20 border border-amber-700' : 'bg-amber-50 border border-amber-200'}`}>
                   <div className="flex items-center gap-3">
                     <Lock className="h-6 w-6 text-amber-500" />
                     <div>
                       <p className={`font-medium ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>بيانات التواصل محجوبة</p>
-                      <p className={`text-sm ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>ادفع {settings.contactFee} {settings.currency} للحصول على بيانات التواصل</p>
+                      <p className={`text-sm ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>{settings.contactFee > 0 ? `رسوم بيانات التواصل: ${settings.contactFee} ج.م` : 'اضغط لطلب بيانات التواصل'}</p>
                     </div>
                   </div>
-                  <button onClick={() => { if (!currentUser) { addToast('يجب تسجيل الدخول لطلب بيانات التواصل', 'error'); setShowAuth(true); return; } setPaymentApartment(selectedApartment); }} className="mt-3 w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium"><CreditCard className="h-4 w-4 inline ml-2" />طلب بيانات التواصل</button>
+                  <button onClick={() => setPaymentApartment(selectedApartment)} className="mt-3 w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium"><CreditCard className="h-4 w-4 inline ml-2" />طلب بيانات التواصل</button>
                 </div>
               )}
 
@@ -1826,12 +1735,9 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <button onClick={() => toggleFavorite(selectedApartment.id)} className={`flex-1 py-3 rounded-xl font-medium flex items-center justify-center gap-2 ${favorites.includes(selectedApartment.id) ? 'bg-red-500 text-white' : darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}><Heart className={`h-5 w-5 ${favorites.includes(selectedApartment.id) ? 'fill-white' : ''}`} />{favorites.includes(selectedApartment.id) ? 'في المفضلة' : 'أضف للمفضلة'}</button>
                 {isDeveloper && (
                   <>
-                    <button onClick={() => openEditApartment(selectedApartment)} className={`py-3 px-4 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>تعديل</button>
+                    <button onClick={() => setEditApartment(selectedApartment)} className={`py-3 px-4 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>تعديل</button>
                     <button onClick={() => handleDeleteApartment(selectedApartment.id)} className="py-3 px-4 rounded-xl bg-red-500/10 text-red-500 font-medium hover:bg-red-500/20">حذف</button>
                   </>
-                )}
-                {!isDeveloper && currentUser && selectedApartment.createdBy === currentUser.id && (selectedApartment.status === 'available' || selectedApartment.status === 'reserved') && (
-                  <button onClick={() => openEditRequestModal(selectedApartment)} className={`py-3 px-4 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}><Edit className="h-4 w-4 inline ml-1" />طلب تعديل</button>
                 )}
               </div>
 
@@ -1877,139 +1783,12 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الهاتف</label><input type="tel" value={editApartment.ownerPhone} onChange={(e) => setEditApartment({ ...editApartment, ownerPhone: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحالة</label><select value={editApartment.status} onChange={(e) => setEditApartment({ ...editApartment, status: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="available">متاح</option><option value="reserved">محجوز</option><option value="unavailable">غير متاح</option><option value="sold">تم البيع</option><option value="rented">تم التأجير</option></select></div>
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الوصف</label><textarea value={editApartment.description} onChange={(e) => setEditApartment({ ...editApartment, description: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} rows={3} /></div>
-                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>النوع</label><select value={editApartment.type} onChange={(e) => setEditApartment({ ...editApartment, type: e.target.value as 'rent' | 'sale' })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="rent">إيجار</option><option value="sale">بيع</option></select></div>
-                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رابط الخريطة</label><input type="text" placeholder="https://maps.google.com/..." value={editApartment.mapLink || ''} onChange={(e) => setEditApartment({ ...editApartment, mapLink: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-              </div>
-              {/* صور الشقة */}
-              <div className="col-span-2">
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                  <ImageIcon className="h-4 w-4 inline ml-1" />صور الشقة ({editImageUrls.length}/10)
-                </label>
-                <FileUpload type="image" value={editImageUrls} onChange={setEditImageUrls} maxFiles={10} />
-              </div>
-              {/* فيديوهات الشقة */}
-              <div className="col-span-2">
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                  <Video className="h-4 w-4 inline ml-1" />فيديوهات الشقة ({editVideoUrls.length}/3)
-                </label>
-                <FileUpload type="video" value={editVideoUrls} onChange={setEditVideoUrls} maxFiles={3} />
               </div>
               <div className="flex gap-3 mt-6">
                 <button type="button" onClick={() => setEditApartment(null)} className={`flex-1 py-3 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>إلغاء</button>
                 <button type="submit" disabled={editSubmitting} className="flex-1 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-violet-600 to-purple-700 disabled:opacity-50">{editSubmitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'حفظ التعديلات'}</button>
               </div>
             </form>
-          </motion.div>
-        </motion.div>
-      )}</AnimatePresence>
-
-      {/* Publisher Edit Request Modal */}
-      <AnimatePresence>{showEditRequestModal && selectedApartmentForEdit && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => { setShowEditRequestModal(false); setSelectedApartmentForEdit(null); }}>
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Edit className="h-5 w-5 text-amber-500" />طلب تعديل الشقة</h2>
-              <button onClick={() => { setShowEditRequestModal(false); setSelectedApartmentForEdit(null); }} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
-            </div>
-            <p className={`text-sm mb-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>قم بتعديل البيانات المطلوبة وسيتم إرسال طلبك للمراجعة. الحقول التي يتم تغييرها فقط ستكون في الطلب.</p>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                {/* العنوان */}
-                <div className="col-span-2">
-                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>العنوان</label>
-                  <input type="text" value={editRequestForm.title} onChange={(e) => setEditRequestForm({ ...editRequestForm, title: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
-                </div>
-                {/* السعر */}
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>السعر</label>
-                  <input type="number" value={editRequestForm.price} onChange={(e) => setEditRequestForm({ ...editRequestForm, price: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
-                </div>
-                {/* المنطقة */}
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>المنطقة</label>
-                  <input type="text" list="area-suggestions-editreq" value={editRequestForm.area} onChange={(e) => setEditRequestForm({ ...editRequestForm, area: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
-                  <datalist id="area-suggestions-editreq">{egyptianAreas.map(area => <option key={area} value={area} />)}</datalist>
-                </div>
-                {/* غرف النوم */}
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>غرف النوم</label>
-                  <select value={editRequestForm.bedrooms} onChange={(e) => setEditRequestForm({ ...editRequestForm, bedrooms: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>
-                    {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}
-                  </select>
-                </div>
-                {/* الحمامات */}
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحمامات</label>
-                  <select value={editRequestForm.bathrooms} onChange={(e) => setEditRequestForm({ ...editRequestForm, bathrooms: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>
-                    {[1, 2, 3, 4].map(n => <option key={n} value={n}>{n}</option>)}
-                  </select>
-                </div>
-                {/* الدور */}
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الدور</label>
-                  <select value={editRequestForm.floor} onChange={(e) => setEditRequestForm({ ...editRequestForm, floor: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>
-                    <option value="">بدون تحديد</option>
-                    {['أرضي', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15+'].map(n => <option key={n} value={n === 'أرضي' ? '0' : n === '15+' ? '15' : n}>{n}</option>)}
-                  </select>
-                </div>
-                {/* مساحة الشقة */}
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>مساحة الشقة (م²)</label>
-                  <input type="number" placeholder="مثال: 120" value={editRequestForm.apartmentSize} onChange={(e) => setEditRequestForm({ ...editRequestForm, apartmentSize: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
-                </div>
-                {/* الهاتف */}
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رقم الهاتف</label>
-                  <input type="tel" value={editRequestForm.ownerPhone} onChange={(e) => setEditRequestForm({ ...editRequestForm, ownerPhone: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
-                </div>
-                {/* النوع */}
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>النوع</label>
-                  <select value={editRequestForm.type} onChange={(e) => setEditRequestForm({ ...editRequestForm, type: e.target.value as 'rent' | 'sale' })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>
-                    <option value="rent">إيجار</option>
-                    <option value="sale">بيع</option>
-                  </select>
-                </div>
-                {/* رابط الخريطة */}
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}><Link className="h-4 w-4 inline ml-1" />رابط الخريطة</label>
-                  <input type="text" placeholder="https://maps.google.com/..." value={editRequestForm.mapLink} onChange={(e) => setEditRequestForm({ ...editRequestForm, mapLink: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
-                </div>
-                {/* الوصف */}
-                <div className="col-span-2">
-                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الوصف</label>
-                  <textarea value={editRequestForm.description} onChange={(e) => setEditRequestForm({ ...editRequestForm, description: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} rows={3} />
-                </div>
-              </div>
-              {/* صور الشقة */}
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                  <ImageIcon className="h-4 w-4 inline ml-1" />صور الشقة ({editRequestImageUrls.length}/10)
-                </label>
-                <FileUpload type="image" value={editRequestImageUrls} onChange={setEditRequestImageUrls} maxFiles={10} />
-              </div>
-              {/* فيديوهات الشقة */}
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                  <Video className="h-4 w-4 inline ml-1" />فيديوهات الشقة ({editRequestVideoUrls.length}/3)
-                </label>
-                <FileUpload type="video" value={editRequestVideoUrls} onChange={setEditRequestVideoUrls} maxFiles={3} />
-              </div>
-              {/* ملاحظات إضافية */}
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                  <MessageCircle className="h-4 w-4 inline ml-1" />ملاحظات إضافية (اختياري)
-                </label>
-                <textarea value={editRequestNotes} onChange={(e) => setEditRequestNotes(e.target.value)} placeholder="أضف أي ملاحظات توضيحية للمطور..." className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-500' : 'bg-white border-slate-200 placeholder-slate-400'}`} rows={2} />
-              </div>
-              {/* أزرار */}
-              <div className="flex gap-3 mt-6">
-                <button type="button" onClick={() => { setShowEditRequestModal(false); setSelectedApartmentForEdit(null); }} className={`flex-1 py-3 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>إلغاء</button>
-                <button type="button" onClick={submitEditRequest} disabled={editRequestLoading} className="flex-1 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-amber-500 to-orange-600 disabled:opacity-50">
-                  {editRequestLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : <><Send className="h-4 w-4 inline ml-1" />إرسال طلب التعديل</>}
-                </button>
-              </div>
-            </div>
           </motion.div>
         </motion.div>
       )}</AnimatePresence>
@@ -2053,13 +1832,10 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
             <div className={`p-4 border-b ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
               <div className="flex items-center justify-between">
                 <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><ShieldCheck className="h-6 w-6 text-amber-500" />لوحة تحكم المطور</h2>
-                <div className="flex items-center gap-2">
-                  <button onClick={refreshDevTab} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-100 text-slate-600'} transition-colors`} title="تحديث البيانات"><RefreshCw className="h-5 w-5" /></button>
-                  <button onClick={() => setShowDevPanel(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
-                </div>
+                <button onClick={() => setShowDevPanel(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
               </div>
-              <div className="flex gap-2 mt-4 overflow-x-auto pb-2 scrollbar-hide">
-                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'inquiries', icon: MessageSquare, label: 'الاستفسارات', count: inquiries.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل', count: messages.length }, { id: 'comments', icon: MessageSquare, label: 'التعليقات', count: comments.length }, { id: 'editRequests', icon: Edit, label: 'طلبات التعديل', count: editRequests.length }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'blocked', icon: Ban, label: 'محظورين', count: blockedUsers.length }, { id: 'logs', icon: Activity, label: 'سجل العمليات', count: operationLogs.length }, { id: 'settings', icon: Settings, label: 'الإعدادات' } ].map(tab => (
+              <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
+                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل' }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'blocked', icon: Ban, label: 'محظورين' }, { id: 'settings', icon: Settings, label: 'الإعدادات' } ].map(tab => (
                   <button key={tab.id} onClick={() => setDevTab(tab.id as any)} className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-all ${devTab === tab.id ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                     <tab.icon className="h-4 w-4" />{tab.label}
                     {tab.count !== undefined && tab.count > 0 && <span className={`px-2 py-0.5 rounded-full text-xs ${devTab === tab.id ? 'bg-white/20' : 'bg-amber-500 text-white'}`}>{tab.count}</span>}
@@ -2096,244 +1872,116 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <p className="mt-2">👤 <strong>المستخدمين النشطين:</strong> {allUsers.length} | المحظورين: {blockedUsers.length}</p>
                     </div>
                   </div>
-                  {/* Pending Comments in Stats */}
                   <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
-                        <MessageSquare className="h-5 w-5 text-amber-500" />التعليقات قيد المراجعة
-                        <span className="text-sm font-normal text-slate-500">({comments.filter(c => c.status === 'pending').length})</span>
-                      </h3>
-                      {comments.filter(c => c.status === 'pending').length > 0 && (
-                        <button onClick={() => clearPendingComments()} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-xs font-medium hover:bg-red-500/20 transition-colors">
-                          <Trash2 className="h-3.5 w-3.5" />مسح المعلقة
-                        </button>
-                      )}
-                    </div>
-                    {comments.filter(c => c.status === 'pending').length === 0 ? (
-                      <div className="text-center py-8">
-                        <MessageSquare className={`h-12 w-12 mx-auto mb-3 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
-                        <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا توجد تعليقات قيد المراجعة</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2 max-h-96 overflow-y-auto">
-                        {comments.filter(c => c.status === 'pending').map(c => (
-                          <div key={c.id} className={`p-3 rounded-lg ${darkMode ? 'bg-slate-600' : 'bg-white'} flex items-center justify-between gap-3`}>
-                            <div className="flex-1 min-w-0">
-                              <p className={`truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{c.content}</p>
-                              <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{c.user.name} • {new Date(c.createdAt).toLocaleDateString('ar-EG')}</p>
-                            </div>
-                            <div className="flex gap-1.5 shrink-0">
-                              <button onClick={() => approveComment(c.id)} className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors" title="موافقة"><Check className="h-3.5 w-3.5" /></button>
-                              <button onClick={() => deleteComment(c.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-500 transition-colors" title="حذف"><Trash2 className="h-3.5 w-3.5" /></button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Pending Tab */}
-              {devTab === 'pending' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
-                      <Hourglass className="h-5 w-5 text-amber-500" />عقارات قيد المراجعة
-                      <span className="text-sm font-normal text-slate-500">({pendingApartments.length})</span>
-                    </h3>
-                    {pendingApartments.length > 0 && (
-                      <button onClick={rejectAllPending} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-xs font-medium hover:bg-red-500/20 transition-colors">
-                        <XCircle className="h-3.5 w-3.5" />رفض الكل
-                      </button>
-                    )}
-                  </div>
-                  {pendingApartments.length === 0 ? (
-                    <div className="text-center py-12">
-                      <CheckCircle2 className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
-                      <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد عقارات قيد المراجعة</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-                      {pendingApartments.map(apt => (
-                        <div key={apt.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                          <div className="flex gap-4">
-                            <img src={apt.imageUrl || apt.images?.[0] || '/generated-images/apt1.png'} alt={apt.title} className="w-32 h-24 object-cover rounded-lg shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
-                              <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.area} • {apt.price.toLocaleString()} {settings.currency} • {apt.type === 'rent' ? 'إيجار' : 'بيع'}</p>
-                              <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>أُرسلت: {new Date(apt.createdAt).toLocaleDateString('ar-EG')}</p>
-                            </div>
-                            <div className="flex flex-col gap-2 shrink-0">
-                              <button onClick={() => handleApproveApartment(apt.id)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 text-sm font-medium transition-colors">موافقة</button>
-                              <button onClick={() => handleRejectApartment(apt.id)} className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 text-sm font-medium transition-colors">رفض</button>
-                              <button onClick={() => handleDeleteApartment(apt.id)} className="px-4 py-2 rounded-lg bg-slate-600 text-white hover:bg-slate-700 text-sm font-medium transition-colors flex items-center justify-center gap-1"><Trash2 className="h-3.5 w-3.5" />حذف</button>
-                            </div>
-                          </div>
+                    <h3 className={`font-bold mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>التعليقات قيد المراجعة</h3>
+                    <div className="space-y-2">
+                      {comments.filter(c => c.status === 'pending').length === 0 ? <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد تعليقات قيد المراجعة</p> : comments.filter(c => c.status === 'pending').map(c => (
+                        <div key={c.id} className={`p-3 rounded-lg ${darkMode ? 'bg-slate-600' : 'bg-white'} flex items-center justify-between`}>
+                          <div><p className={darkMode ? 'text-white' : 'text-slate-900'}>{c.content}</p><p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{c.user.name}</p></div>
+                          <div className="flex gap-2"><button onClick={() => approveComment(c.id)} className="p-1 rounded bg-emerald-500 text-white"><Check className="h-4 w-4" /></button><button onClick={() => deleteComment(c.id)} className="p-1 rounded bg-red-500 text-white"><X className="h-4 w-4" /></button></div>
                         </div>
                       ))}
                     </div>
-                  )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Pending Tab */}
+              {devTab === 'pending' && (
+                <div className="space-y-4">
+                  {pendingApartments.length === 0 ? <div className="text-center py-12"><CheckCircle2 className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد عقارات قيد المراجعة</p></div> : pendingApartments.map(apt => (
+                    <div key={apt.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                      <div className="flex gap-4">
+                        <img src={apt.imageUrl || apt.images?.[0] || '/generated-images/apt1.png'} alt={apt.title} className="w-32 h-24 object-cover rounded-lg" />
+                        <div className="flex-1">
+                          <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
+                          <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.area} • {apt.price.toLocaleString()} ج.م • {apt.type === 'rent' ? 'إيجار' : 'بيع'}</p>
+                          <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>أُرسلت: {new Date(apt.createdAt).toLocaleDateString('ar-EG')}</p>
+                        </div>
+                        <div className="flex gap-2"><button onClick={() => handleApproveApartment(apt.id)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600">موافقة</button><button onClick={() => handleRejectApartment(apt.id)} className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600">رفض</button></div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
               {/* Apartments Tab */}
               {devTab === 'apartments' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
-                      <Building2 className="h-5 w-5 text-amber-500" />جميع العقارات
-                      <span className="text-sm font-normal text-slate-500">({allApartments.length})</span>
-                    </h3>
-                    {allApartments.length > 0 && (
-                      <button onClick={clearAllApartments} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-xs font-medium hover:bg-red-500/20 transition-colors">
-                        <Trash2 className="h-3.5 w-3.5" />مسح الكل
-                      </button>
-                    )}
-                  </div>
-                  {allApartments.length === 0 ? (
-                    <div className="text-center py-12">
-                      <Building2 className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
-                      <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد عقارات</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-                      {allApartments.map(apt => (
-                        <div key={apt.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <img src={apt.imageUrl || apt.images?.[0] || '/generated-images/apt1.png'} alt={apt.title} className="w-16 h-12 object-cover rounded shrink-0" />
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <h3 className={`font-medium truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
-                                  {apt.isVip && <span className="px-2 py-0.5 rounded-full text-xs bg-gradient-to-r from-purple-500 to-pink-600 text-white shrink-0">VIP+</span>}
-                                  {apt.isFeatured && !apt.isVip && <span className="px-2 py-0.5 rounded-full text-xs bg-gradient-to-r from-amber-500 to-orange-600 text-white shrink-0">مميز</span>}
-                                </div>
-                                <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.price.toLocaleString()} {settings.currency} • {statusConfig[apt.status]?.label}</p>
-                              </div>
+                  {allApartments.slice(0, 20).map(apt => (
+                    <div key={apt.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <img src={apt.imageUrl || apt.images?.[0] || '/generated-images/apt1.png'} alt={apt.title} className="w-16 h-12 object-cover rounded" />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
+                              {apt.isVip && <span className="px-2 py-0.5 rounded-full text-xs bg-gradient-to-r from-purple-500 to-pink-600 text-white">VIP+</span>}
+                              {apt.isFeatured && !apt.isVip && <span className="px-2 py-0.5 rounded-full text-xs bg-gradient-to-r from-amber-500 to-orange-600 text-white">مميز</span>}
                             </div>
-                            <div className="flex flex-wrap gap-2 items-center shrink-0">
-                              <select value={apt.status} onChange={(e) => {
-                                const newStatus = e.target.value;
-                                if (newStatus === 'sold' || newStatus === 'rented') {
-                                  setConfirmDialog({
-                                    isOpen: true, title: 'تغيير حالة العقار',
-                                    message: `سيتم حذف العقار تلقائياً بعد 48 ساعة من تغيير الحالة إلى "${newStatus === 'sold' ? 'تم البيع' : 'تم التأجير'}"\n\nهل أنت متأكد؟`,
-                                    confirmText: 'تأكيد', cancelText: 'إلغاء',
-                                    onConfirm: () => { setAllApartments(prev => prev.map(a => a.id === apt.id ? { ...a, status: newStatus } : a)); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus, statusChangedAt: new Date().toISOString() }) }); setConfirmDialog({ ...confirmDialog, isOpen: false }); addToast('تم تغيير الحالة - سيُحذف بعد 48 ساعة', 'success'); },
-                                    type: 'warning'
-                                  });
-                                } else {
-                                  setAllApartments(prev => prev.map(a => a.id === apt.id ? { ...a, status: newStatus } : a)); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) });
-                                }
-                              }} className={`px-3 py-1 rounded-lg text-sm ${darkMode ? 'bg-slate-600 text-white' : 'bg-white border'}`}><option value="available">متاح</option><option value="preview">في معاينة</option><option value="reserved">محجوز</option><option value="sold">تم البيع</option><option value="rented">تم التأجير</option><option value="unavailable">غير متاح</option></select>
-                              <div className="flex gap-1">
-                                <button onClick={() => { const newVip = !apt.isVip; setAllApartments(prev => prev.map(a => a.id === apt.id ? { ...a, isVip: newVip } : a)); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isVip: newVip }) }); addToast(newVip ? 'تم إضافة VIP+' : 'تم إزالة VIP+', 'success'); }} className={`p-1.5 rounded-lg transition-colors ${apt.isVip ? 'bg-purple-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300 hover:bg-slate-500' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`} title="VIP+"><Diamond className="h-4 w-4" /></button>
-                                <button onClick={() => { const newFeatured = !apt.isFeatured; setAllApartments(prev => prev.map(a => a.id === apt.id ? { ...a, isFeatured: newFeatured } : a)); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isFeatured: newFeatured }) }); addToast(newFeatured ? 'تم إضافة مميز' : 'تم إزالة مميز', 'success'); }} className={`p-1.5 rounded-lg transition-colors ${apt.isFeatured && !apt.isVip ? 'bg-amber-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300 hover:bg-slate-500' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`} title="مميز"><Star className="h-4 w-4" /></button>
-                                <button onClick={() => handleDeleteApartment(apt.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors" title="حذف"><Trash2 className="h-4 w-4" /></button>
-                              </div>
-                            </div>
+                            <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.price.toLocaleString()} {settings.currency} • {statusConfig[apt.status]?.label}</p>
                           </div>
                         </div>
-                      ))}
+                        <div className="flex flex-wrap gap-2 items-center">
+                          <select value={apt.status} onChange={(e) => { 
+                            const newStatus = e.target.value;
+                            if (newStatus === 'sold' || newStatus === 'rented') {
+                              setConfirmDialog({
+                                isOpen: true,
+                                title: 'تغيير حالة العقار',
+                                message: `سيتم حذف العقار تلقائياً بعد 48 ساعة من تغيير الحالة إلى "${newStatus === 'sold' ? 'تم البيع' : 'تم التأجير'}"\n\nهل أنت متأكد؟`,
+                                confirmText: 'تأكيد',
+                                cancelText: 'إلغاء',
+                                onConfirm: () => {
+                                  apt.status = newStatus;
+                                  setAllApartments([...allApartments]);
+                                  fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus, statusChangedAt: new Date().toISOString() }) });
+                                  setConfirmDialog({ ...confirmDialog, isOpen: false });
+                                  addToast('تم تغيير الحالة - سيُحذف بعد 48 ساعة', 'success');
+                                },
+                                type: 'warning'
+                              });
+                            } else {
+                              apt.status = newStatus;
+                              setAllApartments([...allApartments]);
+                              fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) });
+                            }
+                          }} className={`px-3 py-1 rounded-lg text-sm ${darkMode ? 'bg-slate-600 text-white' : 'bg-white border'}`}><option value="available">متاح</option><option value="preview">في معاينة</option><option value="reserved">محجوز</option><option value="sold">تم البيع</option><option value="rented">تم التأجير</option><option value="unavailable">غير متاح</option></select>
+                          <div className="flex gap-1">
+                            <button onClick={() => { apt.isVip = !apt.isVip; setAllApartments([...allApartments]); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isVip: apt.isVip }) }); addToast(apt.isVip ? 'تم إضافة VIP+' : 'تم إزالة VIP+', 'success'); }} className={`p-1 rounded ${apt.isVip ? 'bg-purple-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-200 text-slate-600'}`} title="VIP+"><Diamond className="h-4 w-4" /></button>
+                            <button onClick={() => { apt.isFeatured = !apt.isFeatured; setAllApartments([...allApartments]); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isFeatured: apt.isFeatured }) }); addToast(apt.isFeatured ? 'تم إضافة مميز' : 'تم إزالة مميز', 'success'); }} className={`p-1 rounded ${apt.isFeatured && !apt.isVip ? 'bg-amber-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-200 text-slate-600'}`} title="مميز"><Star className="h-4 w-4" /></button>
+                            <button onClick={() => handleDeleteApartment(apt.id)} className="p-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20"><Trash2 className="h-4 w-4" /></button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  )}
+                  ))}
                 </div>
               )}
 
               {/* Favorites Tab */}
               {devTab === 'favorites' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
-                      <Heart className="h-5 w-5 text-amber-500" />المفضلة
-                      <span className="text-sm font-normal text-slate-500">({likes.length})</span>
-                    </h3>
-                    {likes.length > 0 && (
-                      <button onClick={clearAllLikes} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-xs font-medium hover:bg-red-500/20 transition-colors">
-                        <Trash2 className="h-3.5 w-3.5" />مسح الكل
-                      </button>
-                    )}
-                  </div>
-                  {likes.length === 0 ? (
-                    <div className="text-center py-12">
-                      <Heart className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
-                      <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد مفضلات</p>
-                    </div>
-                  ) : (
+                  {likes.length === 0 ? <div className="text-center py-12"><Heart className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد مفضلات</p></div> : (
                     <div className={`rounded-xl overflow-hidden ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                      <div className="max-h-[60vh] overflow-y-auto">
-                        <table className="w-full text-sm">
-                          <thead className={`sticky top-0 ${darkMode ? 'bg-slate-600' : 'bg-slate-100'}`}>
-                            <tr>
-                              <th className={`p-3 text-right ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>المستخدم</th>
-                              <th className={`p-3 text-right ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>العقار</th>
-                              <th className={`p-3 text-right ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>التاريخ</th>
-                              <th className={`p-3 text-center ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>إجراء</th>
+                      <table className="w-full text-sm">
+                        <thead className={darkMode ? 'bg-slate-600' : 'bg-slate-100'}>
+                          <tr>
+                            <th className={`p-3 text-right ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>المستخدم</th>
+                            <th className={`p-3 text-right ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>العقار</th>
+                            <th className={`p-3 text-right ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>التاريخ</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {likes.map(like => (
+                            <tr key={like.id} className={`border-t ${darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
+                              <td className={`p-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{like.user?.name || 'مستخدم'}</td>
+                              <td className={`p-3 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{like.apartment?.title || 'عقار محذوف'}</td>
+                              <td className={`p-3 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{new Date(like.createdAt).toLocaleDateString('ar-EG')}</td>
                             </tr>
-                          </thead>
-                          <tbody>
-                            {likes.map(like => (
-                              <tr key={like.id} className={`border-t ${darkMode ? 'border-slate-600 hover:bg-slate-600/50' : 'border-slate-200 hover:bg-slate-50'} transition-colors`}>
-                                <td className={`p-3 font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{like.user?.name || 'مستخدم'}</td>
-                                <td className={`p-3 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{like.apartment?.title || 'عقار محذوف'}</td>
-                                <td className={`p-3 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{new Date(like.createdAt).toLocaleDateString('ar-EG')}</td>
-                                <td className="p-3 text-center">
-                                  <button onClick={() => deleteLike(like.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-500 transition-colors" title="حذف"><Trash2 className="h-3.5 w-3.5" /></button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Inquiries Tab */}
-              {devTab === 'inquiries' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
-                      <MessageSquare className="h-5 w-5 text-amber-500" />الاستفسارات
-                      <span className="text-sm font-normal text-slate-500">({inquiries.length})</span>
-                    </h3>
-                    {inquiries.length > 0 && (
-                      <button onClick={clearAllInquiries} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-xs font-medium hover:bg-red-500/20 transition-colors">
-                        <Trash2 className="h-3.5 w-3.5" />مسح الكل
-                      </button>
-                    )}
-                  </div>
-                  {inquiries.length === 0 ? (
-                    <div className="text-center py-12">
-                      <MessageSquare className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
-                      <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد استفسارات</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-                      {inquiries.map(inq => (
-                        <div key={inq.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                          <div className="flex items-start justify-between gap-3 mb-3">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap mb-1">
-                                <h4 className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{inq.name}</h4>
-                                <span className={`px-2 py-0.5 rounded-full text-xs ${inq.lifecycleStatus === 'new' ? 'bg-blue-100 text-blue-700' : inq.lifecycleStatus === 'contacted' ? 'bg-emerald-100 text-emerald-700' : inq.lifecycleStatus === 'closed' ? 'bg-slate-200 text-slate-600' : 'bg-amber-100 text-amber-700'}`}>
-                                  {inq.lifecycleStatus === 'new' ? 'جديد' : inq.lifecycleStatus === 'contacted' ? 'تم التواصل' : inq.lifecycleStatus === 'closed' ? 'مغلق' : inq.lifecycleStatus}
-                                </span>
-                              </div>
-                              <div className={`flex flex-wrap gap-3 text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                                <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{inq.phone}</span>
-                                <span className="flex items-center gap-1"><MessageCircle className="h-3 w-3" />{inq.email}</span>
-                                <span>{new Date(inq.createdAt).toLocaleDateString('ar-EG')}</span>
-                              </div>
-                            </div>
-                            <button onClick={() => deleteInquiry(inq.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-500 transition-colors shrink-0" title="حذف"><Trash2 className="h-3.5 w-3.5" /></button>
-                          </div>
-                          <p className={`text-sm mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{inq.message}</p>
-                          {inq.apartment && <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs ${darkMode ? 'bg-slate-600 text-slate-300' : 'bg-white text-slate-600'}`}><Building2 className="h-3 w-3" />{inq.apartment.title}</div>}
-                        </div>
-                      ))}
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </div>
@@ -2342,576 +1990,148 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               {/* Payments Tab */}
               {devTab === 'payments' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
-                      <CreditCard className="h-5 w-5 text-amber-500" />المدفوعات
-                      <span className="text-sm font-normal text-slate-500">({payments.length})</span>
-                    </h3>
-                    {payments.length > 0 && (
-                      <button onClick={clearAllPayments} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-xs font-medium hover:bg-red-500/20 transition-colors">
-                        <Trash2 className="h-3.5 w-3.5" />مسح الكل
-                      </button>
-                    )}
-                  </div>
-                  {payments.length === 0 ? (
-                    <div className="text-center py-12">
-                      <CreditCard className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
-                      <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد مدفوعات</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-                      {payments.map(payment => (
-                        <div key={payment.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{payment.amount.toLocaleString()} {settings.currency}</p>
-                                <span className={`px-2 py-0.5 rounded-full text-xs ${payment.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : payment.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
-                                  {payment.status === 'Paid' ? 'مدفوع' : payment.status === 'Pending' ? 'قيد الانتظار' : 'مرفوض'}
-                                </span>
-                              </div>
-                              <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{payment.method} • {payment.inquiry?.name || 'غير محدد'} • {new Date(payment.createdAt).toLocaleDateString('ar-EG')}</p>
+                  {/* طلبات بيانات التواصل */}
+                  <div className={`p-4 rounded-xl mb-4 ${darkMode ? 'bg-blue-900/20 border border-blue-700' : 'bg-blue-50 border border-blue-200'}`}>
+                    <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}><MessageCircle className="h-5 w-5" />طلبات بيانات التواصل ({inquiries.filter(i => i.lifecycleStatus === 'New').length} جديدة)</h3>
+                    {inquiries.filter(i => i.lifecycleStatus === 'New').length === 0 ? (
+                      <p className={`text-sm ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>لا توجد طلبات جديدة</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {inquiries.filter(i => i.lifecycleStatus === 'New').map(inq => (
+                          <div key={inq.id} className={`p-3 rounded-lg ${darkMode ? 'bg-slate-700' : 'bg-white'} flex items-center justify-between`}>
+                            <div>
+                              <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{inq.name}</p>
+                              <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{inq.apartment?.title} • {new Date(inq.createdAt).toLocaleDateString('ar-EG')}</p>
                             </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              {payment.status === 'Pending' && (
-                                <button onClick={() => handleConfirmPayment(payment.id)} className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors" title="تأكيد"><Check className="h-3.5 w-3.5" /></button>
-                              )}
-                              <button onClick={() => deletePayment(payment.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-500 transition-colors" title="حذف"><Trash2 className="h-3.5 w-3.5" /></button>
+                            <div className="flex gap-2">
+                              <button onClick={() => handleApproveInquiry(inq.id)} className="px-3 py-1 rounded-lg bg-emerald-500 text-white text-sm hover:bg-emerald-600 flex items-center gap-1"><Check className="h-3 w-3" />اعتماد</button>
+                              <button onClick={() => { fetchMessages(); setShowMessages(true); }} className="px-3 py-1 rounded-lg bg-violet-500 text-white text-sm hover:bg-violet-600 flex items-center gap-1"><MessageSquare className="h-3 w-3" />رد</button>
                             </div>
                           </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {/* المدفوعات */}
+                  {payments.length === 0 ? <div className="text-center py-12"><CreditCard className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد مدفوعات</p></div> : payments.map(payment => (
+                    <div key={payment.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                      <div className="flex items-center justify-between">
+                        <div><p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{payment.amount} ج.م - {payment.method}</p><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{payment.inquiry?.name} • {new Date(payment.createdAt).toLocaleDateString('ar-EG')}</p></div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-1 rounded-full text-xs ${payment.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : payment.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{payment.status === 'Paid' ? 'مدفوع' : payment.status === 'Pending' ? 'قيد الانتظار' : 'مرفوض'}</span>
+                          {payment.status === 'Pending' && (
+                            <div className="flex gap-1">
+                              <button onClick={() => handleConfirmPayment(payment.id)} className="p-1 rounded bg-emerald-500 text-white" title="تأكيد الدفع وإظهار بيانات التواصل"><Check className="h-4 w-4" /></button>
+                              <button onClick={() => handleRejectPayment(payment.id)} className="p-1 rounded bg-red-500 text-white"><X className="h-4 w-4" /></button>
+                            </div>
+                          )}
                         </div>
-                      ))}
+                      </div>
                     </div>
-                  )}
+                  ))}
                 </div>
               )}
 
               {/* Messages Tab */}
               {devTab === 'messages' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
-                      <MessageCircle className="h-5 w-5 text-amber-500" />الرسائل
-                      <span className="text-sm font-normal text-slate-500">({messages.length})</span>
-                    </h3>
-                    {messages.length > 0 && (
-                      <button onClick={clearAllMessages} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-xs font-medium hover:bg-red-500/20 transition-colors">
-                        <Trash2 className="h-3.5 w-3.5" />مسح الكل
-                      </button>
-                    )}
-                  </div>
-                  {messages.length === 0 ? (
-                    <div className="text-center py-12">
-                      <MessageCircle className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
-                      <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد رسائل</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-                      {messages.map(msg => (
-                        <div key={msg.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold shrink-0">{msg.sender?.name?.charAt(0) || 'م'}</div>
-                              <div className="min-w-0">
-                                <span className={`font-medium ${darkMode ? 'text-violet-400' : 'text-violet-600'}`}>{msg.sender?.name || 'مستخدم'}</span>
-                                {msg.sender?.identifier && <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{msg.sender.identifier}</p>}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(msg.createdAt).toLocaleString('ar-EG')}</span>
-                              <button onClick={() => deleteMessage(msg.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-500 transition-colors" title="حذف"><Trash2 className="h-3.5 w-3.5" /></button>
-                            </div>
-                          </div>
-                          <p className={`mb-3 ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{msg.content}</p>
-                          <div className="flex gap-2 mt-2">
-                            <input
-                              type="text"
-                              placeholder="اكتب رداً..."
-                              className={`flex-1 px-3 py-2 rounded-lg text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 text-slate-700 placeholder-slate-400'} border`}
-                              onKeyDown={async (e) => {
-                                if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                                  const replyText = e.currentTarget.value.trim();
-                                  e.currentTarget.value = '';
-                                  try {
-                                    await fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: replyText, receiverId: msg.senderId }) });
-                                    addToast('تم إرسال الرد!', 'success');
-                                    fetchMessages();
-                                  } catch { addToast('حدث خطأ في إرسال الرد', 'error'); }
-                                }
-                              }}
-                            />
-                            <button
-                              onClick={async (e) => {
-                                const input = e.currentTarget.previousElementSibling as HTMLInputElement;
-                                if (input?.value.trim()) {
-                                  const replyText = input.value.trim();
-                                  input.value = '';
-                                  try {
-                                    await fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: replyText, receiverId: msg.senderId }) });
-                                    addToast('تم إرسال الرد!', 'success');
-                                    fetchMessages();
-                                  } catch { addToast('حدث خطأ في إرسال الرد', 'error'); }
-                                }
-                              }}
-                              className="px-3 py-2 rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 text-white text-sm"
-                            >
-                              <Send className="h-4 w-4" />
-                            </button>
+                  {messages.length === 0 ? <div className="text-center py-12"><MessageCircle className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد رسائل</p></div> : messages.map(msg => (
+                    <div key={msg.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold">{msg.sender?.name?.charAt(0) || 'م'}</div>
+                          <div>
+                            <span className={`font-medium ${darkMode ? 'text-violet-400' : 'text-violet-600'}`}>{msg.sender?.name || 'مستخدم'}</span>
+                            {msg.sender?.identifier && <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{msg.sender.identifier}</p>}
                           </div>
                         </div>
-                      ))}
+                        <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(msg.createdAt).toLocaleString('ar-EG')}</span>
+                      </div>
+                      <p className={`mb-3 whitespace-pre-line ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{msg.content}</p>
+                      {/* Reply input for developer */}
+                      <div className="flex gap-2 mt-2">
+                        <input 
+                          type="text" 
+                          placeholder="اكتب رداً..." 
+                          className={`flex-1 px-3 py-2 rounded-lg text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 text-slate-700 placeholder-slate-400'} border`}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const input = e.currentTarget;
+                              if (input.value.trim()) {
+                                handleDevReply({ senderId: msg.senderId, id: msg.id }, input.value);
+                                input.value = '';
+                              }
+                            }
+                          }}
+                          id={`reply-${msg.id}`}
+                        />
+                        <button 
+                          onClick={() => {
+                            const input = document.getElementById(`reply-${msg.id}`) as HTMLInputElement;
+                            if (input?.value.trim()) {
+                              handleDevReply({ senderId: msg.senderId, id: msg.id }, input.value);
+                              input.value = '';
+                            }
+                          }}
+                          disabled={messageLoading}
+                          className="px-3 py-2 rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 text-white text-sm disabled:opacity-50"
+                        >
+                          {messageLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                        </button>
+                      </div>
                     </div>
-                  )}
-                </div>
-              )}
-
-              {/* Comments Tab */}
-              {devTab === 'comments' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
-                      <MessageSquare className="h-5 w-5 text-amber-500" />جميع التعليقات
-                      <span className="text-sm font-normal text-slate-500">({comments.length})</span>
-                    </h3>
-                    {comments.length > 0 && (
-                      <button onClick={clearAllComments} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-xs font-medium hover:bg-red-500/20 transition-colors">
-                        <Trash2 className="h-3.5 w-3.5" />مسح الكل
-                      </button>
-                    )}
-                  </div>
-                  {comments.length === 0 ? (
-                    <div className="text-center py-12">
-                      <MessageSquare className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
-                      <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد تعليقات</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-                      {comments.map(c => (
-                        <div key={c.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                          <div className="flex items-start justify-between gap-3 mb-2">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap mb-1">
-                                <h4 className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{c.user?.name || 'مستخدم'}</h4>
-                                <span className={`px-2 py-0.5 rounded-full text-xs ${c.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : c.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
-                                  {c.status === 'approved' ? 'معتمد' : c.status === 'pending' ? 'قيد المراجعة' : 'مرفوض'}
-                                </span>
-                              </div>
-                              <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(c.createdAt).toLocaleDateString('ar-EG')}</p>
-                            </div>
-                            <div className="flex gap-1.5 shrink-0">
-                              {c.status === 'pending' && (
-                                <button onClick={() => approveComment(c.id)} className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors" title="موافقة"><Check className="h-3.5 w-3.5" /></button>
-                              )}
-                              <button onClick={() => deleteComment(c.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-500 transition-colors" title="حذف"><Trash2 className="h-3.5 w-3.5" /></button>
-                            </div>
-                          </div>
-                          <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{c.content}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Edit Requests Tab */}
-              {devTab === 'editRequests' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
-                      <Edit className="h-5 w-5 text-amber-500" />طلبات التعديل
-                      <span className="text-sm font-normal text-slate-500">({editRequests.length})</span>
-                    </h3>
-                    {editRequests.length > 0 && (
-                      <button onClick={clearAllEditRequests} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-xs font-medium hover:bg-red-500/20 transition-colors">
-                        <Trash2 className="h-3.5 w-3.5" />مسح الكل
-                      </button>
-                    )}
-                  </div>
-                  {editRequests.length === 0 ? (
-                    <div className="text-center py-12">
-                      <Edit className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
-                      <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد طلبات تعديل</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-                      {editRequests.map(req => {
-                        // Parse changes from JSON
-                        let parsedChanges: Record<string, any> = {};
-                        if (req.changes) {
-                          try { parsedChanges = JSON.parse(req.changes); } catch {}
-                        }
-                        // Fallback: if no changes JSON, build from individual fields
-                        if (Object.keys(parsedChanges).length === 0) {
-                          if (req.newImages && req.newImages.length > 0) parsedChanges.images = req.newImages;
-                          if (req.newVideos && req.newVideos.length > 0) parsedChanges.videos = req.newVideos;
-                          if (req.newPrice) parsedChanges.price = req.newPrice;
-                          if (req.newStatus) parsedChanges.status = req.newStatus;
-                        }
-                        const hasChanges = Object.keys(parsedChanges).length > 0;
-                        const isExpanded = expandedEditRequest === req.id;
-                        // Field label mapping
-                        const fieldLabels: Record<string, string> = { title: 'العنوان', price: 'السعر', area: 'المنطقة', bedrooms: 'غرف النوم', bathrooms: 'الحمامات', floor: 'الدور', apartmentSize: 'المساحة', description: 'الوصف', ownerPhone: 'رقم الهاتف', mapLink: 'رابط الخريطة', type: 'النوع', status: 'الحالة', images: 'الصور', videos: 'الفيديوهات' };
-                        // Get original apartment values for comparison
-                        const apt = req.apartment;
-                        const getOriginalValue = (field: string) => {
-                          if (!apt) return '—';
-                          switch (field) {
-                            case 'title': return apt.title || '—';
-                            case 'price': return apt.price ? `${apt.price.toLocaleString()} ج.م` : '—';
-                            case 'area': return apt.area || '—';
-                            case 'bedrooms': return apt.bedrooms || '—';
-                            case 'bathrooms': return apt.bathrooms || '—';
-                            case 'floor': return apt.floor || '—';
-                            case 'apartmentSize': return apt.apartmentSize ? `${apt.apartmentSize} م²` : '—';
-                            case 'description': return apt.description ? (apt.description.length > 80 ? apt.description.substring(0, 80) + '...' : apt.description) : '—';
-                            case 'ownerPhone': return apt.ownerPhone || '—';
-                            case 'mapLink': return apt.mapLink || '—';
-                            case 'type': return apt.type === 'rent' ? 'إيجار' : apt.type === 'sale' ? 'بيع' : '—';
-                            case 'status': return statusConfig[apt.status]?.label || apt.status || '—';
-                            case 'images': return apt.images ? parseJsonArray(apt.images).length : 0;
-                            case 'videos': return apt.videos ? parseJsonArray(apt.videos).length : 0;
-                            default: return '—';
-                          }
-                        };
-                        const getNewValue = (field: string, value: any) => {
-                          switch (field) {
-                            case 'price': return value ? `${Number(value).toLocaleString()} ج.م` : '—';
-                            case 'apartmentSize': return value ? `${value} م²` : '—';
-                            case 'type': return value === 'rent' ? 'إيجار' : value === 'sale' ? 'بيع' : String(value || '—');
-                            case 'status': return statusConfig[value]?.label || String(value || '—');
-                            case 'bedrooms':
-                            case 'bathrooms':
-                            case 'floor':
-                              return String(value ?? '—');
-                            case 'description':
-                              return value ? (String(value).length > 80 ? String(value).substring(0, 80) + '...' : String(value)) : '—';
-                            default:
-                              return String(value ?? '—');
-                          }
-                        };
-                        // Parse new images/videos for thumbnail display
-                        const newImagesList = Array.isArray(parsedChanges.images) ? parsedChanges.images : (typeof parsedChanges.images === 'string' ? (() => { try { return JSON.parse(parsedChanges.images); } catch { return []; } })() : []);
-                        const newVideosList = Array.isArray(parsedChanges.videos) ? parsedChanges.videos : (typeof parsedChanges.videos === 'string' ? (() => { try { return JSON.parse(parsedChanges.videos); } catch { return []; } })() : []);
-
-                        return (
-                          <div key={req.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                            {/* Header */}
-                            <div className="flex items-start justify-between gap-3 mb-3">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2 flex-wrap mb-1">
-                                  <div className={`w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shrink-0`}>{(req.user?.name || 'م').charAt(0)}</div>
-                                  <h4 className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{req.user?.name || 'مستخدم'}</h4>
-                                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${req.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : req.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
-                                    {req.status === 'approved' ? '✓ معتمد' : req.status === 'pending' ? '⏳ قيد المراجعة' : '✗ مرفوض'}
-                                  </span>
-                                </div>
-                                <div className={`flex flex-wrap gap-2 text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                                  <span className={`px-2 py-0.5 rounded-md ${darkMode ? 'bg-slate-600' : 'bg-white'}`}>{req.editType === 'images' ? 'صور' : req.editType === 'videos' ? 'فيديوهات' : req.editType === 'price' ? 'سعر' : req.editType === 'status' ? 'حالة' : req.editType === 'multiple' ? 'تعديلات متعددة' : req.editType}</span>
-                                  <span className={darkMode ? 'text-slate-500' : 'text-slate-400'}>{new Date(req.createdAt).toLocaleDateString('ar-EG')}</span>
-                                  {hasChanges && <span className={darkMode ? 'text-slate-500' : 'text-slate-400'}>{Object.keys(parsedChanges).length} حقول</span>}
-                                </div>
-                              </div>
-                              <div className="flex gap-1.5 shrink-0">
-                                {hasChanges && (
-                                  <button onClick={() => setExpandedEditRequest(isExpanded ? null : req.id)} className={`p-1.5 rounded-lg transition-colors ${isExpanded ? 'bg-violet-500/20 text-violet-500' : darkMode ? 'bg-slate-600 text-slate-400 hover:bg-slate-500' : 'bg-white text-slate-500 hover:bg-slate-200'}`} title="عرض التفاصيل">
-                                    <Eye className="h-3.5 w-3.5" />
-                                  </button>
-                                )}
-                                {req.status === 'pending' && (
-                                  <>
-                                    <button onClick={() => handleApproveEditRequest(req.id, reviewNotesInput[req.id])} className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors" title="موافقة"><Check className="h-3.5 w-3.5" /></button>
-                                    <button onClick={() => handleRejectEditRequest(req.id, reviewNotesInput[req.id])} className="p-1.5 rounded-lg bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 transition-colors" title="رفض"><XCircle className="h-3.5 w-3.5" /></button>
-                                  </>
-                                )}
-                                <button onClick={() => deleteEditRequest(req.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-500 transition-colors" title="حذف"><Trash2 className="h-3.5 w-3.5" /></button>
-                              </div>
-                            </div>
-
-                            {/* Apartment reference */}
-                            {req.apartment && (
-                              <div className={`mb-3 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs ${darkMode ? 'bg-slate-600 text-slate-300' : 'bg-white text-slate-600'}`}>
-                                <Building2 className="h-3 w-3" />
-                                <span className="font-medium">{req.apartment.title}</span>
-                                <span className={darkMode ? 'text-slate-400' : 'text-slate-400'}>• {req.apartment.area}</span>
-                              </div>
-                            )}
-
-                            {/* Description */}
-                            {req.description && (
-                              <p className={`text-sm mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{req.description}</p>
-                            )}
-
-                            {/* Expanded changes detail */}
-                            {isExpanded && hasChanges && (
-                              <div className={`mt-3 p-3 rounded-xl border ${darkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-200'}`}>
-                                <h5 className={`text-xs font-bold mb-3 flex items-center gap-1.5 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                                  <Sparkles className="h-3.5 w-3.5 text-amber-500" />التعديلات المطلوبة
-                                </h5>
-                                <div className="space-y-2.5">
-                                  {Object.entries(parsedChanges).map(([field, value]) => {
-                                    if (field === 'images') {
-                                      return (
-                                        <div key={field}>
-                                          <div className={`text-xs font-medium mb-1.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{fieldLabels[field] || field}</div>
-                                          <div className="flex gap-2">
-                                            {/* Before */}
-                                            <div className="flex-1">
-                                              <div className={`text-[10px] mb-1 font-medium ${darkMode ? 'text-red-400' : 'text-red-500'}`}>قبل ({getOriginalValue(field)})</div>
-                                              <div className="flex gap-1 flex-wrap">
-                                                {apt?.images ? parseJsonArray(apt.images).slice(0, 3).map((img: string, i: number) => (
-                                                  <img key={i} src={img} className="w-12 h-12 rounded-lg object-cover border border-red-200 opacity-60" alt="" />
-                                                )) : <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>لا توجد صور</span>}
-                                              </div>
-                                            </div>
-                                            {/* After */}
-                                            <div className="flex-1">
-                                              <div className={`text-[10px] mb-1 font-medium ${darkMode ? 'text-emerald-400' : 'text-emerald-500'}`}>بعد ({newImagesList.length})</div>
-                                              <div className="flex gap-1 flex-wrap">
-                                                {newImagesList.slice(0, 3).map((img: string, i: number) => (
-                                                  <img key={i} src={img} className="w-12 h-12 rounded-lg object-cover border border-emerald-200" alt="" />
-                                                ))}
-                                                {newImagesList.length > 3 && <span className={`text-[10px] self-center ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>+{newImagesList.length - 3}</span>}
-                                              </div>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    }
-                                    if (field === 'videos') {
-                                      return (
-                                        <div key={field}>
-                                          <div className={`text-xs font-medium mb-1.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{fieldLabels[field] || field}</div>
-                                          <div className="flex gap-2">
-                                            <div className="flex-1">
-                                              <div className={`text-[10px] mb-1 font-medium ${darkMode ? 'text-red-400' : 'text-red-500'}`}>قبل ({getOriginalValue(field)})</div>
-                                              <div className={`flex items-center gap-1 text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                                                <Video className="h-3 w-3" />
-                                                {Number(getOriginalValue(field)) > 0 ? `${getOriginalValue(field)} فيديو` : 'لا توجد فيديوهات'}
-                                              </div>
-                                            </div>
-                                            <div className="flex-1">
-                                              <div className={`text-[10px] mb-1 font-medium ${darkMode ? 'text-emerald-400' : 'text-emerald-500'}`}>بعد ({newVideosList.length})</div>
-                                              <div className="flex gap-1 flex-wrap">
-                                                {newVideosList.slice(0, 3).map((vid: string, i: number) => (
-                                                  <a key={i} href={vid} target="_blank" rel="noopener noreferrer" className={`px-2 py-1 rounded-md text-[10px] ${darkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-600'}`}>
-                                                    <Play className="h-2.5 w-2.5 inline" /> فيديو {i + 1}
-                                                  </a>
-                                                ))}
-                                              </div>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    }
-                                    // Regular text fields
-                                    const originalVal = getOriginalValue(field);
-                                    const newVal = getNewValue(field, value);
-                                    return (
-                                      <div key={field}>
-                                        <div className={`text-xs font-medium mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{fieldLabels[field] || field}</div>
-                                        <div className="flex gap-2">
-                                          <div className="flex-1">
-                                            <div className={`text-[10px] mb-0.5 font-medium ${darkMode ? 'text-red-400' : 'text-red-500'}`}>قبل</div>
-                                            <div className={`text-xs px-2 py-1.5 rounded-lg ${darkMode ? 'bg-red-500/10 text-red-300 line-through' : 'bg-red-50 text-red-600 line-through'}`}>{originalVal}</div>
-                                          </div>
-                                          <div className="flex items-center"><ChevronLeft className={`h-3 w-3 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /></div>
-                                          <div className="flex-1">
-                                            <div className={`text-[10px] mb-0.5 font-medium ${darkMode ? 'text-emerald-400' : 'text-emerald-500'}`}>بعد</div>
-                                            <div className={`text-xs px-2 py-1.5 rounded-lg ${darkMode ? 'bg-emerald-500/10 text-emerald-300' : 'bg-emerald-50 text-emerald-700'}`}>{newVal}</div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Review notes input for pending requests */}
-                            {req.status === 'pending' && (
-                              <div className="mt-3">
-                                <input
-                                  type="text"
-                                  placeholder="أضف ملاحظات مراجعة (اختياري)..."
-                                  value={reviewNotesInput[req.id] || ''}
-                                  onChange={(e) => setReviewNotesInput({ ...reviewNotesInput, [req.id]: e.target.value })}
-                                  className={`w-full px-3 py-2 rounded-lg text-xs border ${darkMode ? 'bg-slate-800 border-slate-600 text-white placeholder-slate-500' : 'bg-white border-slate-200 placeholder-slate-400'}`}
-                                />
-                              </div>
-                            )}
-
-                            {/* Show review notes for approved/rejected */}
-                            {req.reviewNotes && (
-                              <div className={`mt-2 px-3 py-2 rounded-lg text-xs ${req.status === 'approved' ? (darkMode ? 'bg-emerald-500/10 text-emerald-300' : 'bg-emerald-50 text-emerald-700') : (darkMode ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-50 text-amber-700')}`}>
-                                <span className="font-medium">{req.status === 'approved' ? 'ملاحظات الموافقة' : 'سبب الرفض'}: </span>{req.reviewNotes}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                  ))}
                 </div>
               )}
 
               {/* Users Tab */}
               {devTab === 'users' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
-                      <User className="h-5 w-5 text-amber-500" />المستخدمين
-                      <span className="text-sm font-normal text-slate-500">({allUsers.length})</span>
-                    </h3>
-                  </div>
-                  {allUsers.length === 0 ? (
-                    <div className="text-center py-12">
-                      <User className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
-                      <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا يوجد مستخدمين</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-                      {allUsers.map(u => {
-                        const isMainDev = u.identifier === DEVELOPER_EMAIL;
-                        return (
-                        <div key={u.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'} flex flex-col gap-3`}>
-                          <div className="flex items-center justify-between">
-                            <div className="min-w-0 flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold shrink-0">{u.name?.charAt(0) || 'م'}</div>
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <p className={`font-medium truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{u.name}</p>
-                                  {u.role === 'DEVELOPER' && <span className="px-2 py-0.5 rounded-full text-xs bg-violet-100 text-violet-700 shrink-0 font-medium">مطور</span>}
-                                  {u.isBlocked && <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700 shrink-0">محظور</span>}
-                                </div>
-                                <p className={`text-sm truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{u.identifier || u.email}</p>
-                              </div>
-                            </div>
-                          </div>
-                          {/* Role changer - only for non-main developers */}
-                          {!isMainDev && (
-                            <div className={`flex items-center gap-3 p-3 rounded-lg ${darkMode ? 'bg-slate-600' : 'bg-white'}`}>
-                              <ShieldCheck className={`h-4 w-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`} />
-                              <span className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>الدور:</span>
-                              <select
-                                value={u.role || 'USER'}
-                                onChange={(e) => changeUserRole(u.id, e.target.value, u.name, u.role)}
-                                className={`flex-1 px-3 py-1.5 rounded-lg border text-sm ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-700'}`}
-                              >
-                                <option value="USER">مستخدم عادي</option>
-                                <option value="DEVELOPER">مطور</option>
-                              </select>
-                            </div>
-                          )}
-                          {/* Actions */}
-                          <div className="flex gap-2 justify-end">
-                            {u.isBlocked ? (
-                              <button onClick={() => unblockUser(u.id)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm hover:bg-emerald-600 transition-colors">إلغاء الحظر</button>
-                            ) : (
-                              !isMainDev && <button onClick={() => blockUser(u.id, 'حظر من المطور')} className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm hover:bg-amber-600 transition-colors">حظر</button>
-                            )}
-                            {!isMainDev && <button onClick={() => deleteUser(u.id, u.name)} className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600 transition-colors flex items-center gap-1.5"><Trash2 className="h-3.5 w-3.5" />حذف</button>}
-                          </div>
+                  {allUsers.length === 0 ? <div className="text-center py-12"><User className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا يوجد مستخدمين</p></div> : allUsers.map(u => (
+                    <div key={u.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'} flex items-center justify-between`}>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{u.name}</p>
+                          {u.isBlocked && <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">محظور</span>}
                         </div>
-                        );
-                      })}
+                        <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{u.identifier || u.email}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        {u.isBlocked ? (
+                          <button onClick={() => unblockUser(u.id)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm">إلغاء الحظر</button>
+                        ) : (
+                          <button onClick={() => blockUser(u.id, 'حظر من المطور')} className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm">حظر</button>
+                        )}
+                      </div>
                     </div>
-                  )}
+                  ))}
                 </div>
               )}
 
               {/* Blocked Tab */}
               {devTab === 'blocked' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
-                      <Ban className="h-5 w-5 text-amber-500" />المستخدمين المحظورين
-                      <span className="text-sm font-normal text-slate-500">({blockedUsers.length})</span>
-                    </h3>
-                    {blockedUsers.length > 0 && (
-                      <button onClick={() => { setConfirmDialog({ isOpen: true, title: 'إلغاء حظر جميع المستخدمين', message: `هل أنت متأكد من إلغاء حظر جميع المستخدمين المحظورين (${blockedUsers.length})؟`, confirmText: 'إلغاء حظر الكل', cancelText: 'تراجع', onConfirm: async () => { setConfirmDialog(prev => ({ ...prev, loading: true })); try { for (const bu of blockedUsers) { try { await fetch(`/api/block?userId=${bu.userId}`, { method: 'DELETE' }); } catch {} } addToast('تم إلغاء حظر جميع المستخدمين', 'success'); fetchBlockedUsers(); fetchAllUsers(); } catch { addToast('حدث خطأ', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); } }, type: 'warning' }); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 text-xs font-medium hover:bg-emerald-500/20 transition-colors">
-                        <CheckCircle2 className="h-3.5 w-3.5" />إلغاء حظر الكل
-                      </button>
-                    )}
-                  </div>
-                  {blockedUsers.length === 0 ? (
-                    <div className="text-center py-12">
-                      <Ban className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
-                      <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا يوجد مستخدمين محظورين</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-                      {blockedUsers.map(bu => {
-                        const blockedUserApartments = allApartments.filter(a => a.createdBy === bu.userId);
-                        return (
-                        <div key={bu.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center text-white text-sm font-bold shrink-0">{bu.user.name?.charAt(0) || 'م'}</div>
-                                <div className="min-w-0">
-                                  <p className={`font-medium truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{bu.user.name}</p>
-                                  <p className={`text-sm truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{bu.user.identifier} • {bu.reason || 'بدون سبب'}</p>
-                                </div>
-                              </div>
+                  {blockedUsers.length === 0 ? <div className="text-center py-12"><Ban className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا يوجد مستخدمين محظورين</p></div> : blockedUsers.map(bu => {
+                    const blockedUserApartments = allApartments.filter(a => a.createdBy === bu.userId);
+                    return (
+                    <div key={bu.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div><p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{bu.user.name}</p><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{bu.user.identifier} • {bu.reason || 'بدون سبب'}</p></div>
+                        <button onClick={() => unblockUser(bu.userId)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm">إلغاء الحظر</button>
+                      </div>
+                      {blockedUserApartments.length > 0 && (
+                        <div className={`p-3 rounded-lg ${darkMode ? 'bg-slate-600' : 'bg-slate-100'}`}>
+                          <p className={`text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>عقاراته ({blockedUserApartments.length}):</p>
+                          <div className="space-y-2">{blockedUserApartments.map(apt => (
+                            <div key={apt.id} className="flex items-center justify-between">
+                              <span className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.title}</span>
+                              <button onClick={() => handleDeleteApartment(apt.id)} className="text-xs text-red-500 hover:text-red-600">حذف</button>
                             </div>
-                            <button onClick={() => unblockUser(bu.userId)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm hover:bg-emerald-600 transition-colors shrink-0">إلغاء الحظر</button>
-                          </div>
-                          {blockedUserApartments.length > 0 && (
-                            <div className={`p-3 rounded-lg ${darkMode ? 'bg-slate-600' : 'bg-slate-100'}`}>
-                              <p className={`text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>عقاراته ({blockedUserApartments.length}):</p>
-                              <div className="space-y-2">{blockedUserApartments.map(apt => (
-                                <div key={apt.id} className="flex items-center justify-between">
-                                  <span className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.title}</span>
-                                  <button onClick={() => handleDeleteApartment(apt.id)} className="text-xs text-red-500 hover:text-red-600">حذف</button>
-                                </div>
-                              ))}</div>
-                            </div>
-                          )}
+                          ))}</div>
                         </div>
-                      );})}
+                      )}
                     </div>
-                  )}
-                </div>
-              )}
-
-              {/* Logs Tab */}
-              {devTab === 'logs' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'} flex items-center gap-2`}>
-                      <Activity className="h-5 w-5 text-amber-500" />سجل العمليات
-                      <span className="text-sm font-normal text-slate-500">({operationLogs.length})</span>
-                    </h3>
-                    {operationLogs.length > 0 && (
-                      <button onClick={clearAllLogs} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-xs font-medium hover:bg-red-500/20 transition-colors">
-                        <Trash2 className="h-3.5 w-3.5" />مسح الكل
-                      </button>
-                    )}
-                  </div>
-                  {operationLogs.length === 0 ? (
-                    <div className="text-center py-12">
-                      <Activity className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
-                      <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد سجلات</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 max-h-[60vh] overflow-y-auto">
-                      {operationLogs.map(log => (
-                        <div key={log.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 flex-wrap mb-1">
-                                <h4 className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{log.action || log.type || 'عملية'}</h4>
-                                {log.entityType && <span className={`px-2 py-0.5 rounded-full text-xs ${darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-200 text-slate-600'}`}>{log.entityType}</span>}
-                              </div>
-                              {log.details && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{typeof log.details === 'string' ? log.details : JSON.stringify(log.details)}</p>}
-                              <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{log.createdAt ? new Date(log.createdAt).toLocaleString('ar-EG') : ''}</p>
-                            </div>
-                            <button onClick={() => deleteLog(log.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-500 transition-colors shrink-0" title="حذف"><Trash2 className="h-3.5 w-3.5" /></button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  );})}
                 </div>
               )}
 
@@ -2924,8 +2144,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم العقار المميز+ VIP (ج.م)</label><input type="number" value={settings.vipFee} onChange={(e) => setSettings({ ...settings, vipFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                     <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم عرض البيع (ج.م)</label><input type="number" value={settings.saleDisplayFee} onChange={(e) => setSettings({ ...settings, saleDisplayFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                     <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم عرض الإيجار (ج.م)</label><input type="number" value={settings.rentDisplayFee} onChange={(e) => setSettings({ ...settings, rentDisplayFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم الخدمات الأخرى (ج.م)</label><input type="number" value={settings.otherServicesFee} onChange={(e) => setSettings({ ...settings, otherServicesFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم التوثيق (ج.م)</label><input type="number" value={settings.verifiedListingFee} onChange={(e) => setSettings({ ...settings, verifiedListingFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                     <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>العملة</label><input type="text" value={settings.currency} onChange={(e) => setSettings({ ...settings, currency: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                   </div>
                   {/* Developer Password Change */}
@@ -2937,6 +2155,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <input type="password" placeholder="تأكيد كلمة المرور" value={devPasswordChange.confirm} onChange={(e) => setDevPasswordChange({ ...devPasswordChange, confirm: e.target.value })} className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 placeholder-slate-400'}`} />
                     </div>
                     <button onClick={async () => {
+                    <button onClick={async () => {
                       if (!devPasswordChange.current || !devPasswordChange.new || !devPasswordChange.confirm) { addToast('جميع الحقول مطلوبة', 'error'); return; }
                       if (devPasswordChange.new !== devPasswordChange.confirm) { addToast('كلمتا المرور غير متطابقتين', 'error'); return; }
                       if (devPasswordChange.new.length < 6) { addToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'error'); return; }
@@ -2944,12 +2163,23 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                         const res = await fetch('/api/auth/change-password', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ identifier: DEVELOPER_EMAIL, currentPassword: devPasswordChange.current, newPassword: devPasswordChange.new })
+                          body: JSON.stringify({
+                            identifier: currentUser?.identifier,
+                            currentPassword: devPasswordChange.current,
+                            newPassword: devPasswordChange.new
+                          })
                         });
                         const data = await res.json();
-                        if (res.ok && data.success) { addToast('تم تغيير كلمة المرور بنجاح!', 'success'); setDevPasswordChange({ current: '', new: '', confirm: '' }); }
-                        else { addToast(data.error || 'كلمة المرور الحالية غير صحيحة', 'error'); }
-                      } catch { addToast('حدث خطأ في تغيير كلمة المرور', 'error'); }
+                        if (res.ok && data.success) {
+                          addToast('تم تغيير كلمة المرور بنجاح!', 'success');
+                          setDevPasswordChange({ current: '', new: '', confirm: '' });
+                        } else {
+                          addToast(data.error || 'كلمة المرور الحالية غير صحيحة', 'error');
+                        }
+                      } catch {
+                        addToast('حدث خطأ في تغيير كلمة المرور', 'error');
+                      }
+                    }} className="mt-3 px-6 py-2 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white font-medium text-sm">تغيير كلمة المرور</button>
                     }} className="mt-3 px-6 py-2 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white font-medium text-sm">تغيير كلمة المرور</button>
                   </div>
                   <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
@@ -2960,7 +2190,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       {settings.vipFee === 0 ? <div className={`p-2 rounded-lg bg-emerald-100 text-emerald-700`}>VIP+: مجاني ✨</div> : <div className={`p-2 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>VIP+: {settings.vipFee} {settings.currency}</div>}
                     </div>
                   </div>
-                  <button onClick={() => updateSettings(settings)} disabled={settingsLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium disabled:opacity-50">{settingsLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'حفظ الإعدادات'}</button>
+                  <button onClick={async () => { await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) }); addToast('تم حفظ الإعدادات', 'success'); }} className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium">حفظ الإعدادات</button>
                 </div>
               )}
             </div>
@@ -2968,8 +2198,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
         </motion.div>
       )}</AnimatePresence>
 
-
-      {/* Payment Modal */}
+      {/* Request Contact Modal */}
       <AnimatePresence>{paymentApartment && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setPaymentApartment(null)}>
           <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
@@ -2977,14 +2206,38 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>طلب بيانات التواصل</h2>
               <button onClick={() => setPaymentApartment(null)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
             </div>
-            <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>المبلغ المطلوب:</p><p className="text-2xl font-bold text-emerald-500">{settings.contactFee} {settings.currency}</p></div>
-            <div className="space-y-3 mb-6">
-              <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>اختر طريقة الدفع:</p>
-              {['فودافون كاش', 'أورنج كاش', 'اتصالات كاش', 'تحويل بنكي'].map(method => (
-                <button key={method} onClick={() => setPaymentMethod(method)} className={`w-full p-4 rounded-xl border-2 text-right transition-all ${paymentMethod === method ? 'border-emerald-500 bg-emerald-50' : darkMode ? 'border-slate-600 hover:border-slate-500' : 'border-slate-200 hover:border-slate-300'}`}>{method}</button>
-              ))}
+            <div className={`p-4 rounded-xl mb-4 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+              <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>العقار:</p>
+              <p className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{paymentApartment.title}</p>
+              <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{paymentApartment.area} - {paymentApartment.price.toLocaleString()} ج.م</p>
             </div>
-            <button onClick={() => handlePayment()} disabled={!paymentMethod || paymentSubmitting} className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium disabled:opacity-50">{paymentSubmitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'تأكيد الطلب'}</button>
+            {settings.contactFee > 0 ? (
+              <div className={`p-4 rounded-xl mb-4 ${darkMode ? 'bg-amber-900/20 border border-amber-700' : 'bg-amber-50 border border-amber-200'}`}>
+                <p className={`text-sm ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>رسوم الخدمة:</p>
+                <p className="text-2xl font-bold text-emerald-500">{settings.contactFee} ج.م</p>
+              </div>
+            ) : (
+              <div className={`p-4 rounded-xl mb-4 ${darkMode ? 'bg-emerald-900/20 border border-emerald-700' : 'bg-emerald-50 border border-emerald-200'}`}>
+                <div className="flex items-center gap-2">
+                  <Check className="h-5 w-5 text-emerald-500" />
+                  <p className={`font-medium text-emerald-600`}>بيانات التواصل مجانية</p>
+                </div>
+              </div>
+            )}
+            <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-blue-900/20 border border-blue-700' : 'bg-blue-50 border border-blue-200'}`}>
+              <div className="flex items-start gap-2">
+                <MessageSquare className="h-5 w-5 text-blue-500 mt-0.5" />
+                <div>
+                  <p className={`text-sm font-medium ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>كيف يعمل؟</p>
+                  <p className={`text-xs mt-1 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                    1. اضغط "إرسال الطلب"<br/>
+                    2. المطور يستقبل طلبك<br/>
+                    {settings.contactFee > 0 ? '3. المطور يرد عليك برسالة تحتوي على طريقة الدفع<br/>4. بعد الدفع، المطور يعتمد طلبك وبيانات التواصل تظهر لك' : '3. المطور يعتمد طلبك وبيانات التواصل تظهر لك'}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <button onClick={handleRequestContact} disabled={requestContactLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium disabled:opacity-50">{requestContactLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'إرسال طلب بيانات التواصل'}</button>
           </motion.div>
         </motion.div>
       )}</AnimatePresence>

@@ -45,11 +45,12 @@ export async function GET() {
       });
     }
 
-    const hashedPassword = await hashPassword("admin123");
+    const devEmail = process.env.DEVELOPER_EMAIL || 'developer@example.com';
+    const hashedPassword = await hashPassword(process.env.DEVELOPER_PASSWORD || 'admin123');
     const developer = await db.user.create({
       data: {
-        email: "ahmadmamdouh10030@gmail.com",
-        identifier: "ahmadmamdouh10030@gmail.com",
+        email: devEmail,
+        identifier: devEmail,
         name: "المطور الرئيسي",
         password: hashedPassword,
         role: "DEVELOPER",

@@ -37,6 +37,14 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { createdAt: 'desc' }
       });
+      // Mark messages as read for developer
+      const unreadIds = messages.filter(m => !m.isRead).map(m => m.id);
+      if (unreadIds.length > 0) {
+        await db.message.updateMany({
+          where: { id: { in: unreadIds } },
+          data: { isRead: true }
+        });
+      }
     } else {
       // المستخدم يرى رسائله فقط (filter by token userId)
       messages = await db.message.findMany({
@@ -53,6 +61,14 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { createdAt: 'desc' }
       });
+      // Mark messages received by user as read
+      const unreadReceivedIds = messages.filter(m => m.receiverId === tokenUserId && !m.isRead).map(m => m.id);
+      if (unreadReceivedIds.length > 0) {
+        await db.message.updateMany({
+          where: { id: { in: unreadReceivedIds } },
+          data: { isRead: true }
+        });
+      }
     }
 
     return NextResponse.json(messages);

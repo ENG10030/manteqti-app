@@ -125,7 +125,7 @@ export async function POST(request: Request) {
           where: { id: existingUser.id },
           data: { otp, otpExpires }
         });
-        console.log(`📧 Email verification OTP for ${userEmail}: ${otp}`);
+        if (process.env.NODE_ENV === 'development') console.log(`📧 OTP for ${userEmail}: ${otp}`);
         return NextResponse.json({
           message: "حسابك موجود بالفعل. تم إرسال رمز تأكيد جديد",
           emailVerificationRequired: true,
@@ -142,7 +142,7 @@ export async function POST(request: Request) {
     recordRegisterAttempt(ip);
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const isDeveloper = userEmail === (process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com');
+    const isDeveloper = userEmail === process.env.DEVELOPER_EMAIL;
 
     // إنشاء OTP للتأكيد
     const otp = crypto.randomInt(100000, 999999).toString();
@@ -163,7 +163,7 @@ export async function POST(request: Request) {
       },
     });
 
-    console.log(`📧 Email verification OTP for ${userEmail}: ${otp}`);
+    if (process.env.NODE_ENV === 'development') console.log(`📧 OTP for ${userEmail}: ${otp}`);
 
     return NextResponse.json({
       message: "تم إنشاء الحساب! يرجى تأكيد البريد الإلكتروني",

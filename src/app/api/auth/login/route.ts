@@ -95,7 +95,7 @@ export async function POST(request: Request) {
         where: { id: user.id },
         data: { otp, otpExpires }
       });
-      console.log(`📧 Re-sent verification OTP for ${loginIdentifier}: ${otp}`);
+      if (process.env.NODE_ENV === 'development') console.log(`📧 OTP for ${loginIdentifier}: ${otp}`);
 
       return NextResponse.json(
         {

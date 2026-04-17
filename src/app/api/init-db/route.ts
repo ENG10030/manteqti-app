@@ -3,13 +3,22 @@ import { db } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 
 // مفتاح سري لحماية إنشاء قاعدة البيانات - لازم يتغيّر!
-const SETUP_KEY = process.env.SETUP_KEY || 'manteqti-setup-2024';
+const SETUP_KEY = process.env.SETUP_KEY;
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
+const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD;
 
 export async function GET(request: Request) {
   try {
     // التحقق من المفتاح السري
     const { searchParams } = new URL(request.url);
     const providedKey = searchParams.get('setupKey');
+
+    if (!SETUP_KEY || !DEVELOPER_EMAIL || !DEVELOPER_PASSWORD) {
+      return NextResponse.json(
+        { error: 'يجب تعيين SETUP_KEY و DEVELOPER_EMAIL و DEVELOPER_PASSWORD في متغيرات البيئة' },
+        { status: 500 }
+      );
+    }
 
     if (!providedKey || providedKey !== SETUP_KEY) {
       return NextResponse.json(
@@ -20,9 +29,6 @@ export async function GET(request: Request) {
 
     // التحقق من اتصال قاعدة البيانات
     await db.$connect();
-
-    const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
-    const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || 'admin123';
 
     const existingAdmin = await db.user.findUnique({
       where: { identifier: DEVELOPER_EMAIL }
@@ -86,8 +92,7 @@ export async function GET(request: Request) {
 
   } catch (error: any) {
     return NextResponse.json({
-      error: 'خطأ غير متوقع',
-      details: error?.message || String(error)
+      error: 'خطأ غير متوقع'
     }, { status: 500 });
   } finally {
     await db.$disconnect();
