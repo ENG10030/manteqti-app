@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { NextRequest } from "next/server";
 import CredentialsProvider from "next-auth/providers/credentials";
