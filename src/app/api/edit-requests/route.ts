@@ -30,38 +30,65 @@ export async function GET(request: NextRequest) {
     const apartmentId = searchParams.get('apartmentId');
 
     const where: Record<string, unknown> = {};
-
     if (status) where.status = status;
     if (userId) where.userId = userId;
     if (apartmentId) where.apartmentId = apartmentId;
 
+    // جلب طلبات التعديل بدون include (عشان PgBouncer)
     const editRequests = await db.propertyEditRequest.findMany({
       where,
-      include: {
-        apartment: {
-          select: {
-            id: true,
-            title: true,
-            price: true,
-            status: true,
-            type: true,
-          }
-        },
-        user: {
-          select: {
-            id: true,
-            name: true,
-            identifier: true,
-          }
-        }
-      },
       orderBy: { createdAt: 'desc' },
     });
 
-    return NextResponse.json({ editRequests });
+    // جلب بيانات العقارات والمستخدمين بشكل منفصل
+    const apartmentIds = [...new Set(editRequests.map(r => r.apartmentId))];
+    const userIds = [...new Set(editRequests.map(r => r.userId))];
+
+    const [apartments, users] = await Promise.all([
+      apartmentIds.length > 0 
+        ? db.apartment.findMany({ 
+            where: { id: { in: apartmentIds } },
+            select: { id: true, title: true, price: true, status: true, type: true }
+          })
+        : [],
+      userIds.length > 0
+        ? db.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, name: true, identifier: true }
+          })
+        : []
+    ]);
+
+    const aptMap = Object.fromEntries(apartments.map(a => [a.id, a]));
+    const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+
+    const result = editRequests.map(r => ({
+      id: r.id,
+      apartmentId: r.apartmentId,
+      userId: r.userId,
+      editType: r.editType,
+      newImages: r.newImages,
+      newVideos: r.newVideos,
+      newPrice: r.newPrice,
+      newStatus: r.newStatus,
+      description: r.description,
+      status: r.status,
+      reviewedBy: r.reviewedBy,
+      reviewedAt: r.reviewedAt,
+      reviewNotes: r.reviewNotes,
+      createdAt: r.createdAt?.toISOString(),
+      updatedAt: r.updatedAt?.toISOString(),
+      apartment: aptMap[r.apartmentId] || null,
+      user: userMap[r.userId] || null,
+    }));
+
+    return NextResponse.json({ editRequests: result });
   } catch (error: any) {
-    console.error('Error fetching edit requests:', error?.message || error);
-    return NextResponse.json({ error: 'حدث خطأ أثناء جلب طلبات التعديل' }, { status: 500 });
+    console.error('Edit requests GET error:', error?.message || error);
+    return NextResponse.json({ 
+      error: 'حدث خطأ أثناء جلب طلبات التعديل',
+      details: error?.message || String(error)
+    }, { status: 500 });
   }
 }
 
@@ -87,31 +114,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'معرف العقار مطلوب' }, { status: 400 });
     }
 
-    // التحقق من وجود العقار
+    // التحقق من وجود العقار (بدون include)
     const apartment = await db.apartment.findUnique({
       where: { id: body.apartmentId },
+      select: { id: true, status: true }
     });
 
     if (!apartment) {
       return NextResponse.json({ error: 'العقار غير موجود' }, { status: 404 });
     }
 
-    // التحقق من أن العقار منشور
     if (apartment.status !== 'available' && apartment.status !== 'reserved') {
       return NextResponse.json({ error: 'لا يمكن طلب تعديل على عقار غير منشور' }, { status: 400 });
     }
 
-    // التحقق من عدم وجود طلب معلق لنفس المستخدم على نفس العقار
+    // التحقق من عدم وجود طلب معلق
     const existingRequest = await db.propertyEditRequest.findFirst({
       where: {
         apartmentId: body.apartmentId,
         userId: tokenUserId,
         status: 'pending',
       },
+      select: { id: true }
     });
 
     if (existingRequest) {
-      return NextResponse.json({ error: 'يوجد طلب تعديل معلق بالفعل على هذا العقار' }, { status: 400 });
+      return NextResponse.json({ error: 'يوجد طلب تعديل معلق بالفعل' }, { status: 400 });
     }
 
     // تحديد نوع التعديل
@@ -136,23 +164,30 @@ export async function POST(request: NextRequest) {
         description: body.description || null,
         status: 'pending',
       },
-      include: {
-        apartment: {
-          select: { id: true, title: true }
-        },
-        user: {
-          select: { id: true, name: true }
-        }
-      }
     });
+
+    // جلب اسم المستخدم والعقار بشكل منفصل
+    const [aptInfo, userInfo] = await Promise.all([
+      db.apartment.findUnique({ where: { id: body.apartmentId }, select: { id: true, title: true } }),
+      db.user.findUnique({ where: { id: tokenUserId }, select: { id: true, name: true } })
+    ]);
 
     return NextResponse.json({
       success: true,
-      editRequest,
+      editRequest: {
+        ...editRequest,
+        createdAt: editRequest.createdAt?.toISOString(),
+        updatedAt: editRequest.updatedAt?.toISOString(),
+      },
+      apartment: aptInfo,
+      user: userInfo,
       message: 'تم إرسال طلب التعديل بنجاح'
     });
   } catch (error: any) {
-    console.error('Error creating edit request:', error?.message || error);
-    return NextResponse.json({ error: 'حدث خطأ أثناء إرسال طلب التعديل' }, { status: 500 });
+    console.error('Edit requests POST error:', error?.message || error);
+    return NextResponse.json({ 
+      error: 'حدث خطأ أثناء إرسال طلب التعديل',
+      details: error?.message || String(error)
+    }, { status: 500 });
   }
 }
