@@ -338,11 +338,12 @@ export default function App() {
 
   // Fetch settings (available for ALL users, not just developer)
   const settingsIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const prevContactFeeRef = useRef<number | null>(null);
 
   const startSettingsPolling = useCallback(() => {
     fetchSettings();
-    // Poll every 30 seconds for real-time settings updates
-    settingsIntervalRef.current = setInterval(fetchSettings, 30000);
+    // Poll every 15 seconds for real-time settings updates
+    settingsIntervalRef.current = setInterval(fetchSettings, 15000);
     return () => { if (settingsIntervalRef.current) clearInterval(settingsIntervalRef.current); };
   }, []);
 
@@ -350,6 +351,16 @@ export default function App() {
     const cleanup = startSettingsPolling();
     return cleanup;
   }, [startSettingsPolling]);
+
+  // Re-fetch apartment details when contactFee changes (for open modal)
+  useEffect(() => {
+    if (prevContactFeeRef.current !== null && prevContactFeeRef.current !== settings.contactFee) {
+      if (selectedApartment) {
+        fetchApartmentDetails(selectedApartment.id);
+      }
+    }
+    prevContactFeeRef.current = settings.contactFee;
+  }, [settings.contactFee, selectedApartment]);
 
   // Fetch developer data
   const fetchDevData = async () => {
@@ -362,24 +373,27 @@ export default function App() {
     } catch {}
   };
 
-  // Fetch settings
+  // Fetch settings - FIX: use ?? instead of || so 0 is not treated as falsy
   const fetchSettings = async () => {
     try {
       const res = await fetch('/api/settings');
       const data = await res.json();
-      if (res.ok) setSettings({ 
-        contactFee: data.contactFee || data.settings?.contactFee || 50, 
-        featuredFee: data.featuredFee || data.settings?.featuredFee || 100, 
-        premiumFee: data.premiumFee || data.settings?.premiumFee || 200, 
-        vipFee: data.vipFee || data.settings?.vipFee || 300,
-        saleDisplayFee: data.saleDisplayFee || data.settings?.saleDisplayFee || 100,
-        rentDisplayFee: data.rentDisplayFee || data.settings?.rentDisplayFee || 75,
-        otherServicesFee: data.otherServicesFee || data.settings?.otherServicesFee || 50,
-        highlightFee: data.highlightFee || data.settings?.highlightFee || 150,
-        priorityListingFee: data.priorityListingFee || data.settings?.priorityListingFee || 200,
-        verifiedListingFee: data.verifiedListingFee || data.settings?.verifiedListingFee || 250,
-        currency: data.currency || data.settings?.currency || 'ج.م'
-      });
+      if (res.ok) {
+        const s = data.settings || data;
+        setSettings({ 
+          contactFee: s.contactFee ?? 50, 
+          featuredFee: s.featuredFee ?? 100, 
+          premiumFee: s.premiumFee ?? 200, 
+          vipFee: s.vipFee ?? 300,
+          saleDisplayFee: s.saleDisplayFee ?? 100,
+          rentDisplayFee: s.rentDisplayFee ?? 75,
+          otherServicesFee: s.otherServicesFee ?? 50,
+          highlightFee: s.highlightFee ?? 150,
+          priorityListingFee: s.priorityListingFee ?? 200,
+          verifiedListingFee: s.verifiedListingFee ?? 250,
+          currency: s.currency ?? 'ج.م'
+        });
+      }
     } catch {}
   };
 
@@ -504,8 +518,24 @@ export default function App() {
     }
   };
 
+  // Developer message polling - poll every 10s for new messages
+  const messagesIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const devDataIntervalRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
-    if (isDeveloper) { fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
+    if (isDeveloper) { 
+      fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests();
+      // Poll messages every 10s for developer to see new requests in real-time
+      messagesIntervalRef.current = setInterval(fetchMessages, 10000);
+      // Poll dev data (inquiries/payments) every 15s for real-time dashboard updates
+      devDataIntervalRef.current = setInterval(fetchDevData, 15000);
+    } else {
+      // Poll messages every 15s for regular users
+      messagesIntervalRef.current = setInterval(fetchMessages, 15000);
+    }
+    return () => { 
+      if (messagesIntervalRef.current) clearInterval(messagesIntervalRef.current);
+      if (devDataIntervalRef.current) clearInterval(devDataIntervalRef.current);
+    };
   }, [isDeveloper]);
 
   // Fetch likes
@@ -911,15 +941,20 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok) {
-        if (data.alreadyApproved) {
-          addToast('بيانات التواصل متاحة لك بالفعل! حدّث الصفحة لمشاهدتها', 'success');
-          // إعادة جلب التفاصيل
+        if (data.alreadyApproved || data.autoApproved) {
+          addToast('بيانات التواصل متاحة الآن! ✅', 'success');
+          // إعادة جلب التفاصيل لإظهار بيانات التواصل
           if (paymentApartment) fetchApartmentDetails(paymentApartment.id);
         } else if (data.pendingInquiry) {
           addToast('لديك طلب معلق بالفعل. سيتم الرد عليك قريباً', 'info');
+          // فتح الرسائل تلقائياً لمتابعة الرد
+          await fetchMessages();
+          setShowMessages(true);
         } else {
           addToast('تم إرسال طلب بيانات التواصل! تحقق من الرسائل لمعرفة طريقة الدفع', 'success');
-          fetchMessages();
+          // فتح الرسائل تلقائياً وإرسال إشعار
+          await fetchMessages();
+          setShowMessages(true);
         }
         setPaymentApartment(null);
       } else {
@@ -1699,11 +1734,18 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               <p className="text-3xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent mb-4">{selectedApartment.price.toLocaleString()} ج.م{selectedApartment.type === 'rent' && <span className="text-sm text-slate-500"> /شهر</span>}</p>
               <p className={`mb-6 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{selectedApartment.description}</p>
               
-              {selectedApartmentDetails?.contactRevealed || hasPaidForApartment(selectedApartment.id) ? (
-                <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
-                  <h3 className={`font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>بيانات التواصل</h3>
-                  <div className="flex items-center gap-2"><Phone className="h-5 w-5 text-emerald-500" /><a href={`tel:${selectedApartmentDetails?.ownerPhone || selectedApartment.ownerPhone}`} className="text-emerald-600 font-medium hover:underline">{selectedApartmentDetails?.ownerPhone || selectedApartment.ownerPhone}</a></div>
-                  {selectedApartmentDetails?.mapLink && <a href={selectedApartmentDetails.mapLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-2 text-violet-600 hover:underline"><ExternalLink className="h-4 w-4" />عرض على الخريطة</a>}
+              {/* جاري تحميل بيانات التواصل */}
+              {!selectedApartmentDetails && (
+                <div className={`p-4 rounded-xl mb-6 flex items-center justify-center gap-2 ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
+                  <Loader2 className="h-5 w-5 animate-spin text-violet-500" />
+                  <span className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>جاري تحميل بيانات العقار...</span>
+                </div>
+              )}
+              {selectedApartmentDetails && (selectedApartmentDetails.contactRevealed || hasPaidForApartment(selectedApartment.id)) ? (
+                <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-emerald-900/20 border border-emerald-700' : 'bg-emerald-50 border border-emerald-200'}`}>
+                  <div className="flex items-center gap-2 mb-2"><ShieldCheck className="h-5 w-5 text-emerald-500" /><h3 className={`font-bold ${darkMode ? 'text-emerald-300' : 'text-emerald-800'}`}>بيانات التواصل</h3></div>
+                  <div className="flex items-center gap-2"><Phone className="h-5 w-5 text-emerald-500" /><a href={`tel:${selectedApartmentDetails.ownerPhone || selectedApartment.ownerPhone}`} className="text-emerald-600 font-medium hover:underline text-lg">{selectedApartmentDetails.ownerPhone || selectedApartment.ownerPhone}</a></div>
+                  {selectedApartmentDetails.mapLink && <a href={selectedApartmentDetails.mapLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-2 text-violet-600 hover:underline"><ExternalLink className="h-4 w-4" />عرض على الخريطة</a>}
                 </div>
               ) : selectedApartmentDetails?.userInquiryStatus ? (
                 // طلب موجود - في انتظار الموافقة
@@ -1717,7 +1759,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                   </div>
                   <button onClick={() => { fetchMessages(); setShowMessages(true); }} className="mt-3 w-full py-2 rounded-xl bg-gradient-to-r from-blue-500 to-violet-600 text-white font-medium"><MessageSquare className="h-4 w-4 inline ml-2" />فتح الرسائل</button>
                 </div>
-              ) : (
+              ) : selectedApartmentDetails ? (
                 // لم يتم الطلب بعد
                 <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-amber-900/20 border border-amber-700' : 'bg-amber-50 border border-amber-200'}`}>
                   <div className="flex items-center gap-3">
@@ -1729,7 +1771,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                   </div>
                   <button onClick={() => setPaymentApartment(selectedApartment)} className="mt-3 w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium"><CreditCard className="h-4 w-4 inline ml-2" />طلب بيانات التواصل</button>
                 </div>
-              )}
+              ) : null}
 
               <div className="flex gap-3">
                 <button onClick={() => toggleFavorite(selectedApartment.id)} className={`flex-1 py-3 rounded-xl font-medium flex items-center justify-center gap-2 ${favorites.includes(selectedApartment.id) ? 'bg-red-500 text-white' : darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}><Heart className={`h-5 w-5 ${favorites.includes(selectedApartment.id) ? 'fill-white' : ''}`} />{favorites.includes(selectedApartment.id) ? 'في المفضلة' : 'أضف للمفضلة'}</button>
@@ -2190,7 +2232,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       {settings.vipFee === 0 ? <div className={`p-2 rounded-lg bg-emerald-100 text-emerald-700`}>VIP+: مجاني ✨</div> : <div className={`p-2 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>VIP+: {settings.vipFee} {settings.currency}</div>}
                     </div>
                   </div>
-                  <button onClick={async () => { await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) }); addToast('تم حفظ الإعدادات', 'success'); }} className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium">حفظ الإعدادات</button>
+                  <button onClick={() => updateSettings(settings)} disabled={settingsLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium disabled:opacity-50">{settingsLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'حفظ الإعدادات'}</button>
                 </div>
               )}
             </div>

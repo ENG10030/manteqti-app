@@ -5,7 +5,6 @@ import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
 
-
 export async function POST(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -47,6 +46,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'تم حظر حسابك' }, { status: 403 });
     }
 
+    // جلب إعدادات الرسوم
+    const settings = await db.settings.findFirst();
+    const isContactFree = !settings || settings.contactFee === 0;
+
     // التحقق من وجود طلب سابق لنفس المستخدم لنفس العقار
     const existingInquiry = await db.inquiry.findFirst({
       where: {
@@ -75,6 +78,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // إذا كانت بيانات التواصل مجانية - اعتماد تلقائي فوري
+    const lifecycleStatus = isContactFree ? 'Contacted' : 'New';
+
     // إنشاء طلب جديد
     const inquiry = await db.inquiry.create({
       data: {
@@ -83,16 +89,37 @@ export async function POST(request: NextRequest) {
         name: user.name,
         email: user.email || user.identifier,
         phone: user.phone || '',
-        message: message || `طلب بيانات التواصل للعقار: ${apartment.title} في ${apartment.area}`,
-        lifecycleStatus: 'New'
+        message: isContactFree 
+          ? `طلب بيانات تواصل (مجاني) - ${apartment.title} في ${apartment.area}`
+          : (message || `طلب بيانات التواصل للعقار: ${apartment.title} في ${apartment.area}`),
+        lifecycleStatus,
       },
       include: {
         apartment: true
       }
     });
 
-    // إرسال رسالة تلقائية للمطور مع تفاصيل الطلب
-    const devMessage = `📩 طلب بيانات تواصل جديد\n\n👤 المستخدم: ${user.name}\n📧 الإيميل: ${user.email || user.identifier}\n🏠 العقار: ${apartment.title}\n📍 المنطقة: ${apartment.area}\n💰 السعر: ${apartment.price.toLocaleString()} ج.م\n${message ? `\n💬 رسالة: ${message}` : ''}\n\n→ يمكنك الموافقة على الطلب من لوحة التحكم أو الرد على المستخدم برسالة تحتوي على طريقة الدفع`;
+    if (isContactFree) {
+      // مجاني = اعتماد فوري بدون إرسال رسالة للمطور
+      return NextResponse.json({
+        message: 'بيانات التواصل متاحة الآن! (مجاني)',
+        autoApproved: true,
+        inquiryId: inquiry.id,
+        inquiry: {
+          id: inquiry.id,
+          apartmentId: inquiry.apartmentId,
+          lifecycleStatus: inquiry.lifecycleStatus,
+          createdAt: inquiry.createdAt.toISOString(),
+          apartment: {
+            id: inquiry.apartment.id,
+            title: inquiry.apartment.title,
+          }
+        }
+      });
+    }
+
+    // مدفوع = إرسال رسالة للمطور مع تفاصيل الطلب
+    const devMessage = `📩 طلب بيانات تواصل جديد\n\n👤 المستخدم: ${user.name}\n📧 الإيميل: ${user.email || user.identifier}\n📱 التليفون: ${user.phone || 'غير محدد'}\n🏠 العقار: ${apartment.title}\n📍 المنطقة: ${apartment.area}\n💰 السعر: ${apartment.price.toLocaleString()} ج.م\n💰 رسوم الخدمة: ${settings?.contactFee || 50} ج.م\n${message ? `\n💬 رسالة: ${message}` : ''}\n\n→ يمكنك الموافقة على الطلب من لوحة التحكم أو الرد على المستخدم برسالة تحتوي على طريقة الدفع`;
 
     await db.message.create({
       data: {
