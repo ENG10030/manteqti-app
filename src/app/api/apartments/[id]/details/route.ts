@@ -162,9 +162,11 @@ export async function GET(
       agreementStatus,
       createdAt: apartment.createdAt.toISOString(),
       // Apartment owner basic info
-      user: isDeveloper
-        ? apartment.user
-        : { id: apartment.user.id, name: apartment.user.name },
+      user: apartment.user
+        ? (isDeveloper
+          ? apartment.user
+          : { id: apartment.user.id, name: apartment.user.name })
+        : null,
       inquiries: transformedInquiries
     };
 
