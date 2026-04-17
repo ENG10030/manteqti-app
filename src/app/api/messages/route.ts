@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
+import { JWT_SECRET } from '@/lib/auth';
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
 
 // جلب الرسائل
 export async function GET(request: NextRequest) {
@@ -23,21 +24,36 @@ export async function GET(request: NextRequest) {
     const tokenUserId = decoded.userId;
     const isDeveloper = decoded.role === 'DEVELOPER';
 
-    // ✅ Restrict GET to developers only
-    if (!isDeveloper) {
-      return NextResponse.json({ error: 'غير مصرح بهذا الإجراء' }, { status: 403 });
-    }
+    let messages;
 
-    // المطور يرى جميع الرسائل المرسلة إليه
-    const messages = await db.message.findMany({
-      where: { receiverId: null },
-      include: {
-        sender: {
-          select: { id: true, name: true, identifier: true }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+    if (isDeveloper) {
+      // المطور يرى جميع الرسائل المرسلة إليه
+      messages = await db.message.findMany({
+        where: { receiverId: null },
+        include: {
+          sender: {
+            select: { id: true, name: true, identifier: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+    } else {
+      // المستخدم يرى رسائله فقط (filter by token userId)
+      messages = await db.message.findMany({
+        where: {
+          OR: [
+            { senderId: tokenUserId },
+            { receiverId: tokenUserId }
+          ]
+        },
+        include: {
+          sender: {
+            select: { id: true, name: true, identifier: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+    }
 
     return NextResponse.json(messages);
   } catch (error) {

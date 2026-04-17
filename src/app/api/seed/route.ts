@@ -3,8 +3,9 @@ import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
+import { JWT_SECRET } from '@/lib/auth';
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
 
 // تشفير كلمة المرور
 async function hashPassword(password: string): Promise<string> {
@@ -76,6 +77,7 @@ export async function GET() {
           contactFee: 50,
           featuredFee: 100,
           premiumFee: 200,
+          vipFee: 300,
           saleDisplayFee: 100,
           rentDisplayFee: 75,
           otherServicesFee: 50,

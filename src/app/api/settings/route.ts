@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
+import { JWT_SECRET } from '@/lib/auth';
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-const DEVELOPER_EMAIL = "ahmadmamdouh10030@gmail.com";
+
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
 
 async function isDeveloper(request: Request) {
   const cookieHeader = request.headers.get("cookie");

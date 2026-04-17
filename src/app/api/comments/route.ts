@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
+import { JWT_SECRET } from '@/lib/auth';
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
 
 // Helper: get authenticated user from token
 async function getAuthUser(request: NextRequest): Promise<{ userId: string; role: string } | null> {
@@ -76,14 +77,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 });
     }
 
-    // ✅ Sanitize: Strip HTML tags to prevent XSS
-    const sanitizedContent = content.replace(/<[^>]*>/g, '').trim();
-
     // Validate comment length
-    if (sanitizedContent.length < 2) {
+    if (content.trim().length < 2) {
       return NextResponse.json({ error: 'التعليق قصير جداً' }, { status: 400 });
     }
-    if (sanitizedContent.length > 1000) {
+    if (content.length > 1000) {
       return NextResponse.json({ error: 'التعليق طويل جداً (الحد الأقصى 1000 حرف)' }, { status: 400 });
     }
 
@@ -113,7 +111,7 @@ export async function POST(request: NextRequest) {
         apartmentId,
         // ✅ Use token userId, not body userId
         userId: auth.userId,
-        content: sanitizedContent,
+        content: content.trim(),
         status: isDeveloper ? 'approved' : 'pending',
       },
       include: {

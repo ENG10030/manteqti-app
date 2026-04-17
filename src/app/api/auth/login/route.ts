@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
+import { JWT_SECRET } from '@/lib/auth';
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
 
 // Rate limiting بسيط في الذاكرة
 const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
@@ -13,12 +14,12 @@ const LOCKOUT_TIME = 15 * 60 * 1000; // 15 دقيقة
 function isRateLimited(identifier: string): boolean {
   const record = loginAttempts.get(identifier);
   if (!record) return false;
-  
+
   if (Date.now() - record.lastAttempt > LOCKOUT_TIME) {
     loginAttempts.delete(identifier);
     return false;
   }
-  
+
   return record.count >= MAX_ATTEMPTS;
 }
 
@@ -38,18 +39,9 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { email, identifier, password } = body;
 
-    // ✅ Fix: Validate input types to prevent injection
-    const loginIdentifier = (email || identifier || "");
-    if (typeof loginIdentifier !== "string" || typeof password !== "string") {
-      return NextResponse.json(
-        { error: "بيانات غير صالحة" },
-        { status: 400 }
-      );
-    }
+    const loginIdentifier = (email || identifier || "").toLowerCase().trim();
 
-    const trimmedIdentifier = loginIdentifier.toLowerCase().trim();
-
-    if (!trimmedIdentifier || !password) {
+    if (!loginIdentifier || !password) {
       return NextResponse.json(
         { error: "البريد الإلكتروني وكلمة المرور مطلوبان" },
         { status: 400 }
@@ -57,7 +49,7 @@ export async function POST(request: Request) {
     }
 
     // Rate limiting check
-    if (isRateLimited(trimmedIdentifier)) {
+    if (isRateLimited(loginIdentifier)) {
       return NextResponse.json(
         { error: "محاولات كثيرة. حاول بعد 15 دقيقة" },
         { status: 429 }
@@ -65,11 +57,11 @@ export async function POST(request: Request) {
     }
 
     const user = await db.user.findUnique({
-      where: { identifier: trimmedIdentifier },
+      where: { identifier: loginIdentifier },
     });
 
     if (!user) {
-      recordFailedAttempt(trimmedIdentifier);
+      recordFailedAttempt(loginIdentifier);
       return NextResponse.json(
         { error: "البريد الإلكتروني أو كلمة المرور غير صحيحة" },
         { status: 401 }
@@ -79,7 +71,7 @@ export async function POST(request: Request) {
     const isValidPassword = await bcrypt.compare(password, user.password);
 
     if (!isValidPassword) {
-      recordFailedAttempt(trimmedIdentifier);
+      recordFailedAttempt(loginIdentifier);
       return NextResponse.json(
         { error: "البريد الإلكتروني أو كلمة المرور غير صحيحة" },
         { status: 401 }
@@ -93,8 +85,30 @@ export async function POST(request: Request) {
       );
     }
 
+    // ⚠️ التحقق من تأكيد البريد الإلكتروني
+    if (!user.emailVerified) {
+      // إعادة إرسال OTP
+      const crypto = await import('crypto');
+      const otp = crypto.randomInt(100000, 999999).toString();
+      const otpExpires = new Date(Date.now() + 30 * 60 * 1000);
+      await db.user.update({
+        where: { id: user.id },
+        data: { otp, otpExpires }
+      });
+      console.log(`📧 Re-sent verification OTP for ${loginIdentifier}: ${otp}`);
+
+      return NextResponse.json(
+        {
+          error: "يجب تأكيد البريد الإلكتروني أولاً. تم إرسال رمز تأكيد جديد",
+          emailVerificationRequired: true,
+          email: user.email || user.identifier,
+        },
+        { status: 403 }
+      );
+    }
+
     // مسح محاولات الدخول الفاشلة
-    clearAttempts(trimmedIdentifier);
+    clearAttempts(loginIdentifier);
 
     const token = sign(
       { userId: user.id, identifier: user.identifier, role: user.role },

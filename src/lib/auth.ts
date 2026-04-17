@@ -4,7 +4,13 @@ import { NextRequest } from "next/server";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+// JWT_SECRET: في production لازم يكون موجود من env
+// في development ممكن يسيب فاضي (للتسهيل)
+export const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'manteqti-dev-only-secret');
+
+if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
+  console.error('🚨 FATAL: JWT_SECRET environment variable is not set!');
+}
 
 export interface AuthUser {
   id: string;

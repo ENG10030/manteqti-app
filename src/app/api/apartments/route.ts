@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
+import { JWT_SECRET } from '@/lib/auth';
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
 
 async function getCurrentUser(request: Request) {
   const cookieHeader = request.headers.get("cookie");
@@ -152,26 +153,20 @@ export async function POST(request: Request) {
       );
     }
 
-    // ✅ Sanitize: Strip HTML tags from title and description
-    const sanitizedTitle = title.replace(/<[^>]*>/g, '').trim();
-    const sanitizedDescription = (description || "").replace(/<[^>]*>/g, '').trim();
-    const sanitizedArea = area.replace(/<[^>]*>/g, '').trim();
-    const sanitizedOwnerPhone = ownerPhone.replace(/<[^>]*>/g, '').trim();
-
     // المطور ينشر مباشرة، المستخدم العادي يرسل للمراجعة
     const status = user.role === "DEVELOPER" ? "available" : "pending";
 
     const apartment = await db.apartment.create({
       data: {
-        title: sanitizedTitle,
-        description: sanitizedDescription,
+        title,
+        description: description || "",
         price: parseInt(price),
-        area: sanitizedArea,
+        area,
         bedrooms: parseInt(bedrooms) || 1,
         bathrooms: parseInt(bathrooms) || 1,
         floor: floor ? parseInt(floor) : null,
         apartmentSize: apartmentSize ? parseInt(apartmentSize) : null,
-        ownerPhone: sanitizedOwnerPhone,
+        ownerPhone,
         mapLink: mapLink || null,
         type: type || "rent",
         status,
