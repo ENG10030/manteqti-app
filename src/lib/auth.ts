@@ -42,11 +42,6 @@ export const authOptions = {
 
         if (user.isBlocked) return null;
 
-        // Check email verification (developers bypass this check)
-        if (!user.emailVerified && user.role !== 'DEVELOPER') {
-          return null;
-        }
-
         return {
           id: user.id,
           email: user.email || "",
@@ -149,11 +144,6 @@ export async function requireAuth(request: NextRequest): Promise<AuthUser> {
   
   if (user.isBlocked) {
     throw new Error("تم حظر حسابك");
-  }
-
-  // Check email verification (developers bypass this check)
-  if (!user.emailVerified && user.role !== 'DEVELOPER') {
-    throw new Error("يجب تأكيد البريد الإلكتروني أولاً");
   }
   
   return user;
