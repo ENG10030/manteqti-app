@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
 
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,131 +20,71 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
 
-    const userId = decoded.userId;
-    const body = await request.json();
-    const { apartmentId, message } = body;
+    const data = await request.json();
+    const { apartmentId, name, email, phone, message } = data;
 
-    if (!apartmentId) {
-      return NextResponse.json({ error: 'معرف العقار مطلوب' }, { status: 400 });
+    if (!apartmentId || !name || !email || !phone) {
+      return NextResponse.json({ error: 'جميع الحقول مطلوبة' }, { status: 400 });
     }
 
-    // التحقق من وجود العقار
+    // جلب الشقق للتحقق من وجودها
     const apartment = await db.apartment.findUnique({
       where: { id: apartmentId },
     });
 
     if (!apartment) {
-      return NextResponse.json({ error: 'العقار غير موجود' }, { status: 404 });
+      return NextResponse.json({ error: 'الشقة غير موجودة' }, { status: 404 });
     }
 
-    // التحقق من أن المستخدم غير محظور
-    const user = await db.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || user.isBlocked) {
-      return NextResponse.json({ error: 'تم حظر حسابك' }, { status: 403 });
-    }
-
-    // جلب إعدادات الرسوم
+    // التحقق من رسوم التواصل - لو 0 يتم الموافقة تلقائياً
     const settings = await db.settings.findFirst();
-    const isContactFree = !settings || settings.contactFee === 0;
+    const contactFee = settings?.contactFee ?? 50;
 
-    // التحقق من وجود طلب سابق لنفس المستخدم لنفس العقار
-    const existingInquiry = await db.inquiry.findFirst({
-      where: {
-        apartmentId,
-        userId,
-      },
-      include: { payment: true }
-    });
-
-    if (existingInquiry) {
-      // إذا كان الطلب موجود ومعتمد (Contacted أو Paid)
-      if (existingInquiry.lifecycleStatus === 'Contacted' ||
-          existingInquiry.payment?.status === 'Paid') {
-        return NextResponse.json({
-          message: 'بيانات التواصل متاحة لك بالفعل',
-          alreadyApproved: true,
-          inquiryId: existingInquiry.id,
-        });
-      }
-
-      // إذا كان الطلب موجود ومعلق
-      return NextResponse.json({
-        message: 'لديك طلب معلق بالفعل. سيتم الرد عليك قريباً',
-        pendingInquiry: true,
-        inquiryId: existingInquiry.id,
-      });
-    }
-
-    // إذا كانت بيانات التواصل مجانية - اعتماد تلقائي فوري
-    const lifecycleStatus = isContactFree ? 'Contacted' : 'New';
-
-    // إنشاء طلب جديد
     const inquiry = await db.inquiry.create({
       data: {
         apartmentId,
-        userId,
-        name: user.name,
-        email: user.email || user.identifier,
-        phone: user.phone || '',
-        message: isContactFree 
-          ? `طلب بيانات تواصل (مجاني) - ${apartment.title} في ${apartment.area}`
-          : (message || `طلب بيانات التواصل للعقار: ${apartment.title} في ${apartment.area}`),
-        lifecycleStatus,
+        userId: decoded.userId || null,
+        name,
+        email,
+        phone,
+        message: message || '',
+        lifecycleStatus: contactFee === 0 ? 'approved' : 'new',
       },
       include: {
-        apartment: true
-      }
+        apartment: true,
+      },
     });
 
-    if (isContactFree) {
-      // مجاني = اعتماد فوري بدون إرسال رسالة للمطور
-      return NextResponse.json({
-        message: 'بيانات التواصل متاحة الآن! (مجاني)',
-        autoApproved: true,
-        inquiryId: inquiry.id,
-        inquiry: {
-          id: inquiry.id,
-          apartmentId: inquiry.apartmentId,
-          lifecycleStatus: inquiry.lifecycleStatus,
-          createdAt: inquiry.createdAt.toISOString(),
-          apartment: {
-            id: inquiry.apartment.id,
-            title: inquiry.apartment.title,
-          }
-        }
+    // لو الرسوم = 0، أنشئ مدفوعة تلقائية بموافقة
+    if (contactFee === 0) {
+      await db.payment.create({
+        data: {
+          inquiryId: inquiry.id,
+          method: 'free',
+          status: 'Paid',
+          amount: 0,
+          userId: decoded.userId || null,
+        },
       });
     }
 
-    // مدفوع = إرسال رسالة للمطور مع تفاصيل الطلب
-    const devMessage = `📩 طلب بيانات تواصل جديد\n\n👤 المستخدم: ${user.name}\n📧 الإيميل: ${user.email || user.identifier}\n📱 التليفون: ${user.phone || 'غير محدد'}\n🏠 العقار: ${apartment.title}\n📍 المنطقة: ${apartment.area}\n💰 السعر: ${apartment.price.toLocaleString()} ج.م\n💰 رسوم الخدمة: ${settings?.contactFee || 50} ج.م\n${message ? `\n💬 رسالة: ${message}` : ''}\n\n→ يمكنك الموافقة على الطلب من لوحة التحكم أو الرد على المستخدم برسالة تحتوي على طريقة الدفع`;
-
-    await db.message.create({
-      data: {
-        senderId: userId,
-        receiverId: null, // null = للمطور
-        content: devMessage,
-      }
-    });
-
     return NextResponse.json({
-      message: 'تم إرسال طلب بيانات التواصل بنجاح! سيتم الرد عليك برسالة تحتوي على طريقة الدفع',
-      inquiryId: inquiry.id,
+      success: true,
       inquiry: {
         id: inquiry.id,
         apartmentId: inquiry.apartmentId,
+        name: inquiry.name,
+        email: inquiry.email,
+        phone: inquiry.phone,
+        message: inquiry.message,
         lifecycleStatus: inquiry.lifecycleStatus,
+        isFree: contactFee === 0,
+        contactFee,
         createdAt: inquiry.createdAt.toISOString(),
-        apartment: {
-          id: inquiry.apartment.id,
-          title: inquiry.apartment.title,
-        }
-      }
+      },
     });
   } catch (error) {
-    console.error('Error requesting contact:', error);
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+    console.error('Error creating contact request:', error);
+    return NextResponse.json({ error: 'حدث خطأ في إرسال طلب التواصل' }, { status: 500 });
   }
 }
