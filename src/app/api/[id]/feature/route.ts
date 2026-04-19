@@ -1,21 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { verify } from "jsonwebtoken"
+import { getCurrentUser } from "@/lib/auth"
 import { db } from "@/lib/db"
-
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-
-async function getCurrentUser(request: Request) {
-  const cookieHeader = request.headers.get("cookie");
-  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
-  const token = cookies.get("auth-token");
-  if (!token) return null;
-  try {
-    const decoded = verify(token, JWT_SECRET) as { userId: string };
-    return await db.user.findUnique({ where: { id: decoded.userId } });
-  } catch {
-    return null;
-  }
-}
 
 // تمييز / إلغاء تمييز عقار
 export async function POST(
@@ -24,7 +9,7 @@ export async function POST(
 ) {
   try {
     const user = await getCurrentUser(request)
-    
+
     if (!user || user.role !== "DEVELOPER") {
       return NextResponse.json(
         { error: "غير مصرح لك بهذا الإجراء" },

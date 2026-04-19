@@ -62,7 +62,7 @@ export const authOptions: NextAuthOptions = {
             id: user.id,
             email: user.identifier,
             name: user.name,
-            role: user.role || "USER",
+            role: user.role || "user",
             isBlocked: user.isBlocked || false,
           };
         } catch (error) {

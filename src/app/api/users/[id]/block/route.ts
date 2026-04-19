@@ -1,21 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { verify } from "jsonwebtoken"
+import { getCurrentUser } from "@/lib/auth"
 import { db } from "@/lib/db"
-
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-
-async function getCurrentUser(request: Request) {
-  const cookieHeader = request.headers.get("cookie");
-  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
-  const token = cookies.get("auth-token");
-  if (!token) return null;
-  try {
-    const decoded = verify(token, JWT_SECRET) as { userId: string };
-    return await db.user.findUnique({ where: { id: decoded.userId } });
-  } catch {
-    return null;
-  }
-}
 
 // حظر / إلغاء حظر المستخدم
 export async function POST(
@@ -24,7 +9,7 @@ export async function POST(
 ) {
   try {
     const user = await getCurrentUser(request)
-    
+
     if (!user || user.role !== "DEVELOPER") {
       return NextResponse.json(
         { error: "غير مصرح لك بهذا الإجراء" },
@@ -34,7 +19,7 @@ export async function POST(
 
     const { id: userId } = await params
     const body = await request.json()
-    const { action } = body
+    const { action, reason } = body
 
     const targetUser = await db.user.findUnique({
       where: { id: userId }
@@ -54,12 +39,17 @@ export async function POST(
       )
     }
 
-    if (action === "block") {
-      // حظر المستخدم
+    // إذا لم يتم تحديد action، يكون الإجراء الافتراضي هو الحظر
+    const finalAction = action || "block"
+
+    if (finalAction === "block") {
+      // حظر المستخدم مع تخزين السبب إذا تم توفيره
       await db.user.update({
         where: { id: userId },
         data: {
-          isBlocked: true
+          isBlocked: true,
+          blockedAt: new Date(),
+          blockReason: reason || "تم الحظر من قبل الإدارة"
         }
       })
 
@@ -76,12 +66,14 @@ export async function POST(
         message: "تم حظر المستخدم وإخفاء جميع عقاراته"
       })
 
-    } else if (action === "unblock") {
+    } else if (finalAction === "unblock") {
       // إلغاء حظر المستخدم
       await db.user.update({
         where: { id: userId },
         data: {
-          isBlocked: false
+          isBlocked: false,
+          blockedAt: null,
+          blockReason: null
         }
       })
 
@@ -113,7 +105,7 @@ export async function GET(
 ) {
   try {
     const user = await getCurrentUser(request)
-    
+
     if (!user || user.role !== "DEVELOPER") {
       return NextResponse.json(
         { error: "غير مصرح لك بهذا الإجراء" },

@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     });
 
     // In production, send OTP via email service
-    if (process.env.NODE_ENV === 'development') console.log(`📧 OTP for ${identifier}: ${otp}`);
+    console.log(`📧 Email verification OTP for ${identifier}: ${otp}`);
 
     return NextResponse.json({ 
       success: true,

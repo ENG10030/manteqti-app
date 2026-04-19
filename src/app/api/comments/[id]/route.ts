@@ -1,21 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { cookies } from 'next/headers';
-import { verify } from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-
-async function verifyDevAuth(request: NextRequest): Promise<boolean> {
-  try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) return false;
-    const decoded = verify(token, JWT_SECRET) as any;
-    return decoded.role === 'DEVELOPER';
-  } catch {
-    return false;
-  }
-}
 
 // الموافقة على التعليق أو رفضه
 export async function PUT(
@@ -23,10 +7,6 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!(await verifyDevAuth(request))) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
-    }
-
     const { id } = await params;
     const body = await request.json();
     const { status } = body;
@@ -66,10 +46,6 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!(await verifyDevAuth(request))) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
-    }
-
     const { id } = await params;
 
     await db.comment.delete({

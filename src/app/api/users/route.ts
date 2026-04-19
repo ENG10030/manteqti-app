@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
-import { authenticateRequest, isDeveloperOrAdmin } from "@/lib/auth"
+import { getCurrentUser } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { hash } from "bcryptjs"
 
-// جلب جميع المستخدمين (للمطور فقط)
+// جلب جميع المستخدمين (للمطور)
 export async function GET(request: NextRequest) {
   try {
-    const auth = authenticateRequest(request)
+    const user = await getCurrentUser(request)
 
-    if (!auth || !isDeveloperOrAdmin(auth.user)) {
+    if (!user || user.role !== "DEVELOPER") {
       return NextResponse.json(
         { error: "غير مصرح لك بهذا الإجراء" },
         { status: 403 }
@@ -55,10 +56,75 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// ❌ POST محظور - يجب استخدام صفحة التسجيل
+// إنشاء مستخدم جديد (تسجيل)
 export async function POST(request: NextRequest) {
-  return NextResponse.json(
-    { error: "يرجى استخدام صفحة التسجيل لإنشاء حساب جديد" },
-    { status: 403 }
-  )
+  try {
+    const body = await request.json()
+    const { name, email, password, phone, identifier } = body
+
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: "البريد الإلكتروني وكلمة المرور مطلوبان" },
+        { status: 400 }
+      )
+    }
+
+    // التحقق من عدم وجود المستخدم (باستخدام email - حقل فريد)
+    const existingUser = await db.user.findUnique({
+      where: { identifier: email.toLowerCase().trim() }
+    })
+
+    if (existingUser) {
+      return NextResponse.json(
+        { error: "البريد الإلكتروني مستخدم بالفعل" },
+        { status: 400 }
+      )
+    }
+
+    // التحقق من عدم وجود المعرف (باستخدام findFirst - ليس فريد)
+    if (identifier) {
+      const existingIdentifier = await db.user.findFirst({
+        where: { identifier: identifier.toLowerCase().trim() }
+      })
+
+      if (existingIdentifier) {
+        return NextResponse.json(
+          { error: "المعرف مستخدم بالفعل" },
+          { status: 400 }
+        )
+      }
+    }
+
+    // تشفير كلمة المرور
+    const hashedPassword = await hash(password, 12)
+
+    // إنشاء المستخدم
+    const user = await db.user.create({
+      data: {
+        identifier: identifier?.toLowerCase().trim() || email.toLowerCase().trim(),
+        name: name || email.split('@')[0],
+        email: email.toLowerCase().trim(),
+        password: hashedPassword,
+        phone: phone || null,
+        role: "USER"
+      }
+    })
+
+    return NextResponse.json({
+      success: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    })
+
+  } catch (error) {
+    console.error("Create user error:", error)
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء إنشاء الحساب" },
+      { status: 500 }
+    )
+  }
 }

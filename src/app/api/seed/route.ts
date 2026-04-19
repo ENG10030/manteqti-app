@@ -3,9 +3,8 @@ import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
 
-
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 // تشفير كلمة المرور
 async function hashPassword(password: string): Promise<string> {
@@ -45,12 +44,11 @@ export async function GET() {
       });
     }
 
-    const devEmail = process.env.DEVELOPER_EMAIL || 'developer@example.com';
-    const hashedPassword = await hashPassword(process.env.DEVELOPER_PASSWORD || 'admin123');
+    const hashedPassword = await hashPassword("admin123");
     const developer = await db.user.create({
       data: {
-        email: devEmail,
-        identifier: devEmail,
+        email: "ahmadmamdouh10030@gmail.com",
+        identifier: "ahmadmamdouh10030@gmail.com",
         name: "المطور الرئيسي",
         password: hashedPassword,
         role: "DEVELOPER",

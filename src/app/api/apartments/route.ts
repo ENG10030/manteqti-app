@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
-import { JWT_SECRET } from '@/lib/auth';
 
-
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 async function getCurrentUser(request: Request) {
   const cookieHeader = request.headers.get("cookie");
@@ -31,7 +30,6 @@ export async function GET(request: Request) {
     const area = searchParams.get("area");
     const user = await getCurrentUser(request);
     const isDeveloper = user?.role === "DEVELOPER";
-    const isAuthenticated = !!user;
 
     const where: any = {};
 
@@ -67,13 +65,7 @@ export async function GET(request: Request) {
       where,
       include: {
         user: {
-          select: {
-            id: true,
-            name: true,
-            email: isDeveloper ? true : false,
-            phone: isDeveloper ? true : false,
-            isBlocked: isDeveloper ? true : false,
-          },
+          select: { id: true, name: true, email: true },
         },
       },
       orderBy: [
@@ -83,27 +75,7 @@ export async function GET(request: Request) {
       ],
     });
 
-    // PII Protection: Strip sensitive data based on auth level
-    const safeApartments = apartments.map((apt) => {
-      const apartmentData = { ...apt };
-
-      // Hide ownerPhone for unauthenticated users and regular users
-      // Only developers and the apartment owner can see ownerPhone
-      if (!isDeveloper && (!isAuthenticated || apt.createdBy !== user?.id)) {
-        apartmentData.ownerPhone = "";
-      }
-
-      // For non-developers, ensure user email is not present
-      // (already excluded by Prisma select, but double-safety)
-      if (!isDeveloper && apartmentData.user) {
-        const { email: _e, phone: _p, isBlocked: _b, ...safeUser } = (apartmentData.user as any);
-        apartmentData.user = safeUser;
-      }
-
-      return apartmentData;
-    });
-
-    return NextResponse.json(safeApartments);
+    return NextResponse.json(apartments);
   } catch (error) {
     console.error("Get apartments error:", error);
     return NextResponse.json(

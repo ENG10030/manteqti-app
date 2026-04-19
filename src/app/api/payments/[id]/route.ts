@@ -2,29 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
 
-
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
-
     const { id } = await params;
-    const isDeveloper = decoded.role === 'DEVELOPER';
     
     const payment = await db.payment.findUnique({
       where: { id },
@@ -41,10 +27,6 @@ export async function GET(
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
     }
 
-    // PII: Only show email/phone to developer or payment owner
-    const isOwner = decoded.userId === payment.userId;
-    const canSeePII = isDeveloper || isOwner;
-
     return NextResponse.json({
       id: payment.id,
       inquiryId: payment.inquiryId,
@@ -60,8 +42,8 @@ export async function GET(
         id: payment.inquiry.id,
         apartmentId: payment.inquiry.apartmentId,
         name: payment.inquiry.name,
-        email: canSeePII ? payment.inquiry.email : undefined,
-        phone: canSeePII ? payment.inquiry.phone : undefined,
+        email: payment.inquiry.email,
+        phone: payment.inquiry.phone,
         message: payment.inquiry.message,
         apartment: payment.inquiry.apartment ? {
           id: payment.inquiry.apartment.id,

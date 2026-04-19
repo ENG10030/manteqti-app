@@ -17,34 +17,25 @@ export function isValidEmail(email: string): boolean {
 }
 
 /**
- * Validate password strength (at least 6 chars with complexity)
+ * Validate password strength
  */
 export function isStrongPassword(password: string): boolean {
-  if (password.length < 6) return false;
-  let score = 0;
-  if (/[a-z]/.test(password)) score++;
-  if (/[A-Z]/.test(password)) score++;
-  if (/[0-9]/.test(password)) score++;
-  if (/[^a-zA-Z0-9]/.test(password)) score++;
-  return score >= 2; // At least 2 character types
+  return password.length >= 6;
 }
 
 /**
- * Hash password using bcrypt (secure)
- * @deprecated Use bcryptjs directly instead: import bcrypt from 'bcryptjs'; bcrypt.hash(password, 10)
+ * Hash password using SHA-256
  */
 export async function hashPassword(password: string): Promise<string> {
-  const bcrypt = await import('bcryptjs');
-  return bcrypt.hash(password, 10);
+  return createHash('sha256').update(password).digest('hex');
 }
 
 /**
- * Verify password against hash using bcrypt (secure)
- * @deprecated Use bcryptjs directly instead: import bcrypt from 'bcryptjs'; bcrypt.compare(password, hash)
+ * Verify password against hash
  */
 export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  const bcrypt = await import('bcryptjs');
-  return bcrypt.compare(password, hash);
+  const passwordHash = await hashPassword(password);
+  return passwordHash === hash;
 }
 
 /**

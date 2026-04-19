@@ -1,16 +1,10 @@
-import { db } from "@/lib/db";
+import { db } from "./db";
 import { verify } from "jsonwebtoken";
 import { NextRequest } from "next/server";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 
-// JWT_SECRET: في production لازم يكون موجود من env
-// في development ممكن يسيب فاضي (للتسهيل)
-export const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? '' : 'manteqti-dev-only-secret');
-
-if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
-  console.error('🚨 FATAL: JWT_SECRET environment variable is not set!');
-}
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 export interface AuthUser {
   id: string;
@@ -47,6 +41,11 @@ export const authOptions = {
         if (!isValid) return null;
 
         if (user.isBlocked) return null;
+
+        // Check email verification (developers bypass this check)
+        if (!user.emailVerified && user.role !== 'DEVELOPER') {
+          return null;
+        }
 
         return {
           id: user.id,
@@ -150,6 +149,11 @@ export async function requireAuth(request: NextRequest): Promise<AuthUser> {
   
   if (user.isBlocked) {
     throw new Error("تم حظر حسابك");
+  }
+
+  // Check email verification (developers bypass this check)
+  if (!user.emailVerified && user.role !== 'DEVELOPER') {
+    throw new Error("يجب تأكيد البريد الإلكتروني أولاً");
   }
   
   return user;

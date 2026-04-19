@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { authenticateRequest, isDeveloperOrAdmin } from "@/lib/auth"
+import { getCurrentUser } from "@/lib/auth"
 import { db } from "@/lib/db"
 
 // الموافقة على / رفض عقار
@@ -8,9 +8,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = authenticateRequest(request)
+    const user = await getCurrentUser(request)
 
-    if (!auth || !isDeveloperOrAdmin(auth.user)) {
+    if (!user || user.role !== "DEVELOPER") {
       return NextResponse.json(
         { error: "غير مصرح لك بهذا الإجراء" },
         { status: 403 }
@@ -18,15 +18,8 @@ export async function POST(
     }
 
     const { id: apartmentId } = await params
-
-    // ✅ Handle empty body gracefully
-    let action = "approve"
-    try {
-      const body = await request.json()
-      action = body.action || "approve"
-    } catch {
-      // Empty body - default to approve
-    }
+    const body = await request.json()
+    const { action } = body // "approve" or "reject"
 
     const apartment = await db.apartment.findUnique({
       where: { id: apartmentId }
@@ -44,7 +37,7 @@ export async function POST(
         where: { id: apartmentId },
         data: {
           status: "available",
-          approvedBy: auth.user.id,
+          approvedBy: user.id,
           approvedAt: new Date()
         }
       })
@@ -71,7 +64,7 @@ export async function POST(
 
     } else {
       return NextResponse.json(
-        { error: "إجراء غير صالح. استخدم approve أو reject" },
+        { error: "إجراء غير صالح" },
         { status: 400 }
       )
     }

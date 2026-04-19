@@ -1,27 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { verify } from 'jsonwebtoken';
 import { isValidId } from '@/lib/auth-middleware';
-import { JWT_SECRET } from '@/lib/auth';
-
-
-
-async function getCurrentUser(request: Request) {
-  const cookieHeader = request.headers.get("cookie");
-  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
-  const token = cookies.get("auth-token");
-
-  if (!token) return null;
-
-  try {
-    const decoded = verify(token, JWT_SECRET) as { userId: string };
-    return await db.user.findUnique({
-      where: { id: decoded.userId },
-    });
-  } catch {
-    return null;
-  }
-}
 
 export async function GET(
   request: NextRequest,
@@ -29,7 +8,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-
+    
     // ✅ التحقق من صحة المعرف
     if (!isValidId(id)) {
       return NextResponse.json(
@@ -38,21 +17,9 @@ export async function GET(
       );
     }
 
-    // ✅ Determine auth level of the requester
-    const currentUser = await getCurrentUser(request);
-    const isDeveloper = currentUser?.role === "DEVELOPER";
-
     const apartment = await db.apartment.findUnique({
       where: { id },
       include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            phone: isDeveloper ? true : false,
-            email: isDeveloper ? true : false,
-          },
-        },
         inquiries: {
           orderBy: { createdAt: 'desc' },
           include: {
@@ -69,77 +36,54 @@ export async function GET(
       );
     }
 
-    const isApartmentOwner = currentUser?.id === apartment.createdBy;
-
     // ✅ زيادة عدد المشاهدات
     await db.apartment.update({
       where: { id },
       data: { views: { increment: 1 } }
     });
 
-    // ✅ PII Protection: Check if the CURRENT user can see contact info
-    // Contact is visible when:
-    // 1. Contact fee is 0 (free) — visible to everyone
-    // 2. User is developer
-    // 3. User is apartment owner
-    // 4. User has a PAID payment for this apartment
-    // 5. User has an inquiry with lifecycleStatus = 'Contacted' (developer approved)
-    const currentUserRelevantInquiry = currentUser
-      ? apartment.inquiries.find(inq => inq.userId === currentUser.id)
-      : null;
+    // ✅ تسجيل العملية (للمطور)
+    try {
+      await db.operationLog.create({
+        data: {
+          action: 'view',
+          entityType: 'apartment',
+          entityId: id,
+          details: JSON.stringify({ title: apartment.title })
+        }
+      });
+    } catch {
+      // تجاهل أخطاء التسجيل
+    }
 
-    // جلب إعدادات الرسوم
-    const settings = await db.settings.findFirst();
-    const isContactFree = !settings || settings.contactFee === 0;
+    // Check if any inquiry has paid status
+    const hasPaidInquiry = apartment.inquiries.some(inq => inq.payment?.status === 'Paid');
 
-    const canSeeOwnerContact = isContactFree
-      || isDeveloper
-      || isApartmentOwner
-      || !!apartment.inquiries.find(
-          inq => inq.userId === currentUser?.id &&
-          (inq.payment?.status === 'Paid' || inq.lifecycleStatus === 'Contacted')
-        );
+    // Transform inquiries with payment info
+    const transformedInquiries = apartment.inquiries.map(inq => ({
+      id: inq.id,
+      apartmentId: inq.apartmentId,
+      userId: inq.userId,
+      name: inq.name,
+      email: inq.email,
+      phone: inq.phone,
+      message: inq.message,
+      lifecycleStatus: inq.lifecycleStatus as 'New' | 'Contacted' | 'Converted' | 'Lost',
+      paymentId: inq.payment?.id,
+      paymentStatus: inq.payment?.status as 'Paid' | 'Pending' | 'Failed' | undefined,
+      method: inq.payment?.method,
+      amount: inq.payment?.amount,
+      transactionRef: inq.payment?.transactionRef,
+      paymentLink: inq.payment?.paymentLink,
+      inquiryStatus: inq.payment?.inquiryStatus,
+      createdAt: inq.createdAt.toISOString()
+    }));
 
     // Get agreement status from paid inquiry
     const paidInquiry = apartment.inquiries.find(inq => inq.payment?.status === 'Paid');
-    const agreementStatus = paidInquiry?.payment?.inquiryStatus === 'Agreement Reached' ||
+    const agreementStatus = paidInquiry?.payment?.inquiryStatus === 'Agreement Reached' || 
                             paidInquiry?.payment?.inquiryStatus === 'Contract Signed'
       ? paidInquiry.payment.inquiryStatus as 'Agreement Reached' | 'Contract Signed'
-      : null;
-
-    // ✅ PII Protection: Transform inquiries based on auth level
-    const transformedInquiries = apartment.inquiries.map(inq => {
-      const isInquiryOwner = currentUser?.id === inq.userId;
-      const canSeeInquiryPII = isDeveloper || isApartmentOwner || isInquiryOwner;
-
-      return {
-        id: inq.id,
-        apartmentId: inq.apartmentId,
-        userId: inq.userId,
-        name: inq.name,
-        email: canSeeInquiryPII ? inq.email : undefined,
-        phone: canSeeInquiryPII ? inq.phone : undefined,
-        message: inq.message,
-        lifecycleStatus: inq.lifecycleStatus as string,
-        paymentId: inq.payment?.id,
-        paymentStatus: inq.payment?.status as string | undefined,
-        method: inq.payment?.method,
-        amount: inq.payment?.amount,
-        transactionRef: inq.payment?.transactionRef,
-        paymentLink: inq.payment?.paymentLink,
-        inquiryStatus: inq.payment?.inquiryStatus,
-        createdAt: inq.createdAt.toISOString()
-      };
-    });
-
-    // User's inquiry status for this apartment
-    const userInquiryStatus = currentUserRelevantInquiry
-      ? {
-          id: currentUserRelevantInquiry.id,
-          lifecycleStatus: currentUserRelevantInquiry.lifecycleStatus,
-          paymentStatus: currentUserRelevantInquiry.payment?.status || null,
-          hasPayment: !!currentUserRelevantInquiry.payment,
-        }
       : null;
 
     const result = {
@@ -150,10 +94,8 @@ export async function GET(
       bedrooms: apartment.bedrooms,
       bathrooms: apartment.bathrooms,
       description: apartment.description,
-      // PII: only show ownerPhone if user can see contact
-      ownerPhone: canSeeOwnerContact ? apartment.ownerPhone : '',
-      // PII: only show mapLink if user can see contact
-      mapLink: canSeeOwnerContact ? (apartment.mapLink || '') : '',
+      ownerPhone: hasPaidInquiry ? apartment.ownerPhone : '',
+      mapLink: hasPaidInquiry ? apartment.mapLink : '',
       imageUrl: apartment.imageUrl,
       images: apartment.images ? JSON.parse(apartment.images) : [],
       amenities: apartment.amenities ? JSON.parse(apartment.amenities) : [],
@@ -164,14 +106,6 @@ export async function GET(
       paymentRef: apartment.paymentRef,
       agreementStatus,
       createdAt: apartment.createdAt.toISOString(),
-      // Contact visibility flag
-      contactRevealed: canSeeOwnerContact,
-      // User's inquiry status
-      userInquiryStatus,
-      // Apartment owner basic info
-      user: isDeveloper
-        ? apartment.user
-        : { id: apartment.user?.id, name: apartment.user?.name || 'غير معروف' },
       inquiries: transformedInquiries
     };
 
