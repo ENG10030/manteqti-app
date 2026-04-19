@@ -209,6 +209,8 @@ export default function App() {
   const [paymentMethod, setPaymentMethod] = useState<string>('');
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [userPaidApartments, setUserPaidApartments] = useState<string[]>([]);
+  const [userPayments, setUserPayments] = useState<Payment[]>([]);
+  const [showMyPayments, setShowMyPayments] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
@@ -321,7 +323,9 @@ export default function App() {
       const res = await fetch('/api/payments');
       const data = await res.json();
       if (Array.isArray(data)) {
-        const paidIds = data.filter((p: Payment) => p.userId === currentUser?.id && p.status === 'Paid').map((p: Payment) => p.inquiry?.apartmentId).filter((id): id is string => Boolean(id));
+        const myPayments = data.filter((p: Payment) => p.userId === currentUser?.id);
+        setUserPayments(myPayments);
+        const paidIds = myPayments.filter((p: Payment) => p.status === 'Paid').map((p: Payment) => p.inquiry?.apartmentId).filter((id): id is string => Boolean(id));
         setUserPaidApartments(paidIds);
       }
     } catch {}
@@ -1471,6 +1475,10 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <User className="h-4 w-4 inline ml-2" /><span className="text-sm font-medium">{currentUser.name}</span>
                     {myPendingApartments.length > 0 && <span className="absolute -top-1 -left-1 w-5 h-5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center">{myPendingApartments.length}</span>}
                   </button>
+                  <button onClick={() => { fetchUserPayments(); setShowMyPayments(true); }} className={`px-3 py-2 rounded-xl ${darkMode ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-100 hover:bg-slate-200'} transition-all relative`} title="المدفوعات">
+                    <CreditCard className="h-4 w-4" />
+                    {userPayments.filter(p => p.status === 'Pending').length > 0 && <span className="absolute -top-1 -left-1 w-5 h-5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center">{userPayments.filter(p => p.status === 'Pending').length}</span>}
+                  </button>
                   <button onClick={handleLogout} className="p-3 rounded-xl bg-rose-500/10 text-rose-500"><LogOut className="h-5 w-5" /></button>
                 </div>
               ) : (
@@ -1635,6 +1643,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 ) : currentUser ? (
   <>
     <button onClick={() => { fetchMyPendingApartments(); setShowMyPending(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><User className="h-5 w-5" />حسابي{myPendingApartments.length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-amber-500 text-white text-xs">{myPendingApartments.length}</span>}</button>
+    <button onClick={() => { fetchUserPayments(); setShowMyPayments(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><CreditCard className="h-5 w-5" />المدفوعات{userPayments.filter(p => p.status === 'Pending').length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-amber-500 text-white text-xs">{userPayments.filter(p => p.status === 'Pending').length}</span>}</button>
     <button onClick={() => { handleLogout(); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-red-400' : 'bg-slate-100 text-red-500'}`}><LogOut className="h-5 w-5" />تسجيل الخروج</button>
   </>
 ) : (
@@ -1673,6 +1682,70 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       </div>
                       <button onClick={async () => { if (confirm('هل تريد حذف هذا العقار؟')) { await fetch(`/api/apartments/${apt.id}`, { method: 'DELETE' }); fetchMyPendingApartments(); fetchApartments(); addToast('تم حذف العقار', 'success'); } }} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600"><Trash2 className="h-4 w-4" /></button>
                     </div>
+                  </div>
+                ))}</div>
+              )}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}</AnimatePresence>
+
+      {/* My Payments Modal */}
+      <AnimatePresence>{showMyPayments && currentUser && !isDeveloper && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowMyPayments(false)}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-2xl rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl max-h-[80vh] overflow-hidden flex flex-col`}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><CreditCard className="h-6 w-6 text-violet-500" />المدفوعات</h2>
+              <button onClick={() => setShowMyPayments(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
+            </div>
+            {/* Summary */}
+            <div className={`grid grid-cols-3 gap-3 mb-4`}>
+              <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-emerald-50'}`}>
+                <p className={`text-2xl font-bold ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>{userPayments.filter(p => p.status === 'Paid').length}</p>
+                <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>مؤكدة</p>
+              </div>
+              <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-amber-50'}`}>
+                <p className={`text-2xl font-bold ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>{userPayments.filter(p => p.status === 'Pending').length}</p>
+                <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>قيد الانتظار</p>
+              </div>
+              <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-red-50'}`}>
+                <p className={`text-2xl font-bold ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{userPayments.filter(p => p.status === 'Failed').length}</p>
+                <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>مرفوضة</p>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {userPayments.length === 0 ? (
+                <div className="text-center py-12"><CreditCard className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد مدفوعات بعد</p></div>
+              ) : (
+                <div className="space-y-3">{userPayments.map(pay => (
+                  <div key={pay.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{pay.amount} ج.م</p>
+                          <span className={`px-2 py-0.5 rounded-full text-xs ${
+                            pay.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : 
+                            pay.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 
+                            'bg-red-100 text-red-700'
+                          }`}>
+                            {pay.status === 'Paid' ? '✅ مؤكد' : pay.status === 'Pending' ? '⏳ قيد الانتظار' : '❌ مرفوض'}
+                          </span>
+                        </div>
+                        <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{pay.method} • {new Date(pay.createdAt).toLocaleDateString('ar-EG')}</p>
+                        {pay.inquiry?.apartment && (
+                          <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>🏠 {pay.inquiry.apartment.title}</p>
+                        )}
+                      </div>
+                    </div>
+                    {pay.status === 'Pending' && (
+                      <p className={`text-xs mt-2 ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>⏳ بانتظار تأكيد المطور</p>
+                    )}
+                    {pay.status === 'Paid' && (
+                      <p className={`text-xs mt-2 ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>✅ تم تأكيد الدفع - يمكنك الآن عرض بيانات التواصل</p>
+                    )}
+                    {pay.status === 'Failed' && (
+                      <p className={`text-xs mt-2 ${darkMode ? 'text-red-400' : 'text-red-600'}`}>❌ تم رفض الدفع - يمكنك المحاولة مرة أخرى</p>
+                    )}
                   </div>
                 ))}</div>
               )}
@@ -2091,16 +2164,35 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               {/* Payments Tab */}
               {devTab === 'payments' && (
                 <div className="space-y-4">
+                  {/* Payment Stats */}
+                  <div className="grid grid-cols-3 gap-3 mb-2">
+                    <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-emerald-50'}`}>
+                      <p className={`text-2xl font-bold ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>{payments.filter(p => p.status === 'Paid').length}</p>
+                      <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>مؤكدة</p>
+                    </div>
+                    <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-amber-50'}`}>
+                      <p className={`text-2xl font-bold ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>{payments.filter(p => p.status === 'Pending').length}</p>
+                      <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>قيد الانتظار</p>
+                    </div>
+                    <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-red-50'}`}>
+                      <p className={`text-2xl font-bold ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{payments.filter(p => p.status === 'Failed').length}</p>
+                      <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>مرفوضة</p>
+                    </div>
+                  </div>
                   {payments.length === 0 ? <div className="text-center py-12"><CreditCard className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد مدفوعات</p></div> : payments.map(payment => (
                     <div key={payment.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
                       <div className="flex items-center justify-between">
-                        <div><p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{payment.amount} ج.م - {payment.method}</p><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{payment.inquiry?.name} • {new Date(payment.createdAt).toLocaleDateString('ar-EG')}</p></div>
+                        <div>
+                          <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{payment.amount} ج.م - {payment.method}</p>
+                          <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{payment.inquiry?.name} • {new Date(payment.createdAt).toLocaleDateString('ar-EG')}</p>
+                          {payment.inquiry?.apartment && <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>🏠 {payment.inquiry.apartment.title}</p>}
+                        </div>
                         <div className="flex items-center gap-2">
-                          <span className={`px-2 py-1 rounded-full text-xs ${payment.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : payment.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{payment.status === 'Paid' ? 'مدفوع' : payment.status === 'Pending' ? 'قيد الانتظار' : 'مرفوض'}</span>
+                          <span className={`px-2 py-1 rounded-full text-xs ${payment.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : payment.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{payment.status === 'Paid' ? '✅ مدفوع' : payment.status === 'Pending' ? '⏳ قيد الانتظار' : '❌ مرفوض'}</span>
                           {payment.status === 'Pending' && (
                             <div className="flex gap-1">
-                              <button onClick={() => handleConfirmPayment(payment.id)} className="p-1 rounded bg-emerald-500 text-white"><Check className="h-4 w-4" /></button>
-                              <button onClick={() => { }} className="p-1 rounded bg-red-500 text-white"><X className="h-4 w-4" /></button>
+                              <button onClick={() => handleConfirmPayment(payment.id)} className="p-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-colors" title="تأكيد الدفع"><Check className="h-4 w-4" /></button>
+                              <button onClick={() => handleRejectPayment(payment.id)} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors" title="رفض الدفع"><X className="h-4 w-4" /></button>
                             </div>
                           )}
                         </div>
