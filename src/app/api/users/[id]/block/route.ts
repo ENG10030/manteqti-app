@@ -82,6 +82,34 @@ export async function POST(
         message: "تم إلغاء حظر المستخدم"
       })
 
+    } else if (finalAction === "approve") {
+      // تأكيد تسجيل المستخدم
+      await db.user.update({
+        where: { id: userId },
+        data: {
+          isApproved: true,
+          isBlocked: false,
+          blockedAt: null,
+          blockReason: null,
+        }
+      })
+
+      return NextResponse.json({
+        success: true,
+        message: "تم تأكيد تسجيل المستخدم"
+      })
+
+    } else if (finalAction === "reject") {
+      // رفض تسجيل المستخدم وحذفه
+      await db.user.delete({
+        where: { id: userId }
+      })
+
+      return NextResponse.json({
+        success: true,
+        message: "تم رفض تسجيل المستخدم وحذف حسابه"
+      })
+
     } else {
       return NextResponse.json(
         { error: "إجراء غير صالح" },

@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const blocked = searchParams.get("blocked")
+    const pending = searchParams.get("pending")
 
     const whereClause: Record<string, unknown> = {}
 
@@ -24,6 +25,11 @@ export async function GET(request: NextRequest) {
       whereClause.isBlocked = true
     } else if (blocked === "false") {
       whereClause.isBlocked = false
+    }
+
+    if (pending === "true") {
+      whereClause.isApproved = false
+      whereClause.role = "USER"
     }
 
     const users = await db.user.findMany({
@@ -41,6 +47,8 @@ export async function GET(request: NextRequest) {
         isBlocked: true,
         blockedAt: true,
         blockReason: true,
+        isApproved: true,
+        emailVerified: true,
         createdAt: true,
       }
     })

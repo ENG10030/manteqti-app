@@ -48,6 +48,14 @@ export async function POST(request: Request) {
       );
     }
 
+    // Check if account is waiting for developer approval
+    if (!user.isApproved && user.role !== "DEVELOPER") {
+      return NextResponse.json({
+        pendingApproval: true,
+        error: "حسابك قيد المراجعة. يرجى الانتظار حتى يتم تأكيد تسجيلك من قبل الإدارة.",
+      }, { status: 403 });
+    }
+
     const token = sign(
       { userId: user.id, identifier: user.identifier, role: user.role },
       JWT_SECRET,

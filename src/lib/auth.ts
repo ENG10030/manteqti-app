@@ -106,6 +106,9 @@ export async function getCurrentUser(request: NextRequest): Promise<AuthUser | n
 
     if (!user) return null;
 
+    // isApproved check is done at route level, not here
+    // to allow some routes to read the user without requiring approval
+
     return user as AuthUser;
   } catch (error) {
     return null;
@@ -149,6 +152,11 @@ export async function requireAuth(request: NextRequest): Promise<AuthUser> {
   
   if (user.isBlocked) {
     throw new Error("تم حظر حسابك");
+  }
+
+  // Check isApproved (developers always bypass this check)
+  if (!user.isApproved && user.role !== 'DEVELOPER') {
+    throw new Error("pendingApproval");
   }
 
   // Check email verification (developers bypass this check)

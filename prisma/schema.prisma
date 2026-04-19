@@ -22,7 +22,7 @@ model User {
   isBlocked             Boolean   @default(false)
   blockedAt             DateTime?
   blockReason           String?
-  isApproved            Boolean   @default(true)
+  isApproved            Boolean   @default(false)
   passwordResetToken    String?
   passwordResetExpires  DateTime?
   otp                   String?
