@@ -121,3 +121,40 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }
+
+// حذف رسالة (للمطور)
+export async function DELETE(request: NextRequest) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    if (decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح - مطور فقط' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const messageId = searchParams.get('id');
+
+    if (!messageId) {
+      return NextResponse.json({ error: 'معرف الرسالة مطلوب' }, { status: 400 });
+    }
+
+    await db.message.delete({
+      where: { id: messageId }
+    });
+
+    return NextResponse.json({ success: true, message: 'تم حذف الرسالة' });
+  } catch (error) {
+    console.error('Error deleting message:', error);
+    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+  }
+}
