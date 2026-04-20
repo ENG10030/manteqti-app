@@ -48,7 +48,7 @@ interface Inquiry { id: string; apartmentId: string; userId?: string; name: stri
 interface Payment { id: string; inquiryId: string; method: string; status: string; amount: number; userId?: string; createdAt: string; inquiry?: { id: string; apartmentId: string; name: string; email: string; phone: string; apartment?: { id: string; title: string; price: number } | null } | null; }
 
 interface Toast { id: string; message: string; type: 'success' | 'error' | 'info'; }
-interface User { id: string; identifier: string; name: string; emailVerified?: boolean; }
+interface User { id: string; identifier: string; name: string; emailVerified?: boolean; isApproved?: boolean; }
 
 // Edit Request Interface
 interface PropertyEditRequest {
@@ -721,9 +721,15 @@ export default function App() {
           setOtpEmail(authIdentifier.trim().toLowerCase());
           addToast('تم إنشاء الحساب! يرجى تأكيد البريد الإلكتروني', 'info');
         } else {
-          setCurrentUser(data.user);
-          setShowAuth(false);
-          addToast(`مرحباً ${data.user.name}!`, 'success');
+          // Check if user needs approval
+          if (data.user && !data.user.isApproved) {
+            setShowAuth(false);
+            addToast('تم إنشاء الحساب بنجاح! حسابك قيد المراجعة وسيتم إشعارك فور الموافقة ⏳', 'info');
+          } else {
+            setCurrentUser(data.user);
+            setShowAuth(false);
+            addToast(`مرحباً ${data.user.name}!`, 'success');
+          }
         }
       }
       else addToast(data.error || 'خطأ في التسجيل', 'error');
@@ -1252,6 +1258,49 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
       </motion.div>
     </div>
   );
+
+  // Show pending approval screen for unapproved non-developer users
+  if (currentUser && !currentUser.isApproved && !isDeveloper) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-slate-900' : 'bg-gradient-to-br from-slate-50 via-amber-50/30 to-orange-50/30'} p-4`} dir="rtl">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-lg w-full">
+          <div className={`rounded-3xl p-8 shadow-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'} text-center`}>
+            <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Clock className="h-10 w-10 text-amber-500" />
+            </div>
+            <h1 className={`text-2xl font-bold mb-4 ${darkMode ? 'text-white' : 'text-slate-900'}`}>حسابك قيد المراجعة</h1>
+            <p className={`text-lg mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+              مرحباً <span className="font-bold">{currentUser.name}</span>
+            </p>
+            <p className={`mb-6 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+              تم استلام تسجيلك بنجاح وهو حالياً قيد المراجعة من قبل الإدارة.
+              <br />سيتم إشعارك عبر البريد الإلكتروني فور الموافقة على حسابك.
+            </p>
+            <div className={`p-4 rounded-2xl mb-6 ${darkMode ? 'bg-slate-700' : 'bg-amber-50'}`}>
+              <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-amber-600'}`}>
+                ⏳ عادةً ما تستغرق عملية المراجعة بضع ساعات فقط
+              </p>
+            </div>
+            <div className={`p-4 rounded-2xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+              <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                في حال كان لديك أي استفسار، تواصل معنا عبر البريد الإلكتروني
+              </p>
+            </div>
+            <button 
+              onClick={async () => {
+                await fetch('/api/auth/logout', { method: 'POST' });
+                setCurrentUser(null);
+                setIsDeveloper(false);
+              }}
+              className={`mt-6 px-8 py-3 rounded-xl font-medium transition-colors ${darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            >
+              تسجيل الخروج
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen flex flex-col ${darkMode ? 'bg-slate-900' : 'bg-gradient-to-br from-slate-50 via-violet-50/30 to-purple-50/30'}`} dir="rtl">
@@ -2012,7 +2061,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                           {payment.status === 'Pending' && (
                             <div className="flex gap-1">
                               <button onClick={() => handleConfirmPayment(payment.id)} className="p-1 rounded bg-emerald-500 text-white"><Check className="h-4 w-4" /></button>
-                              <button onClick={() => { }} className="p-1 rounded bg-red-500 text-white"><X className="h-4 w-4" /></button>
+                              <button onClick={() => handleRejectPayment(payment.id)} className="p-1 rounded bg-red-500 text-white"><X className="h-4 w-4" /></button>
                             </div>
                           )}
                         </div>
@@ -2083,7 +2132,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                         <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{u.identifier || u.email}</p>
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={() => { fetchUserDetail(u.id); setSelectedUserDetailId(u.id); }} className="px-4 py-2 rounded-lg bg-violet-500 text-white text-sm hover:bg-violet-600 transition-colors">تفاصيل</button>
+                        <button onClick={() => {}} className="px-4 py-2 rounded-lg bg-violet-500 text-white text-sm hover:bg-violet-600 transition-colors">تفاصيل</button>
                         <button onClick={() => setDevMessageTo({ userId: u.id, userName: u.name })} className="p-2 rounded-lg bg-blue-500 text-white text-sm hover:bg-blue-600 transition-colors" title="إرسال رسالة"><Send className="h-4 w-4" /></button>
                         {u.isBlocked ? (
                           <button onClick={() => unblockUser(u.id)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm">إلغاء الحظر</button>
