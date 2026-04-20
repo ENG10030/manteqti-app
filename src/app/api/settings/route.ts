@@ -38,6 +38,7 @@ export async function GET() {
       settings = await db.settings.create({
         data: {
           contactFee: 50,
+          regularFee: 30,
           featuredFee: 100,
           premiumFee: 200,
           vipFee: 300,
@@ -77,6 +78,7 @@ export async function PUT(request: Request) {
       settings = await db.settings.create({
         data: {
           contactFee: body.contactFee || 50,
+          regularFee: body.regularFee || 30,
           featuredFee: body.featuredFee || 100,
           premiumFee: body.premiumFee || 200,
           vipFee: body.vipFee || 300,
@@ -94,6 +96,7 @@ export async function PUT(request: Request) {
         where: { id: settings.id },
         data: {
           contactFee: body.contactFee,
+          regularFee: body.regularFee,
           featuredFee: body.featuredFee,
           premiumFee: body.premiumFee,
           vipFee: body.vipFee,
