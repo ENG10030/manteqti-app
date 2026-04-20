@@ -39,11 +39,9 @@ export async function POST(
       )
     }
 
-    // إذا لم يتم تحديد action، يكون الإجراء الافتراضي هو الحظر
     const finalAction = action || "block"
 
     if (finalAction === "block") {
-      // حظر المستخدم مع تخزين السبب إذا تم توفيره
       await db.user.update({
         where: { id: userId },
         data: {
@@ -53,13 +51,23 @@ export async function POST(
         }
       })
 
-      // تحديث حالة عقارات المستخدم إلى "مخفي"
       await db.apartment.updateMany({
         where: { createdBy: userId },
-        data: {
-          status: "hidden"
-        }
+        data: { status: "hidden" }
       })
+
+      // Log block
+      try {
+        await db.operationLog.create({
+          data: {
+            action: "BLOCK_USER",
+            entityType: "User",
+            entityId: userId,
+            details: JSON.stringify({ userName: targetUser.name, reason: reason || "حظر من المطور" }),
+            userId: user.id,
+          },
+        });
+      } catch {}
 
       return NextResponse.json({
         success: true,
@@ -67,7 +75,6 @@ export async function POST(
       })
 
     } else if (finalAction === "unblock") {
-      // إلغاء حظر المستخدم
       await db.user.update({
         where: { id: userId },
         data: {
@@ -77,37 +84,22 @@ export async function POST(
         }
       })
 
+      // Log unblock
+      try {
+        await db.operationLog.create({
+          data: {
+            action: "UNBLOCK_USER",
+            entityType: "User",
+            entityId: userId,
+            details: JSON.stringify({ userName: targetUser.name }),
+            userId: user.id,
+          },
+        });
+      } catch {}
+
       return NextResponse.json({
         success: true,
         message: "تم إلغاء حظر المستخدم"
-      })
-
-    } else if (finalAction === "approve") {
-      // تأكيد تسجيل المستخدم
-      await db.user.update({
-        where: { id: userId },
-        data: {
-          isApproved: true,
-          isBlocked: false,
-          blockedAt: null,
-          blockReason: null,
-        }
-      })
-
-      return NextResponse.json({
-        success: true,
-        message: "تم تأكيد تسجيل المستخدم"
-      })
-
-    } else if (finalAction === "reject") {
-      // رفض تسجيل المستخدم وحذفه
-      await db.user.delete({
-        where: { id: userId }
-      })
-
-      return NextResponse.json({
-        success: true,
-        message: "تم رفض تسجيل المستخدم وحذف حسابه"
       })
 
     } else {
@@ -136,7 +128,7 @@ export async function GET(
 
     if (!user || user.role !== "DEVELOPER") {
       return NextResponse.json(
-        { error: "غير مصرح لك بهذا الإجراء" },
+        { error: "غير مصرح بك بهذا الإجراء" },
         { status: 403 }
       )
     }
@@ -154,7 +146,6 @@ export async function GET(
       )
     }
 
-    // جلب عقارات المستخدم
     const apartments = await db.apartment.findMany({
       where: { createdBy: userId },
       orderBy: { createdAt: "desc" }

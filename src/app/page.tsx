@@ -359,6 +359,27 @@ export default function App() {
     } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
   };
 
+  const handleDeleteUser = async (userId: string, userName: string, confirmed: boolean = false) => {
+    if (!confirmed) {
+      setConfirmDialog({ isOpen: true, title: '🗑️ حذف مستخدم', message: `هل أنت متأكد من حذف "${userName}" نهائياً؟\n\n⚠️ سيتم حذف:\n• جميع عقاراته\n• جميع رسائله\n• جميع مدفوعاته\n• جميع بياناته\n\nلا يمكن التراجع عن هذا الإجراء!`, confirmText: 'حذف نهائي', cancelText: 'إلغاء', onConfirm: () => handleDeleteUser(userId, userName, true), type: 'danger' });
+      return;
+    }
+    setConfirmDialog(prev => ({ ...prev, loading: true }));
+    try {
+      const res = await fetch(`/api/users/${userId}/delete`, { method: 'DELETE' });
+      if (res.ok) {
+        const data = await res.json();
+        fetchAllUsers(); fetchDevData(); fetchBlockedUsers();
+        if (selectedUserDetail?.id === userId) { setSelectedUserDetail(null); setUserDetailData({ apartments: [], payments: [], inquiries: [] }); }
+        addToast(data.message || 'تم حذف المستخدم ✅', 'success');
+      } else {
+        const data = await res.json();
+        addToast(data.error || 'فشل حذف المستخدم', 'error');
+      }
+    } catch { addToast('حدث خطأ', 'error'); }
+    finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+  };
+
   const handleDevSendMessage = async () => {
     if (!devMessageTo || !devMessageText.trim()) return;
     try {
@@ -2126,7 +2147,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <button onClick={() => setShowDevPanel(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
               </div>
               <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
-                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل' }, { id: 'userApprovals', icon: ShieldCheck, label: 'تأكيد التسجيل', count: pendingUsers.length }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'blocked', icon: Ban, label: 'محظورين' }, { id: 'settings', icon: Settings, label: 'الإعدادات' } ].map(tab => (
+                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل' }, { id: 'userApprovals', icon: ShieldCheck, label: 'تأكيد التسجيل', count: pendingUsers.length }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'blocked', icon: Ban, label: 'محظورين' }, { id: 'settings', icon: Settings, label: 'الإعدادات' }, { id: 'logs', icon: Activity, label: 'السجل' } ].map(tab => (
                   <button key={tab.id} onClick={() => setDevTab(tab.id as any)} className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-all ${devTab === tab.id ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                     <tab.icon className="h-4 w-4" />{tab.label}
                     {tab.count !== undefined && tab.count > 0 && <span className={`px-2 py-0.5 rounded-full text-xs ${devTab === tab.id ? 'bg-white/20' : 'bg-amber-500 text-white'}`}>{tab.count}</span>}
@@ -2398,28 +2419,30 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div className="space-y-4">
                   {allUsers.length === 0 ? <div className="text-center py-12"><User className={`h-16 h-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا يوجد مستخدمين</p></div> : allUsers.map(u => (
                     <div key={u.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                      <div className="flex items-center justify-between">
-                        <div>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{u.name}</p>
-                            {u.isBlocked && <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">محظور</span>}
-                            {u.isApproved === false && <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">⏳ غير مؤكد</span>}
-                            {u.isApproved === true && <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700">✅ مؤكد</span>}
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${u.isApproved === false ? 'bg-amber-500' : 'bg-gradient-to-br from-emerald-500 to-teal-600'}`}>{u.name?.charAt(0) || '?'}</div>
+                            <p className={`font-medium truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{u.name}</p>
+                            {u.isBlocked && <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700 shrink-0">🚫 محظور</span>}
+                            {u.isApproved === false && <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700 shrink-0">⏳ بانتظار التأكيد</span>}
+                            {u.isApproved === true && <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700 shrink-0">✅ نشط</span>}
                           </div>
-                          <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{u.identifier || u.email}{u.phone ? ` • 📞 ${u.phone}` : ''}</p>
-                          <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>تاريخ التسجيل: {new Date(u.createdAt).toLocaleDateString('ar-EG')}</p>
+                          <p className={`text-sm mt-1 truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>📧 {u.identifier || u.email}{u.phone ? ` • 📞 ${u.phone}` : ''}</p>
+                          <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>📅 تاريخ التسجيل: {new Date(u.createdAt).toLocaleDateString('ar-EG')} • {new Date(u.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</p>
                         </div>
-                        <div className="flex gap-2 flex-wrap">
-                          <button onClick={() => { setSelectedUserDetail(u); fetchUserDetail(u.id); }} className="px-4 py-2 rounded-lg bg-violet-500 text-white text-sm hover:bg-violet-600 transition-colors flex items-center gap-1"><Eye className="h-3.5 w-3.5" />تفاصيل</button>
-                          <button onClick={() => setDevMessageTo({ userId: u.id, userName: u.name })} className="p-2 rounded-lg bg-blue-500 text-white text-sm hover:bg-blue-600 transition-colors" title="إرسال رسالة"><Send className="h-4 w-4" /></button>
+                        <div className="flex gap-1.5 flex-wrap shrink-0">
+                          <button onClick={() => { setSelectedUserDetail(u); fetchUserDetail(u.id); }} className="px-3 py-2 rounded-lg bg-violet-500 text-white text-xs hover:bg-violet-600 transition-colors flex items-center gap-1" title="تفاصيل المستخدم"><Eye className="h-3.5 w-3.5" /><span className="hidden sm:inline">تفاصيل</span></button>
+                          <button onClick={() => setDevMessageTo({ userId: u.id, userName: u.name })} className="px-3 py-2 rounded-lg bg-blue-500 text-white text-xs hover:bg-blue-600 transition-colors flex items-center gap-1" title="تواصل مع المستخدم"><Send className="h-3.5 w-3.5" /><span className="hidden sm:inline">رسالة</span></button>
                           {u.isBlocked ? (
-                            <button onClick={() => unblockUser(u.id)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm">إلغاء الحظر</button>
+                            <button onClick={() => unblockUser(u.id)} className="px-3 py-2 rounded-lg bg-emerald-500 text-white text-xs hover:bg-emerald-600 transition-colors">🔓 فك الحظر</button>
                           ) : (
-                            <button onClick={() => blockUser(u.id, 'حظر من المطور')} className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm">حظر</button>
+                            <button onClick={() => blockUser(u.id, 'حظر من المطور')} className="px-3 py-2 rounded-lg bg-amber-500 text-white text-xs hover:bg-amber-600 transition-colors" title="حظر المستخدم">🔒 حظر</button>
                           )}
                           {u.isApproved === false && (
-                            <button onClick={() => handleApproveUser(u.id, u.name)} className="px-3 py-2 rounded-lg bg-emerald-500 text-white text-sm hover:bg-emerald-600"><Check className="h-4 w-4" /></button>
+                            <button onClick={() => handleApproveUser(u.id, u.name)} className="px-3 py-2 rounded-lg bg-emerald-500 text-white text-xs hover:bg-emerald-600 transition-colors flex items-center gap-1"><Check className="h-3.5 w-3.5" />تأكيد</button>
                           )}
+                          <button onClick={() => handleDeleteUser(u.id, u.name)} className="px-3 py-2 rounded-lg bg-red-500 text-white text-xs hover:bg-red-600 transition-colors flex items-center gap-1" title="حذف المستخدم نهائياً"><Trash2 className="h-3.5 w-3.5" /></button>
                         </div>
                       </div>
                     </div>
@@ -2556,6 +2579,47 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     </div>
                     <p className={`text-xs mt-2 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>💡 الأسعار تتحدث للمستخدمين تلقائياً بدون تحديث الصفحة</p>
                   </div>
+                </div>
+              )}
+
+              {/* Logs Tab */}
+              {devTab === 'logs' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>سجل العمليات والأحداث</p>
+                    <button onClick={fetchOperationLogs} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" title="تحديث"><RefreshCw className={`h-4 w-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`} /></button>
+                  </div>
+                  {operationLogs.length === 0 ? (
+                    <div className="text-center py-12"><Activity className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد عمليات مسجلة</p></div>
+                  ) : (
+                    <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                      {operationLogs.map((log: any) => {
+                        const actionLabels: Record<string, { label: string; color: string; icon: string }> = {
+                          'APPROVE_USER': { label: 'تأكيد تسجيل', color: 'bg-emerald-100 text-emerald-700', icon: '✅' },
+                          'REJECT_USER': { label: 'رفض تسجيل', color: 'bg-red-100 text-red-700', icon: '❌' },
+                          'BLOCK_USER': { label: 'حظر مستخدم', color: 'bg-red-100 text-red-700', icon: '🚫' },
+                          'UNBLOCK_USER': { label: 'فك حظر', color: 'bg-emerald-100 text-emerald-700', icon: '🔓' },
+                          'DELETE_USER': { label: 'حذف مستخدم', color: 'bg-red-100 text-red-700', icon: '🗑️' },
+                          'DELETE_MESSAGE': { label: 'حذف رسالة', color: 'bg-amber-100 text-amber-700', icon: '💬' },
+                          'UPDATE_SETTINGS': { label: 'تحديث إعدادات', color: 'bg-violet-100 text-violet-700', icon: '⚙️' },
+                        };
+                        const actionInfo = actionLabels[log.action] || { label: log.action, color: 'bg-slate-100 text-slate-700', icon: '📋' };
+                        let detailText = '';
+                        try { const d = JSON.parse(log.details || '{}'); detailText = d.userName || d.reason || d.identifier || (typeof d === 'string' ? d : ''); } catch { detailText = log.details || ''; }
+                        return (
+                          <div key={log.id} className={`p-3 rounded-lg ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className={`px-2 py-0.5 rounded-full text-xs shrink-0 ${actionInfo.color}`}>{actionInfo.icon} {actionInfo.label}</span>
+                                {detailText && <p className={`text-sm truncate ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{detailText}</p>}
+                              </div>
+                              <span className={`text-xs shrink-0 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(log.createdAt).toLocaleString('ar-EG')}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

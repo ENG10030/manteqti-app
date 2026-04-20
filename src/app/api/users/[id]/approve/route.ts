@@ -37,9 +37,36 @@ export async function PUT(
         data: { isApproved: true },
         select: { id: true, name: true, email: true, isApproved: true },
       });
+
+      // Log approval
+      try {
+        await db.operationLog.create({
+          data: {
+            action: "APPROVE_USER",
+            entityType: "User",
+            entityId: id,
+            details: JSON.stringify({ userName: updated.name, email: updated.email }),
+            userId: currentUser.id,
+          },
+        });
+      } catch {}
+
       return NextResponse.json({ message: "تم تأكيد التسجيل", user: updated });
     } else {
-      // Delete user and all their data
+      // Log rejection before deletion
+      try {
+        await db.operationLog.create({
+          data: {
+            action: "REJECT_USER",
+            entityType: "User",
+            entityId: id,
+            details: JSON.stringify({ userName: user.name, email: user.email }),
+            userId: currentUser.id,
+          },
+        });
+      } catch {}
+
+      // Delete user and all their data (cascade)
       await db.user.delete({ where: { id } });
       return NextResponse.json({ message: "تم رفض التسجيل وحذف الحساب" });
     }
