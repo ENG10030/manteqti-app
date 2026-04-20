@@ -20,7 +20,7 @@ import { FileUpload } from '@/components/file-upload';
 // Developer credentials
 const DEVELOPER_EMAIL = 'ahmadmamdouh10030@gmail.com';
 
-const CONTACT_FEE = 50;
+// Contact fee now comes from settings (dynamic)
 
 // Status configuration
 const statusConfig: Record<string, { label: string; color: string; bgColor: string; dotColor: string }> = {
@@ -379,6 +379,28 @@ export default function App() {
     } catch { addToast('فشل إرسال الرد', 'error'); }
   };
 
+  // Delete a message (developer only)
+  const handleDeleteMessage = async (messageId: string) => {
+    setConfirmDialog({
+      isOpen: true, title: 'حذف الرسالة', message: 'هل أنت متأكد من حذف هذه الرسالة؟ لا يمكن التراجع عن هذا الإجراء.',
+      confirmText: 'حذف', cancelText: 'إلغاء', type: 'danger',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, loading: true }));
+        try {
+          const res = await fetch(`/api/messages?id=${messageId}`, { method: 'DELETE' });
+          if (res.ok) {
+            setMessages(prev => prev.filter(m => m.id !== messageId));
+            addToast('تم حذف الرسالة ✅', 'success');
+          } else {
+            const data = await res.json();
+            addToast(data.error || 'فشل حذف الرسالة', 'error');
+          }
+        } catch { addToast('حدث خطأ', 'error'); }
+        finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+      }
+    });
+  };
+
   // Fetch settings
   const fetchSettings = async () => {
     try {
@@ -525,8 +547,17 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (isDeveloper) { fetchDevData(); fetchSettings(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
+    fetchSettings(); // Always fetch settings for all users
+    if (isDeveloper) { fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
   }, [isDeveloper]);
+
+  // Auto-refresh settings every 30 seconds so users see changes immediately
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchSettings();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch likes
   const fetchUserLikes = async () => {
@@ -952,13 +983,13 @@ export default function App() {
 
   const handlePayment = async (confirmed: boolean = false) => {
     if (!paymentApartment || !paymentMethod) return;
-    if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'تأكيد الدفع', message: `هل تريد الدفع بمبلغ ${CONTACT_FEE} ج.م؟`, confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm: () => handlePayment(true), type: 'info' }); return; }
+    if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'تأكيد الدفع', message: `هل تريد الدفع بمبلغ ${settings.contactFee} ${settings.currency}؟`, confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm: () => handlePayment(true), type: 'info' }); return; }
     setConfirmDialog(prev => ({ ...prev, loading: true }));
     setPaymentSubmitting(true);
     try {
       const inqRes = await fetch('/api/inquiries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apartmentId: paymentApartment.id, userId: currentUser?.id, name: currentUser?.name || 'زائر', email: currentUser?.identifier || 'guest@example.com', phone: 'N/A', message: 'طلب بيانات تواصل' }) });
       const inquiry = await inqRes.json();
-      await fetch('/api/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inquiryId: inquiry.id, method: paymentMethod, status: 'Pending', amount: CONTACT_FEE, userId: currentUser?.id }) });
+      await fetch('/api/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inquiryId: inquiry.id, method: paymentMethod, status: 'Pending', amount: settings.contactFee, userId: currentUser?.id }) });
       setPaymentApartment(null); setPaymentMethod('');
       addToast('تم إرسال طلب الدفع!', 'success');
     } finally { setPaymentSubmitting(false); setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
@@ -1984,7 +2015,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <Lock className="h-6 w-6 text-amber-500" />
                     <div>
                       <p className={`font-medium ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>بيانات التواصل محجوبة</p>
-                      <p className={`text-sm ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>ادفع {CONTACT_FEE} ج.م للحصول على بيانات التواصل</p>
+                      <p className={`text-sm ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>ادفع {settings.contactFee} {settings.currency} للحصول على بيانات التواصل</p>
                     </div>
                   </div>
                   <button onClick={() => setPaymentApartment(selectedApartment)} className="mt-3 w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium"><CreditCard className="h-4 w-4 inline ml-2" />طلب بيانات التواصل</button>
@@ -2315,17 +2346,20 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <div key={msg.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold">{msg.sender?.name?.charAt(0) || 'م'}</div>
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${msg.senderId === currentUser?.id ? 'bg-gradient-to-br from-violet-500 to-purple-600' : 'bg-gradient-to-br from-emerald-500 to-teal-600'}`}>{msg.sender?.name?.charAt(0) || 'م'}</div>
                           <div>
-                            <span className={`font-medium ${darkMode ? 'text-violet-400' : 'text-violet-600'}`}>{msg.sender?.name || 'مستخدم'}</span>
-                            {msg.sender?.identifier && <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{msg.sender.identifier}</p>}
+                            <span className={`font-medium ${msg.senderId === currentUser?.id ? (darkMode ? 'text-violet-400' : 'text-violet-600') : (darkMode ? 'text-emerald-400' : 'text-emerald-600')}`}>{msg.senderId === currentUser?.id ? 'أنت' : (msg.sender?.name || 'مستخدم')}</span>
+                            {msg.sender?.identifier && msg.senderId !== currentUser?.id && <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{msg.sender.identifier}</p>}
                           </div>
                         </div>
-                        <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(msg.createdAt).toLocaleString('ar-EG')}</span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(msg.createdAt).toLocaleString('ar-EG')}</span>
+                          <button onClick={() => handleDeleteMessage(msg.id)} className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400 hover:text-red-600 transition-colors" title="حذف الرسالة"><Trash2 className="h-3.5 w-3.5" /></button>
+                        </div>
                       </div>
-                      <p className={`mb-3 ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{msg.content}</p>
-                      {/* Reply input for developer */}
-                      {msg.sender?.id && (
+                      <p className={`mb-3 whitespace-pre-line ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{msg.content}</p>
+                      {/* Reply input for developer - only for messages from users */}
+                      {msg.sender?.id && msg.senderId !== currentUser?.id && (
                         <div className="flex gap-2 mt-2">
                           <input 
                             type="text" 
@@ -2424,13 +2458,54 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               {devTab === 'settings' && (
                 <div className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم بيانات التواصل (ج.م)</label><input type="number" value={settings.contactFee} onChange={(e) => setSettings({ ...settings, contactFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم العقار العادي (ج.م)</label><input type="number" value={settings.regularFee} onChange={(e) => setSettings({ ...settings, regularFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم العقار المميز (ج.م)</label><input type="number" value={settings.featuredFee} onChange={(e) => setSettings({ ...settings, featuredFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم العقار المميز+ VIP (ج.م)</label><input type="number" value={settings.vipFee} onChange={(e) => setSettings({ ...settings, vipFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم عرض البيع (ج.م)</label><input type="number" value={settings.saleDisplayFee} onChange={(e) => setSettings({ ...settings, saleDisplayFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رسوم عرض الإيجار (ج.م)</label><input type="number" value={settings.rentDisplayFee} onChange={(e) => setSettings({ ...settings, rentDisplayFee: parseInt(e.target.value) || 0 })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                    <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>العملة</label><input type="text" value={settings.currency} onChange={(e) => setSettings({ ...settings, currency: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>💰 رسوم بيانات التواصل</label>
+                      <input type="number" min="0" value={settings.contactFee} onChange={(e) => setSettings({ ...settings, contactFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>🏠 رسوم العقار العادي</label>
+                      <input type="number" min="0" value={settings.regularFee} onChange={(e) => setSettings({ ...settings, regularFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>⭐ رسوم العقار المميز</label>
+                      <input type="number" min="0" value={settings.featuredFee} onChange={(e) => setSettings({ ...settings, featuredFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>👑 رسوم VIP</label>
+                      <input type="number" min="0" value={settings.vipFee} onChange={(e) => setSettings({ ...settings, vipFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📋 رسوم عرض البيع</label>
+                      <input type="number" min="0" value={settings.saleDisplayFee} onChange={(e) => setSettings({ ...settings, saleDisplayFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>🔑 رسوم عرض الإيجار</label>
+                      <input type="number" min="0" value={settings.rentDisplayFee} onChange={(e) => setSettings({ ...settings, rentDisplayFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>✨ رسوم إبراز العقار</label>
+                      <input type="number" min="0" value={settings.highlightFee} onChange={(e) => setSettings({ ...settings, highlightFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>🔝 رسوم أولوية العرض</label>
+                      <input type="number" min="0" value={settings.priorityListingFee} onChange={(e) => setSettings({ ...settings, priorityListingFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>✅ رسوم التحقق من العقار</label>
+                      <input type="number" min="0" value={settings.verifiedListingFee} onChange={(e) => setSettings({ ...settings, verifiedListingFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>💎 رسوم الباقة المميزة</label>
+                      <input type="number" min="0" value={settings.premiumFee} onChange={(e) => setSettings({ ...settings, premiumFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>🛠️ رسوم خدمات أخرى</label>
+                      <input type="number" min="0" value={settings.otherServicesFee} onChange={(e) => setSettings({ ...settings, otherServicesFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>💱 العملة</label>
+                      <input type="text" maxLength={10} value={settings.currency} onChange={(e) => setSettings({ ...settings, currency: e.target.value.replace(/<[^>]*>/g, '').slice(0, 10) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                    </div>
                   </div>
                   <button onClick={() => updateSettings(settings)} disabled={settingsLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2">{settingsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}حفظ الإعدادات</button>
                   {/* Developer Password Change */}
@@ -2468,15 +2543,19 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     }} className="mt-3 px-6 py-2 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white font-medium text-sm">تغيير كلمة المرور</button>
                   </div>
                   <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                    <h3 className={`font-bold mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>معاينة الأسعار للمستخدمين</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                      {settings.contactFee === 0 ? <div className={`p-2 rounded-lg bg-emerald-100 text-emerald-700`}>بيانات التواصل: مجاني ✨</div> : <div className={`p-2 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>بيانات التواصل: {settings.contactFee} {settings.currency}</div>}
-                      {settings.regularFee === 0 ? <div className={`p-2 rounded-lg bg-emerald-100 text-emerald-700`}>عادي: مجاني ✨</div> : <div className={`p-2 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>عادي: {settings.regularFee} {settings.currency}</div>}
-                      {settings.featuredFee === 0 ? <div className={`p-2 rounded-lg bg-emerald-100 text-emerald-700`}>مميز: مجاني ✨</div> : <div className={`p-2 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>مميز: {settings.featuredFee} {settings.currency}</div>}
-                      {settings.vipFee === 0 ? <div className={`p-2 rounded-lg bg-emerald-100 text-emerald-700`}>VIP+: مجاني ✨</div> : <div className={`p-2 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>VIP+: {settings.vipFee} {settings.currency}</div>}
+                    <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Eye className="h-5 w-5 text-emerald-500" />معاينة الأسعار للمستخدمين</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                      <div className={`p-2.5 rounded-lg ${settings.contactFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>💰 تواصل: {settings.contactFee === 0 ? 'مجاني ✨' : `${settings.contactFee} ${settings.currency}`}</div>
+                      <div className={`p-2.5 rounded-lg ${settings.regularFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>🏠 عادي: {settings.regularFee === 0 ? 'مجاني ✨' : `${settings.regularFee} ${settings.currency}`}</div>
+                      <div className={`p-2.5 rounded-lg ${settings.featuredFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>⭐ مميز: {settings.featuredFee === 0 ? 'مجاني ✨' : `${settings.featuredFee} ${settings.currency}`}</div>
+                      <div className={`p-2.5 rounded-lg ${settings.vipFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>👑 VIP: {settings.vipFee === 0 ? 'مجاني ✨' : `${settings.vipFee} ${settings.currency}`}</div>
+                      <div className={`p-2.5 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>📋 بيع: {settings.saleDisplayFee} {settings.currency}</div>
+                      <div className={`p-2.5 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>🔑 إيجار: {settings.rentDisplayFee} {settings.currency}</div>
+                      <div className={`p-2.5 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>✨ إبراز: {settings.highlightFee} {settings.currency}</div>
+                      <div className={`p-2.5 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>🔝 أولوية: {settings.priorityListingFee} {settings.currency}</div>
                     </div>
+                    <p className={`text-xs mt-2 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>💡 الأسعار تتحدث للمستخدمين تلقائياً بدون تحديث الصفحة</p>
                   </div>
-                  <button onClick={() => updateSettings(settings)} disabled={settingsLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold hover:opacity-90 transition-opacity disabled:opacity-50">{settingsLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : <>💾 حفظ الإعدادات</>}</button>
                 </div>
               )}
             </div>
@@ -2492,7 +2571,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>طلب بيانات التواصل</h2>
               <button onClick={() => setPaymentApartment(null)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
             </div>
-            <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>المبلغ المطلوب:</p><p className="text-2xl font-bold text-emerald-500">{CONTACT_FEE} ج.م</p></div>
+            <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>المبلغ المطلوب:</p><p className="text-2xl font-bold text-emerald-500">{settings.contactFee} {settings.currency}</p></div>
             <div className="space-y-3 mb-6">
               <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>اختر طريقة الدفع:</p>
               {['فودافون كاش', 'أورنج كاش', 'اتصالات كاش', 'تحويل بنكي'].map(method => (

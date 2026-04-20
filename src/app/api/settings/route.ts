@@ -15,7 +15,6 @@ async function isDeveloper(request: Request) {
   try {
     const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
     
-    // التحقق من دور DEVELOPER أو بريد المطور
     if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
 
     const user = await db.user.findUnique({
@@ -29,31 +28,49 @@ async function isDeveloper(request: Request) {
   }
 }
 
-// GET - جلب الإعدادات
+// Validate fee value - must be non-negative integer
+function validateFee(value: any): number {
+  const num = parseInt(value);
+  if (isNaN(num) || num < 0) return 0;
+  return num;
+}
+
+// Validate currency - max 10 chars, no HTML
+function validateCurrency(value: any): string {
+  if (typeof value !== 'string') return 'ج.م';
+  const sanitized = value.replace(/<[^>]*>/g, '').trim().slice(0, 10);
+  return sanitized || 'ج.م';
+}
+
+const DEFAULT_SETTINGS = {
+  contactFee: 50,
+  regularFee: 30,
+  featuredFee: 100,
+  premiumFee: 200,
+  vipFee: 300,
+  saleDisplayFee: 100,
+  rentDisplayFee: 75,
+  otherServicesFee: 50,
+  highlightFee: 150,
+  priorityListingFee: 200,
+  verifiedListingFee: 250,
+  currency: "ج.م",
+};
+
+// GET - جلب الإعدادات (public - all users can read)
 export async function GET() {
   try {
     let settings = await db.settings.findFirst();
 
     if (!settings) {
-      settings = await db.settings.create({
-        data: {
-          contactFee: 50,
-          regularFee: 30,
-          featuredFee: 100,
-          premiumFee: 200,
-          vipFee: 300,
-          saleDisplayFee: 100,
-          rentDisplayFee: 75,
-          otherServicesFee: 50,
-          highlightFee: 150,
-          priorityListingFee: 200,
-          verifiedListingFee: 250,
-          currency: "ج.م",
-        },
-      });
+      settings = await db.settings.create({ data: DEFAULT_SETTINGS });
     }
 
-    return NextResponse.json({ settings });
+    // Add cache-control to prevent stale data
+    return NextResponse.json(
+      { settings },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache' } }
+    );
   } catch (error) {
     console.error("Get settings error:", error);
     return NextResponse.json(
@@ -63,7 +80,7 @@ export async function GET() {
   }
 }
 
-// PUT - تحديث الإعدادات
+// PUT - تحديث الإعدادات (developer only)
 export async function PUT(request: Request) {
   try {
     if (!(await isDeveloper(request))) {
@@ -72,44 +89,44 @@ export async function PUT(request: Request) {
 
     const body = await request.json();
 
+    // Server-side validation
+    const validatedData = {
+      contactFee: validateFee(body.contactFee),
+      regularFee: validateFee(body.regularFee),
+      featuredFee: validateFee(body.featuredFee),
+      premiumFee: validateFee(body.premiumFee),
+      vipFee: validateFee(body.vipFee),
+      saleDisplayFee: validateFee(body.saleDisplayFee),
+      rentDisplayFee: validateFee(body.rentDisplayFee),
+      otherServicesFee: validateFee(body.otherServicesFee),
+      highlightFee: validateFee(body.highlightFee),
+      priorityListingFee: validateFee(body.priorityListingFee),
+      verifiedListingFee: validateFee(body.verifiedListingFee),
+      currency: validateCurrency(body.currency),
+    };
+
     let settings = await db.settings.findFirst();
 
     if (!settings) {
-      settings = await db.settings.create({
-        data: {
-          contactFee: body.contactFee || 50,
-          regularFee: body.regularFee || 30,
-          featuredFee: body.featuredFee || 100,
-          premiumFee: body.premiumFee || 200,
-          vipFee: body.vipFee || 300,
-          saleDisplayFee: body.saleDisplayFee || 100,
-          rentDisplayFee: body.rentDisplayFee || 75,
-          otherServicesFee: body.otherServicesFee || 50,
-          highlightFee: body.highlightFee || 150,
-          priorityListingFee: body.priorityListingFee || 200,
-          verifiedListingFee: body.verifiedListingFee || 250,
-          currency: body.currency || "ج.م",
-        },
-      });
+      settings = await db.settings.create({ data: validatedData });
     } else {
       settings = await db.settings.update({
         where: { id: settings.id },
-        data: {
-          contactFee: body.contactFee,
-          regularFee: body.regularFee,
-          featuredFee: body.featuredFee,
-          premiumFee: body.premiumFee,
-          vipFee: body.vipFee,
-          saleDisplayFee: body.saleDisplayFee,
-          rentDisplayFee: body.rentDisplayFee,
-          otherServicesFee: body.otherServicesFee,
-          highlightFee: body.highlightFee,
-          priorityListingFee: body.priorityListingFee,
-          verifiedListingFee: body.verifiedListingFee,
-          currency: body.currency,
-        },
+        data: validatedData,
       });
     }
+
+    // Log settings change
+    try {
+      await db.operationLog.create({
+        data: {
+          action: 'UPDATE_SETTINGS',
+          entityType: 'Settings',
+          entityId: settings.id,
+          details: JSON.stringify(validatedData),
+        },
+      });
+    } catch {}
 
     return NextResponse.json({
       message: "تم تحديث الإعدادات بنجاح",
