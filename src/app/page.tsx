@@ -892,7 +892,7 @@ export default function App() {
       if (res.ok) { 
         fetchApartments(); 
         setShowAddModal(false); 
-        setAptForm({ title: '', price: '', area: '', bedrooms: '1', bathrooms: '1', floor: '', apartmentSize: '', description: '', ownerPhone: '', mapLink: '', type: 'rent' }); 
+        setAptForm({ title: '', price: '', area: '', bedrooms: '1', bathrooms: '1', floor: '', apartmentSize: '', description: '', ownerPhone: '', mapLink: '', type: 'rent', listingType: 'regular' }); 
         setImageUrls([]); 
         setVideoUrls([]); 
         addToast(isDeveloper ? 'تم نشر الشقة بنجاح!' : 'تم إرسال الشقة للمراجعة!', 'success'); 
