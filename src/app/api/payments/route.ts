@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
         inquiryId: data.inquiryId,
         method: data.method,
         status: data.status || 'Pending',
-        inquiryStatus: data.inquiryStatus || 'Pending',
+        inquiryStatus: data.inquiryStatus || 'Contacted',
         amount: data.amount,
         transactionRef: data.transactionRef,
         paymentLink: data.paymentLink,

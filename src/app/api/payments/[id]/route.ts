@@ -45,7 +45,6 @@ export async function GET(
         email: payment.inquiry.email,
         phone: payment.inquiry.phone,
         message: payment.inquiry.message,
-        lifecycleStatus: payment.inquiry.lifecycleStatus,
         apartment: payment.inquiry.apartment ? {
           id: payment.inquiry.apartment.id,
           title: payment.inquiry.apartment.title,
@@ -83,34 +82,13 @@ export async function PUT(
     const { id } = await params;
     const data = await request.json();
 
-    // Get the payment first to find the inquiryId
-    const existingPayment = await db.payment.findUnique({
-      where: { id },
-      select: { inquiryId: true }
-    });
-
-    if (!existingPayment) {
-      return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
-    }
-
-    // Update payment status
     const payment = await db.payment.update({
       where: { id },
       data: {
         status: data.status,
-        inquiryStatus: data.status === 'Paid' ? 'Contacted' : data.status === 'Failed' ? 'Rejected' : data.inquiryStatus || 'new'
+        inquiryStatus: data.inquiryStatus
       }
     });
-
-    // Also update the inquiry lifecycleStatus when payment is confirmed or rejected
-    if (data.status === 'Paid' || data.status === 'Failed') {
-      await db.inquiry.update({
-        where: { id: existingPayment.inquiryId },
-        data: {
-          lifecycleStatus: data.status === 'Paid' ? 'Converted' : 'Lost'
-        }
-      });
-    }
 
     return NextResponse.json({
       id: payment.id,

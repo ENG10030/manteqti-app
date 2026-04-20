@@ -13,7 +13,7 @@ import {
   Send, Bot, Home, Crown, Diamond, Ban, Brain, Search,
   Play, Upload, Link, Activity, Wallet, PieChart, Layers, Key, ArrowUp,
   Download, RefreshCw as RefreshCwIcon, Smartphone, Banknote, Zap,
-  Clock, Sparkles, Share2, Calendar, BookOpen, Users, Edit
+  Clock, Sparkles, Share2, Calendar, BookOpen, Users
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
 
@@ -49,25 +49,6 @@ interface Payment { id: string; inquiryId: string; method: string; status: strin
 
 interface Toast { id: string; message: string; type: 'success' | 'error' | 'info'; }
 interface User { id: string; identifier: string; name: string; emailVerified?: boolean; }
-
-interface UserDetail {
-  user: { id: string; name: string; email: string | null; phone: string | null; identifier: string; role: string; isBlocked: boolean; blockedAt: string | null; blockReason: string | null; emailVerified: boolean; createdAt: string; updatedAt: string; };
-  apartments: Array<{ id: string; title: string; price: number; area: string; type: string; status: string; views: number; isFeatured: boolean; isVip: boolean; createdAt: string }>;
-  inquiries: Array<{ id: string; apartmentId: string; name: string; email: string; phone: string; message: string; lifecycleStatus: string; createdAt: string; apartment?: { id: string; title: string; price: number } | null; payment?: { id: string; status: string; method: string; amount: number } | null }>;
-  payments: Array<{ id: string; inquiryId: string; method: string; status: string; amount: number; createdAt: string; inquiry?: { id: string; name: string; phone: string; email: string; apartment?: { id: string; title: string } | null } | null }>;
-  comments: Array<{ id: string; apartmentId: string; content: string; status: string; createdAt: string; apartment?: { id: string; title: string } | null }>;
-  likes: Array<{ id: string; apartmentId: string; createdAt: string; apartment?: { id: string; title: string } | null }>;
-  messages: { sent: Array<{ id: string; content: string; isRead: boolean; createdAt: string; receiverId: string | null }>; received: Array<{ id: string; content: string; isRead: boolean; createdAt: string; senderId: string }> };
-  editRequests: Array<{ id: string; apartmentId: string; editType: string; description: string | null; status: string; reviewNotes: string | null; createdAt: string; reviewedAt: string | null; apartment?: { id: string; title: string; price: number; status: string } | null }>;
-  stats: {
-    totalApartments: number; activeApartments: number; pendingApartments: number; rejectedApartments: number;
-    totalInquiries: number; totalPayments: number; paidPayments: number; pendingPayments: number; totalPaymentAmount: number;
-    totalComments: number; pendingComments: number; totalLikes: number;
-    totalMessages: number; unreadMessages: number;
-    totalEditRequests: number; pendingEditRequests: number;
-    totalViews: number;
-  };
-}
 
 // Edit Request Interface
 interface PropertyEditRequest {
@@ -160,14 +141,6 @@ export default function App() {
   const [isBlocked, setIsBlocked] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState<Array<{ id: string; userId: string; reason: string | null; blockedAt: string; user: { id: string; name: string; identifier: string } }>>([]);
   const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; identifier: string; email: string; isBlocked: boolean; blockReason?: string | null; createdAt: string }>>([]);
-  const [selectedUserDetail, setSelectedUserDetail] = useState<UserDetail | null>(null);
-  const [userDetailLoading, setUserDetailLoading] = useState(false);
-  const [userDetailTab, setUserDetailTab] = useState<'overview' | 'apartments' | 'inquiries' | 'payments' | 'comments' | 'messages' | 'activity'>('overview');
-  const [userSearch, setUserSearch] = useState('');
-  const [pendingUsers, setPendingUsers] = useState<Array<{ id: string; name: string; identifier: string; email: string; phone: string | null; emailVerified: boolean; createdAt: string }>>([]);
-  const [devMessageTo, setDevMessageTo] = useState<{ userId: string; userName: string } | null>(null);
-  const [devMessageContent, setDevMessageContent] = useState('');
-  const [devMessageSending, setDevMessageSending] = useState(false);
   const [selectedApartment, setSelectedApartment] = useState<Apartment | null>(null);
   const [editApartment, setEditApartment] = useState<Apartment | null>(null);
   const [inquiryApartment, setInquiryApartment] = useState<Apartment | null>(null);
@@ -209,8 +182,6 @@ export default function App() {
   const [paymentMethod, setPaymentMethod] = useState<string>('');
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [userPaidApartments, setUserPaidApartments] = useState<string[]>([]);
-  const [userPayments, setUserPayments] = useState<Payment[]>([]);
-  const [showMyPayments, setShowMyPayments] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
@@ -245,7 +216,7 @@ export default function App() {
   });
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'favorites' | 'payments' | 'messages' | 'userApprovals' | 'users' | 'blocked' | 'settings' | 'logs' | 'editRequests'>('stats');
+  const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'favorites' | 'payments' | 'messages' | 'users' | 'blocked' | 'settings' | 'logs' | 'editRequests'>('stats');
   const [likes, setLikes] = useState<Array<{ id: string; apartmentId: string; userId: string; user: { id: string; name: string }; apartment: { id: string; title: string } | null; createdAt: string }>>([]);
   const [comments, setComments] = useState<Array<{ id: string; apartmentId: string; userId: string; content: string; status: string; user: { id: string; name: string }; createdAt: string }>>([]);
   const [newComment, setNewComment] = useState('');
@@ -323,9 +294,7 @@ export default function App() {
       const res = await fetch('/api/payments');
       const data = await res.json();
       if (Array.isArray(data)) {
-        const myPayments = data.filter((p: Payment) => p.userId === currentUser?.id);
-        setUserPayments(myPayments);
-        const paidIds = myPayments.filter((p: Payment) => p.status === 'Paid').map((p: Payment) => p.inquiry?.apartmentId).filter((id): id is string => Boolean(id));
+        const paidIds = data.filter((p: Payment) => p.userId === currentUser?.id && p.status === 'Paid').map((p: Payment) => p.inquiry?.apartmentId).filter((id): id is string => Boolean(id));
         setUserPaidApartments(paidIds);
       }
     } catch {}
@@ -496,7 +465,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (isDeveloper) { fetchDevData(); fetchSettings(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); fetchPendingUsers(); }
+    if (isDeveloper) { fetchDevData(); fetchSettings(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
   }, [isDeveloper]);
 
   // Fetch likes
@@ -687,10 +656,6 @@ export default function App() {
         setShowOtpVerification(true);
         setOtpEmail(data.email || authIdentifier.trim().toLowerCase());
         addToast('يجب تأكيد البريد الإلكتروني أولاً! تم إرسال رمز التحقق', 'info');
-      } else if (data.pendingApproval) {
-        // الحساب قيد المراجعة
-        setShowAuth(false);
-        addToast('⏳ حسابك قيد المراجعة من قبل الإدارة. سيتم إخطارك عند التأكيد.', 'info');
       } else addToast(data.error || 'خطأ في تسجيل الدخول', 'error');
     } catch { addToast('حدث خطأ في الاتصال', 'error'); }
     finally { setAuthLoading(false); }
@@ -703,12 +668,7 @@ export default function App() {
       const res = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), name: authName.trim(), password: authPassword }) });
       const data = await res.json();
       if (res.ok) {
-        if (data.emailVerificationRequired && data.pendingApproval) {
-          setShowAuth(false);
-          setShowOtpVerification(true);
-          setOtpEmail(authIdentifier.trim().toLowerCase());
-          addToast('✅ تم إنشاء الحساب! يرجى تأكيد البريد الإلكتروني ثم انتظر موافقة الإدارة', 'info');
-        } else if (data.emailVerificationRequired) {
+        if (data.emailVerificationRequired) {
           setShowAuth(false);
           setShowOtpVerification(true);
           setOtpEmail(authIdentifier.trim().toLowerCase());
@@ -1107,193 +1067,12 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     }
   };
 
-  const fetchUserDetail = async (userId: string) => {
-    setUserDetailLoading(true);
-    setUserDetailTab('overview');
-    try {
-      const res = await fetch(`/api/users/${userId}`);
-      const data = await res.json();
-      if (res.ok) {
-        setSelectedUserDetail(data);
-      } else {
-        addToast(data.error || 'حدث خطأ', 'error');
-      }
-    } catch {
-      addToast('حدث خطأ في الاتصال', 'error');
-    } finally {
-      setUserDetailLoading(false);
-    }
-  };
-
-  const deleteUser = async (userId: string, userName: string) => {
-    setConfirmDialog({
-      isOpen: true,
-      title: 'حذف المستخدم نهائياً',
-      message: `هل أنت متأكد من حذف المستخدم "${userName}"؟\n\nسيتم حذف:\n• جميع عقاراته\n• جميع استفساراته\n• جميع مدفوعاته\n• جميع تعليقاته وإعجباته\n• جميع رسائله\n\n⚠️ هذا الإجراء لا يمكن التراجع عنه!`,
-      confirmText: 'حذف نهائياً',
-      cancelText: 'إلغاء',
-      type: 'danger',
-      onConfirm: async () => {
-        setConfirmDialog(prev => ({ ...prev, loading: true }));
-        try {
-          const res = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
-          const data = await res.json();
-          if (res.ok) {
-            addToast('تم حذف المستخدم وكل بياناته', 'success');
-            setSelectedUserDetail(null);
-            fetchAllUsers();
-            fetchApartments();
-            fetchDevData();
-            fetchBlockedUsers();
-          } else {
-            addToast(data.error || 'حدث خطأ', 'error');
-          }
-        } catch {
-          addToast('حدث خطأ', 'error');
-        } finally {
-          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
-        }
-      }
-    });
-  };
-
-  const deleteUserApartment = async (apartmentId: string, title: string) => {
-    setConfirmDialog({
-      isOpen: true,
-      title: 'حذف عقار المستخدم',
-      message: `هل أنت متأكد من حذف العقار "${title}"؟`,
-      confirmText: 'حذف',
-      cancelText: 'إلغاء',
-      type: 'danger',
-      onConfirm: async () => {
-        setConfirmDialog(prev => ({ ...prev, loading: true }));
-        try {
-          await fetch(`/api/apartments/${apartmentId}`, { method: 'DELETE' });
-          addToast('تم حذف العقار', 'success');
-          if (selectedUserDetail) fetchUserDetail(selectedUserDetail.user.id);
-          fetchApartments();
-        } catch { addToast('حدث خطأ', 'error'); }
-        finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
-      }
-    });
-  };
-
-  const deleteUserComment = async (commentId: string) => {
-    try {
-      await fetch(`/api/comments/${commentId}`, { method: 'DELETE' });
-      addToast('تم حذف التعليق', 'success');
-      if (selectedUserDetail) fetchUserDetail(selectedUserDetail.user.id);
-    } catch { addToast('حدث خطأ', 'error'); }
-  };
-
   const blockUser = async (userId: string, reason?: string) => {
-    try { await fetch('/api/block', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, reason }) }); addToast('تم حظر المستخدم', 'success'); fetchBlockedUsers(); fetchAllUsers(); if (selectedUserDetail) fetchUserDetail(userId); } catch { addToast('حدث خطأ', 'error'); }
+    try { await fetch('/api/block', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, reason }) }); addToast('تم حظر المستخدم', 'success'); fetchBlockedUsers(); fetchAllUsers(); } catch { addToast('حدث خطأ', 'error'); }
   };
 
   const unblockUser = async (userId: string) => {
-    try { await fetch(`/api/block?userId=${userId}`, { method: 'DELETE' }); addToast('تم إلغاء الحظر', 'success'); fetchBlockedUsers(); fetchAllUsers(); if (selectedUserDetail) fetchUserDetail(userId); } catch { addToast('حدث خطأ', 'error'); }
-  };
-
-  const deleteInquiry = async (inquiryId: string) => {
-    try {
-      await fetch(`/api/inquiries/${inquiryId}`, { method: 'DELETE' });
-      addToast('تم حذف الاستفسار', 'success');
-      if (selectedUserDetail) fetchUserDetail(selectedUserDetail.user.id);
-    } catch { addToast('حدث خطأ', 'error'); }
-  };
-
-  const deleteMessage = async (messageId: string) => {
-    try {
-      await fetch(`/api/messages?id=${messageId}`, { method: 'DELETE' });
-      addToast('تم حذف الرسالة', 'success');
-      if (selectedUserDetail) fetchUserDetail(selectedUserDetail.user.id);
-      fetchMessages();
-    } catch { addToast('حدث خطأ', 'error'); }
-  };
-
-  // Fetch pending users (waiting for approval)
-  const fetchPendingUsers = async () => {
-    try {
-      const res = await fetch('/api/users?pending=true');
-      const data = await res.json();
-      setPendingUsers(Array.isArray(data.users) ? data.users : []);
-    } catch {}
-  };
-
-  // Approve user registration
-  const approveUser = async (userId: string) => {
-    try {
-      const res = await fetch(`/api/users/${userId}/block`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'approve' }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        addToast('تم تأكيد تسجيل المستخدم ✅', 'success');
-        fetchPendingUsers();
-        fetchAllUsers();
-      } else {
-        addToast(data.error || 'حدث خطأ', 'error');
-      }
-    } catch { addToast('حدث خطأ', 'error'); }
-  };
-
-  // Reject user registration (delete)
-  const rejectUser = async (userId: string, userName: string) => {
-    setConfirmDialog({
-      isOpen: true,
-      title: 'رفض تسجيل المستخدم',
-      message: `هل أنت متأكد من رفض تسجيل "${userName}"؟\nسيتم حذف الحساب بالكامل.`,
-      confirmText: 'رفض وحذف',
-      cancelText: 'إلغاء',
-      type: 'danger',
-      onConfirm: async () => {
-        setConfirmDialog(prev => ({ ...prev, loading: true }));
-        try {
-          const res = await fetch(`/api/users/${userId}/block`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'reject' }),
-          });
-          if (res.ok) {
-            addToast('تم رفض تسجيل المستخدم وحذف حسابه', 'success');
-            fetchPendingUsers();
-            fetchAllUsers();
-          } else {
-            const data = await res.json();
-            addToast(data.error || 'حدث خطأ', 'error');
-          }
-        } catch { addToast('حدث خطأ', 'error'); }
-        finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
-      }
-    });
-  };
-
-  // Send message from developer to specific user
-  const sendDevMessage = async () => {
-    if (!devMessageTo || !devMessageContent.trim() || !currentUser) return;
-    setDevMessageSending(true);
-    try {
-      const res = await fetch('/api/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          senderId: currentUser.id,
-          content: devMessageContent.trim(),
-          receiverId: devMessageTo.userId,
-        }),
-      });
-      if (res.ok) {
-        addToast(`تم إرسال الرسالة إلى ${devMessageTo.userName} ✅`, 'success');
-        setDevMessageTo(null);
-        setDevMessageContent('');
-        fetchMessages();
-      } else {
-        addToast('حدث خطأ في إرسال الرسالة', 'error');
-      }
-    } catch { addToast('حدث خطأ', 'error'); }
-    finally { setDevMessageSending(false); }
+    try { await fetch(`/api/block?userId=${userId}`, { method: 'DELETE' }); addToast('تم إلغاء الحظر', 'success'); fetchBlockedUsers(); fetchAllUsers(); } catch { addToast('حدث خطأ', 'error'); }
   };
 
   const toggleFavorite = async (apartmentId: string) => {
@@ -1475,10 +1254,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <User className="h-4 w-4 inline ml-2" /><span className="text-sm font-medium">{currentUser.name}</span>
                     {myPendingApartments.length > 0 && <span className="absolute -top-1 -left-1 w-5 h-5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center">{myPendingApartments.length}</span>}
                   </button>
-                  <button onClick={() => { fetchUserPayments(); setShowMyPayments(true); }} className={`px-3 py-2 rounded-xl ${darkMode ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-100 hover:bg-slate-200'} transition-all relative`} title="المدفوعات">
-                    <CreditCard className="h-4 w-4" />
-                    {userPayments.filter(p => p.status === 'Pending').length > 0 && <span className="absolute -top-1 -left-1 w-5 h-5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center">{userPayments.filter(p => p.status === 'Pending').length}</span>}
-                  </button>
                   <button onClick={handleLogout} className="p-3 rounded-xl bg-rose-500/10 text-rose-500"><LogOut className="h-5 w-5" /></button>
                 </div>
               ) : (
@@ -1643,7 +1418,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 ) : currentUser ? (
   <>
     <button onClick={() => { fetchMyPendingApartments(); setShowMyPending(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><User className="h-5 w-5" />حسابي{myPendingApartments.length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-amber-500 text-white text-xs">{myPendingApartments.length}</span>}</button>
-    <button onClick={() => { fetchUserPayments(); setShowMyPayments(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><CreditCard className="h-5 w-5" />المدفوعات{userPayments.filter(p => p.status === 'Pending').length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-amber-500 text-white text-xs">{userPayments.filter(p => p.status === 'Pending').length}</span>}</button>
     <button onClick={() => { handleLogout(); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-red-400' : 'bg-slate-100 text-red-500'}`}><LogOut className="h-5 w-5" />تسجيل الخروج</button>
   </>
 ) : (
@@ -1682,70 +1456,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       </div>
                       <button onClick={async () => { if (confirm('هل تريد حذف هذا العقار؟')) { await fetch(`/api/apartments/${apt.id}`, { method: 'DELETE' }); fetchMyPendingApartments(); fetchApartments(); addToast('تم حذف العقار', 'success'); } }} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600"><Trash2 className="h-4 w-4" /></button>
                     </div>
-                  </div>
-                ))}</div>
-              )}
-            </div>
-          </motion.div>
-        </motion.div>
-      )}</AnimatePresence>
-
-      {/* My Payments Modal */}
-      <AnimatePresence>{showMyPayments && currentUser && !isDeveloper && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowMyPayments(false)}>
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-2xl rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl max-h-[80vh] overflow-hidden flex flex-col`}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><CreditCard className="h-6 w-6 text-violet-500" />المدفوعات</h2>
-              <button onClick={() => setShowMyPayments(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
-            </div>
-            {/* Summary */}
-            <div className={`grid grid-cols-3 gap-3 mb-4`}>
-              <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-emerald-50'}`}>
-                <p className={`text-2xl font-bold ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>{userPayments.filter(p => p.status === 'Paid').length}</p>
-                <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>مؤكدة</p>
-              </div>
-              <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-amber-50'}`}>
-                <p className={`text-2xl font-bold ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>{userPayments.filter(p => p.status === 'Pending').length}</p>
-                <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>قيد الانتظار</p>
-              </div>
-              <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-red-50'}`}>
-                <p className={`text-2xl font-bold ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{userPayments.filter(p => p.status === 'Failed').length}</p>
-                <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>مرفوضة</p>
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {userPayments.length === 0 ? (
-                <div className="text-center py-12"><CreditCard className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد مدفوعات بعد</p></div>
-              ) : (
-                <div className="space-y-3">{userPayments.map(pay => (
-                  <div key={pay.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{pay.amount} ج.م</p>
-                          <span className={`px-2 py-0.5 rounded-full text-xs ${
-                            pay.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : 
-                            pay.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 
-                            'bg-red-100 text-red-700'
-                          }`}>
-                            {pay.status === 'Paid' ? '✅ مؤكد' : pay.status === 'Pending' ? '⏳ قيد الانتظار' : '❌ مرفوض'}
-                          </span>
-                        </div>
-                        <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{pay.method} • {new Date(pay.createdAt).toLocaleDateString('ar-EG')}</p>
-                        {pay.inquiry?.apartment && (
-                          <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>🏠 {pay.inquiry.apartment.title}</p>
-                        )}
-                      </div>
-                    </div>
-                    {pay.status === 'Pending' && (
-                      <p className={`text-xs mt-2 ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>⏳ بانتظار تأكيد المطور</p>
-                    )}
-                    {pay.status === 'Paid' && (
-                      <p className={`text-xs mt-2 ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>✅ تم تأكيد الدفع - يمكنك الآن عرض بيانات التواصل</p>
-                    )}
-                    {pay.status === 'Failed' && (
-                      <p className={`text-xs mt-2 ${darkMode ? 'text-red-400' : 'text-red-600'}`}>❌ تم رفض الدفع - يمكنك المحاولة مرة أخرى</p>
-                    )}
                   </div>
                 ))}</div>
               )}
@@ -2009,7 +1719,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <button onClick={() => setShowDevPanel(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
               </div>
               <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
-                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل' }, { id: 'userApprovals', icon: ShieldCheck, label: 'تأكيد التسجيل', count: pendingUsers.length }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'blocked', icon: Ban, label: 'محظورين' }, { id: 'settings', icon: Settings, label: 'الإعدادات' } ].map(tab => (
+                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل' }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'blocked', icon: Ban, label: 'محظورين' }, { id: 'settings', icon: Settings, label: 'الإعدادات' } ].map(tab => (
                   <button key={tab.id} onClick={() => setDevTab(tab.id as any)} className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-all ${devTab === tab.id ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                     <tab.icon className="h-4 w-4" />{tab.label}
                     {tab.count !== undefined && tab.count > 0 && <span className={`px-2 py-0.5 rounded-full text-xs ${devTab === tab.id ? 'bg-white/20' : 'bg-amber-500 text-white'}`}>{tab.count}</span>}
@@ -2164,35 +1874,16 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               {/* Payments Tab */}
               {devTab === 'payments' && (
                 <div className="space-y-4">
-                  {/* Payment Stats */}
-                  <div className="grid grid-cols-3 gap-3 mb-2">
-                    <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-emerald-50'}`}>
-                      <p className={`text-2xl font-bold ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>{payments.filter(p => p.status === 'Paid').length}</p>
-                      <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>مؤكدة</p>
-                    </div>
-                    <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-amber-50'}`}>
-                      <p className={`text-2xl font-bold ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>{payments.filter(p => p.status === 'Pending').length}</p>
-                      <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>قيد الانتظار</p>
-                    </div>
-                    <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-red-50'}`}>
-                      <p className={`text-2xl font-bold ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{payments.filter(p => p.status === 'Failed').length}</p>
-                      <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>مرفوضة</p>
-                    </div>
-                  </div>
                   {payments.length === 0 ? <div className="text-center py-12"><CreditCard className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد مدفوعات</p></div> : payments.map(payment => (
                     <div key={payment.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
                       <div className="flex items-center justify-between">
-                        <div>
-                          <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{payment.amount} ج.م - {payment.method}</p>
-                          <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{payment.inquiry?.name} • {new Date(payment.createdAt).toLocaleDateString('ar-EG')}</p>
-                          {payment.inquiry?.apartment && <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>🏠 {payment.inquiry.apartment.title}</p>}
-                        </div>
+                        <div><p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{payment.amount} ج.م - {payment.method}</p><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{payment.inquiry?.name} • {new Date(payment.createdAt).toLocaleDateString('ar-EG')}</p></div>
                         <div className="flex items-center gap-2">
-                          <span className={`px-2 py-1 rounded-full text-xs ${payment.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : payment.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{payment.status === 'Paid' ? '✅ مدفوع' : payment.status === 'Pending' ? '⏳ قيد الانتظار' : '❌ مرفوض'}</span>
+                          <span className={`px-2 py-1 rounded-full text-xs ${payment.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : payment.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{payment.status === 'Paid' ? 'مدفوع' : payment.status === 'Pending' ? 'قيد الانتظار' : 'مرفوض'}</span>
                           {payment.status === 'Pending' && (
                             <div className="flex gap-1">
-                              <button onClick={() => handleConfirmPayment(payment.id)} className="p-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-colors" title="تأكيد الدفع"><Check className="h-4 w-4" /></button>
-                              <button onClick={() => handleRejectPayment(payment.id)} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors" title="رفض الدفع"><X className="h-4 w-4" /></button>
+                              <button onClick={() => handleConfirmPayment(payment.id)} className="p-1 rounded bg-emerald-500 text-white"><Check className="h-4 w-4" /></button>
+                              <button onClick={() => { }} className="p-1 rounded bg-red-500 text-white"><X className="h-4 w-4" /></button>
                             </div>
                           )}
                         </div>
@@ -2250,344 +1941,27 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 </div>
               )}
 
-              {/* User Approvals Tab */}
-              {devTab === 'userApprovals' && (
+              {/* Users Tab */}
+              {devTab === 'users' && (
                 <div className="space-y-4">
-                  <div className={`p-4 rounded-xl ${darkMode ? 'bg-amber-900/20 border border-amber-500/30' : 'bg-amber-50 border border-amber-200'}`}>
-                    <div className="flex items-center gap-3">
-                      <ShieldCheck className="h-6 w-6 text-amber-500" />
+                  {allUsers.length === 0 ? <div className="text-center py-12"><User className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا يوجد مستخدمين</p></div> : allUsers.map(u => (
+                    <div key={u.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'} flex items-center justify-between`}>
                       <div>
-                        <p className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>تأكيد التسجيلات الجديدة</p>
-                        <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>المستخدمون الجدد لا يمكنهم استخدام الموقع حتى تقوم بتأكيد تسجيلهم</p>
+                        <div className="flex items-center gap-2">
+                          <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{u.name}</p>
+                          {u.isBlocked && <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">محظور</span>}
+                        </div>
+                        <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{u.identifier || u.email}</p>
                       </div>
-                    </div>
-                  </div>
-
-                  {pendingUsers.length === 0 ? (
-                    <div className="text-center py-12">
-                      <CheckCircle2 className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-emerald-600' : 'text-emerald-400'}`} />
-                      <p className={`font-medium ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>لا يوجد تسجيلات معلقة ✅</p>
-                      <p className={`text-sm mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>جميع التسجيلات تمت مراجعتها</p>
-                    </div>
-                  ) : pendingUsers.map(u => (
-                    <div key={u.id} className={`p-5 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-white'} border ${darkMode ? 'border-slate-600' : 'border-slate-100'}`}>
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white font-bold text-lg">{u.name.charAt(0)}</div>
-                          <div>
-                            <p className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{u.name}</p>
-                            <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{u.identifier}</p>
-                            {u.phone && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>📱 {u.phone}</p>}
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className={`text-xs px-2 py-0.5 rounded-full ${u.emailVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                                {u.emailVerified ? '✓ بريد مؤكد' : '✗ بريد غير مؤكد'}
-                              </span>
-                              <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>تسجيل: {new Date(u.createdAt).toLocaleString('ar-EG')}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => approveUser(u.id)} className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-1"><Check className="h-4 w-4" /> تأكيد</button>
-                          <button onClick={() => setDevMessageTo({ userId: u.id, userName: u.name })} className="px-3 py-2 rounded-lg bg-violet-500/10 text-violet-500 text-sm hover:bg-violet-500/20 transition-colors" title="إرسال رسالة"><MessageSquare className="h-4 w-4" /></button>
-                          <button onClick={() => rejectUser(u.id, u.name)} className="px-3 py-2 rounded-lg bg-red-500/10 text-red-500 text-sm hover:bg-red-500/20 transition-colors" title="رفض"><XCircle className="h-4 w-4" /></button>
-                        </div>
+                      <div className="flex gap-2">
+                        {u.isBlocked ? (
+                          <button onClick={() => unblockUser(u.id)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm">إلغاء الحظر</button>
+                        ) : (
+                          <button onClick={() => blockUser(u.id, 'حظر من المطور')} className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm">حظر</button>
+                        )}
                       </div>
                     </div>
                   ))}
-                </div>
-              )}
-
-              {/* Users Tab */}
-              {devTab === 'users' && !selectedUserDetail && (
-                <div className="space-y-4">
-                  {/* Search & Stats */}
-                  <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="flex-1 relative">
-                        <Search className={`absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`} />
-                        <input type="text" placeholder="بحث بالاسم أو البريد..." value={userSearch} onChange={(e) => setUserSearch(e.target.value)} className={`w-full pr-10 pl-4 py-2.5 rounded-xl border ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 placeholder-slate-400'} text-sm`} />
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2 text-sm">
-                      <span className={`px-3 py-1.5 rounded-lg ${darkMode ? 'bg-slate-600 text-slate-300' : 'bg-white text-slate-600'}`}>👤 الكل: {allUsers.length}</span>
-                      <span className="px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-700">نشط: {allUsers.filter(u => !u.isBlocked).length}</span>
-                      <span className="px-3 py-1.5 rounded-lg bg-red-100 text-red-700">محظور: {allUsers.filter(u => u.isBlocked).length}</span>
-                    </div>
-                  </div>
-
-                  {/* Users List */}
-                  {allUsers.filter(u => !userSearch || u.name.toLowerCase().includes(userSearch.toLowerCase()) || (u.identifier || '').toLowerCase().includes(userSearch.toLowerCase())).length === 0 ? (
-                    <div className="text-center py-12"><User className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا يوجد مستخدمين</p></div>
-                  ) : allUsers.filter(u => !userSearch || u.name.toLowerCase().includes(userSearch.toLowerCase()) || (u.identifier || '').toLowerCase().includes(userSearch.toLowerCase())).map(u => {
-                    const userApts = allApartments.filter(a => a.createdBy === u.id);
-                    const userInqs = inquiries.filter(i => i.userId === u.id);
-                    const userPays = payments.filter(p => p.userId === u.id);
-                    return (
-                    <div key={u.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700 hover:bg-slate-650' : 'bg-slate-50 hover:bg-slate-100'} transition-all cursor-pointer`} onClick={() => fetchUserDetail(u.id)}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm ${u.isBlocked ? 'bg-red-500' : 'bg-gradient-to-br from-violet-500 to-purple-600'}`}>{u.name.charAt(0)}</div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{u.name}</p>
-                              {u.isBlocked && <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700">محظور</span>}
-                            </div>
-                            <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{u.identifier || u.email}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="hidden sm:flex gap-3 text-xs">
-                            <span className={`px-2 py-1 rounded-md ${darkMode ? 'bg-slate-600 text-slate-300' : 'bg-white text-slate-600'}`}>🏠 {userApts.length}</span>
-                            <span className={`px-2 py-1 rounded-md ${darkMode ? 'bg-slate-600 text-slate-300' : 'bg-white text-slate-600'}`}>📞 {userInqs.length}</span>
-                            <span className={`px-2 py-1 rounded-md ${darkMode ? 'bg-slate-600 text-slate-300' : 'bg-white text-slate-600'}`}>💰 {userPays.length}</span>
-                          </div>
-                          <Eye className={`h-4 w-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`} />
-                        </div>
-                      </div>
-                      <p className={`text-xs mt-2 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>انضم في {new Date(u.createdAt).toLocaleDateString('ar-EG')}</p>
-                    </div>
-                  ); })}
-                </div>
-              )}
-
-              {/* User Detail View */}
-              {devTab === 'users' && selectedUserDetail && (
-                <div className="space-y-4">
-                  {/* Back button */}
-                  <button onClick={() => setSelectedUserDetail(null)} className={`flex items-center gap-2 text-sm font-medium ${darkMode ? 'text-slate-300 hover:text-white' : 'text-slate-600 hover:text-slate-900'} transition-colors`}>
-                    <ChevronRight className="h-4 w-4" /> العودة لقائمة المستخدمين
-                  </button>
-
-                  {userDetailLoading ? (
-                    <div className="text-center py-12"><Loader2 className="h-8 w-8 animate-spin mx-auto text-violet-500" /><p className={`mt-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>جاري تحميل بيانات المستخدم...</p></div>
-                  ) : (
-                    <>
-                      {/* User Header */}
-                      <div className={`p-5 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-gradient-to-r from-violet-50 to-purple-50'}`}>
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-4">
-                            <div className={`w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-xl ${selectedUserDetail.user.isBlocked ? 'bg-red-500' : 'bg-gradient-to-br from-violet-500 to-purple-600'}`}>{selectedUserDetail.user.name.charAt(0)}</div>
-                            <div>
-                              <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{selectedUserDetail.user.name}</h3>
-                              <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{selectedUserDetail.user.identifier}</p>
-                              {selectedUserDetail.user.phone && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>📱 {selectedUserDetail.user.phone}</p>}
-                              <div className="flex items-center gap-2 mt-1">
-                                <span className={`text-xs px-2 py-0.5 rounded-full ${selectedUserDetail.user.emailVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                                  {selectedUserDetail.user.emailVerified ? '✓ بريد مؤكد' : 'بريد غير مؤكد'}
-                                </span>
-                                <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>انضم {new Date(selectedUserDetail.user.createdAt).toLocaleDateString('ar-EG')}</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            {selectedUserDetail.user.isBlocked ? (
-                              <button onClick={() => unblockUser(selectedUserDetail.user.id)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-medium hover:bg-emerald-600 transition-colors">إلغاء الحظر</button>
-                            ) : (
-                              <button onClick={() => blockUser(selectedUserDetail.user.id, 'حظر من المطور')} className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors">حظر</button>
-                            )}
-                            <button onClick={() => deleteUser(selectedUserDetail.user.id, selectedUserDetail.user.name)} className="px-4 py-2 rounded-lg bg-gradient-to-r from-red-600 to-rose-700 text-white text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-1"><Trash2 className="h-3.5 w-3.5" /> حذف</button>
-                            <button onClick={() => setDevMessageTo({ userId: selectedUserDetail.user.id, userName: selectedUserDetail.user.name })} className="px-4 py-2 rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 text-white text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-1"><MessageSquare className="h-3.5 w-3.5" /> رسالة</button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Stats Grid */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        {[
-                          { label: 'العقارات', value: selectedUserDetail.stats.totalApartments, icon: Building2, color: 'from-emerald-500 to-teal-600' },
-                          { label: 'الاستفسارات', value: selectedUserDetail.stats.totalInquiries, icon: Phone, color: 'from-violet-500 to-purple-600' },
-                          { label: 'المدفوعات', value: `${selectedUserDetail.stats.paidPayments}/${selectedUserDetail.stats.totalPayments}`, icon: CreditCard, color: 'from-amber-500 to-orange-600' },
-                          { label: 'الإيرادات', value: `${selectedUserDetail.stats.totalPaymentAmount} ج.م`, icon: Wallet, color: 'from-rose-500 to-pink-600' },
-                          { label: 'التعليقات', value: selectedUserDetail.stats.totalComments, icon: MessageCircle, color: 'from-blue-500 to-cyan-600' },
-                          { label: 'الإعجابات', value: selectedUserDetail.stats.totalLikes, icon: Heart, color: 'from-pink-500 to-rose-600' },
-                          { label: 'الرسائل', value: selectedUserDetail.stats.totalMessages, icon: MessageSquare, color: 'from-indigo-500 to-violet-600' },
-                          { label: 'المشاهدات', value: selectedUserDetail.stats.totalViews, icon: Eye, color: 'from-teal-500 to-emerald-600' },
-                        ].map((stat, i) => (
-                          <div key={i} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-white'} border ${darkMode ? 'border-slate-600' : 'border-slate-100'}`}>
-                            <div className={`w-8 h-8 rounded-lg bg-gradient-to-r ${stat.color} flex items-center justify-center mb-2`}><stat.icon className="h-4 w-4 text-white" /></div>
-                            <p className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{stat.value}</p>
-                            <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{stat.label}</p>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* User Detail Tabs */}
-                      <div className="flex gap-2 overflow-x-auto pb-1">
-                        {[
-                          { id: 'apartments' as const, icon: Building2, label: 'العقارات', count: selectedUserDetail.stats.totalApartments },
-                          { id: 'inquiries' as const, icon: Phone, label: 'الاستفسارات', count: selectedUserDetail.stats.totalInquiries },
-                          { id: 'payments' as const, icon: CreditCard, label: 'المدفوعات', count: selectedUserDetail.stats.totalPayments },
-                          { id: 'comments' as const, icon: MessageCircle, label: 'التعليقات', count: selectedUserDetail.stats.totalComments },
-                          { id: 'messages' as const, icon: MessageSquare, label: 'الرسائل', count: selectedUserDetail.stats.totalMessages },
-                          { id: 'activity' as const, icon: Activity, label: 'كل النشاطات', count: 0 },
-                        ].map(tab => (
-                          <button key={tab.id} onClick={() => setUserDetailTab(tab.id)} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${userDetailTab === tab.id ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-lg' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-white text-slate-600 hover:bg-slate-100'}`}>
-                            <tab.icon className="h-4 w-4" />{tab.label}{tab.count > 0 && <span className={`px-1.5 py-0.5 rounded-full text-xs ${userDetailTab === tab.id ? 'bg-white/20' : darkMode ? 'bg-slate-600' : 'bg-slate-100'}`}>{tab.count}</span>}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Apartments Tab */}
-                      {userDetailTab === 'apartments' && (
-                        <div className="space-y-3 max-h-96 overflow-y-auto">
-                          {selectedUserDetail.apartments.length === 0 ? (
-                            <p className={`text-center py-8 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا يوجد عقارات</p>
-                          ) : selectedUserDetail.apartments.map(apt => (
-                            <div key={apt.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-white'} border ${darkMode ? 'border-slate-600' : 'border-slate-100'} flex items-center justify-between`}>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</p>
-                                  <span className={`px-2 py-0.5 rounded-full text-xs ${statusConfig[apt.status]?.bgColor || 'bg-gray-100'} ${statusConfig[apt.status]?.color || 'text-gray-600'}`}>{statusConfig[apt.status]?.label || apt.status}</span>
-                                  {apt.isVip && <span className="px-1.5 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">VIP</span>}
-                                </div>
-                                <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.price} ج.م • {apt.area} • {apt.type === 'rent' ? 'إيجار' : 'بيع'} • 👁 {apt.views}</p>
-                              </div>
-                              <div className="flex gap-2">
-                                <button onClick={() => { setSelectedUserDetail(null); setSelectedApartment(allApartments.find(a => a.id === apt.id) || null); }} className="p-2 rounded-lg bg-violet-500/10 text-violet-500 hover:bg-violet-500/20"><Eye className="h-4 w-4" /></button>
-                                <button onClick={() => deleteUserApartment(apt.id, apt.title)} className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20"><Trash2 className="h-4 w-4" /></button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Inquiries Tab */}
-                      {userDetailTab === 'inquiries' && (
-                        <div className="space-y-3 max-h-96 overflow-y-auto">
-                          {selectedUserDetail.inquiries.length === 0 ? (
-                            <p className={`text-center py-8 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا يوجد استفسارات</p>
-                          ) : selectedUserDetail.inquiries.map(inq => (
-                            <div key={inq.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-white'} border ${darkMode ? 'border-slate-600' : 'border-slate-100'}`}>
-                              <div className="flex items-start justify-between">
-                                <div>
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{inq.apartment?.title || 'عقار محذوف'}</p>
-                                    <span className={`px-2 py-0.5 rounded-full text-xs ${inq.lifecycleStatus === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{inq.lifecycleStatus === 'approved' ? 'موافق' : inq.lifecycleStatus === 'new' ? 'جديد' : inq.lifecycleStatus}</span>
-                                  </div>
-                                  <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>📞 {inq.phone} • ✉️ {inq.email}</p>
-                                  {inq.message && <p className={`text-sm mt-1 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{inq.message}</p>}
-                                  {inq.payment && <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>💰 الدفع: {inq.payment.status === 'Paid' ? 'مدفوع' : 'قيد الانتظار'} ({inq.payment.method})</p>}
-                                </div>
-                                <button onClick={() => deleteInquiry(inq.id)} className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20"><Trash2 className="h-4 w-4" /></button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Payments Tab */}
-                      {userDetailTab === 'payments' && (
-                        <div className="space-y-3 max-h-96 overflow-y-auto">
-                          {selectedUserDetail.payments.length === 0 ? (
-                            <p className={`text-center py-8 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا يوجد مدفوعات</p>
-                          ) : selectedUserDetail.payments.map(pay => (
-                            <div key={pay.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-white'} border ${darkMode ? 'border-slate-600' : 'border-slate-100'} flex items-center justify-between`}>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{pay.amount} ج.م</p>
-                                  <span className={`px-2 py-0.5 rounded-full text-xs ${pay.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : pay.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{pay.status === 'Paid' ? 'مدفوع' : pay.status === 'Pending' ? 'قيد الانتظار' : 'مرفوض'}</span>
-                                </div>
-                                <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{pay.method} • {pay.inquiry?.apartment?.title || 'عقار'} • {new Date(pay.createdAt).toLocaleDateString('ar-EG')}</p>
-                                {pay.inquiry && <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>📞 {pay.inquiry.phone} • ✉️ {pay.inquiry.email}</p>}
-                              </div>
-                            </div>
-                          ))}
-                          <div className={`p-3 rounded-xl ${darkMode ? 'bg-slate-600' : 'bg-slate-50'}`}>
-                            <p className={`text-sm font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>إجمالي المدفوعات: <span className="text-emerald-500 font-bold">{selectedUserDetail.stats.totalPaymentAmount} ج.م</span> ({selectedUserDetail.stats.paidPayments} من {selectedUserDetail.stats.totalPayments})</p>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Comments Tab */}
-                      {userDetailTab === 'comments' && (
-                        <div className="space-y-3 max-h-96 overflow-y-auto">
-                          {selectedUserDetail.comments.length === 0 ? (
-                            <p className={`text-center py-8 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا يوجد تعليقات</p>
-                          ) : selectedUserDetail.comments.map(c => (
-                            <div key={c.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-white'} border ${darkMode ? 'border-slate-600' : 'border-slate-100'} flex items-start justify-between`}>
-                              <div>
-                                <p className={`text-sm ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{c.content}</p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>على: {c.apartment?.title || 'عقار محذوف'}</span>
-                                  <span className={`px-2 py-0.5 rounded-full text-xs ${c.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{c.status === 'approved' ? 'منشور' : 'قيد المراجعة'}</span>
-                                </div>
-                              </div>
-                              <button onClick={() => deleteUserComment(c.id)} className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20"><Trash2 className="h-4 w-4" /></button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Messages Tab */}
-                      {userDetailTab === 'messages' && (
-                        <div className="space-y-3 max-h-96 overflow-y-auto">
-                          {selectedUserDetail.messages.sent.length === 0 && selectedUserDetail.messages.received.length === 0 ? (
-                            <p className={`text-center py-8 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا يوجد رسائل</p>
-                          ) : (
-                            <>
-                              <p className={`text-sm font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📩 الرسائل المرسلة ({selectedUserDetail.messages.sent.length})</p>
-                              {selectedUserDetail.messages.sent.map(m => (
-                                <div key={m.id} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-white'} border ${darkMode ? 'border-violet-500/30' : 'border-violet-100'} ml-8`}>
-                                  <div className="flex items-start justify-between">
-                                    <div>
-                                      <p className={`text-sm ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{m.content}</p>
-                                      <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(m.createdAt).toLocaleString('ar-EG')}</p>
-                                    </div>
-                                    <button onClick={() => deleteMessage(m.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20"><Trash2 className="h-3.5 w-3.5" /></button>
-                                  </div>
-                                </div>
-                              ))}
-                              <p className={`text-sm font-medium mt-4 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📬 الرسائل المستلمة ({selectedUserDetail.messages.received.length})</p>
-                              {selectedUserDetail.messages.received.map(m => (
-                                <div key={m.id} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-white'} border ${darkMode ? 'border-emerald-500/30' : 'border-emerald-100'} mr-8`}>
-                                  <div className="flex items-start justify-between">
-                                    <div>
-                                      <p className={`text-sm ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{m.content}</p>
-                                      <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(m.createdAt).toLocaleString('ar-EG')}</p>
-                                    </div>
-                                    <button onClick={() => deleteMessage(m.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20"><Trash2 className="h-3.5 w-3.5" /></button>
-                                  </div>
-                                </div>
-                              ))}
-                            </>
-                          )}
-                        </div>
-                      )}
-
-                      {/* All Activity Tab */}
-                      {userDetailTab === 'activity' && (
-                        <div className="space-y-3 max-h-96 overflow-y-auto">
-                          {(() => {
-                            const allActivity: Array<{ type: string; label: string; detail: string; date: string; id: string }> = [];
-                            selectedUserDetail.apartments.forEach(a => allActivity.push({ type: 'apartment', label: 'عقار جديد', detail: `${a.title} - ${a.price} ج.م [${statusConfig[a.status]?.label || a.status}]`, date: a.createdAt, id: a.id }));
-                            selectedUserDetail.inquiries.forEach(i => allActivity.push({ type: 'inquiry', label: 'استفسار تواصل', detail: `${i.apartment?.title || 'عقار'} - ${i.phone}`, date: i.createdAt, id: i.id }));
-                            selectedUserDetail.payments.forEach(p => allActivity.push({ type: 'payment', label: 'دفعة', detail: `${p.amount} ج.م - ${p.method} [${p.status}]`, date: p.createdAt, id: p.id }));
-                            selectedUserDetail.comments.forEach(c => allActivity.push({ type: 'comment', label: 'تعليق', detail: `"${c.content.substring(0, 50)}..." على ${c.apartment?.title || 'عقار'}`, date: c.createdAt, id: c.id }));
-                            selectedUserDetail.likes.forEach(l => allActivity.push({ type: 'like', label: 'إعجاب', detail: l.apartment?.title || 'عقار', date: l.createdAt, id: l.id }));
-                            selectedUserDetail.editRequests.forEach(r => allActivity.push({ type: 'editRequest', label: 'طلب تعديل', detail: `${r.apartment?.title || 'عقار'} [${r.status}]`, date: r.createdAt, id: r.id }));
-                            allActivity.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-                            const typeIcons: Record<string, any> = { apartment: Building2, inquiry: Phone, payment: CreditCard, comment: MessageCircle, like: Heart, editRequest: Edit };
-                            const typeColors: Record<string, string> = { apartment: 'text-emerald-500', inquiry: 'text-violet-500', payment: 'text-amber-500', comment: 'text-blue-500', like: 'text-pink-500', editRequest: 'text-orange-500' };
-                            return allActivity.length === 0 ? (
-                              <p className={`text-center py-8 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا يوجد نشاطات</p>
-                            ) : allActivity.map(act => {
-                              const Icon = typeIcons[act.type] || Activity;
-                              return (
-                                <div key={`${act.type}-${act.id}`} className={`flex items-center gap-3 p-3 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-white'} border ${darkMode ? 'border-slate-600' : 'border-slate-100'}`}>
-                                  <Icon className={`h-5 w-5 ${typeColors[act.type] || 'text-slate-500'} shrink-0`} />
-                                  <div className="flex-1 min-w-0">
-                                    <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{act.label}</p>
-                                    <p className={`text-xs truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{act.detail}</p>
-                                  </div>
-                                  <span className={`text-xs whitespace-nowrap ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(act.date).toLocaleDateString('ar-EG')}</span>
-                                </div>
-                              );
-                            });
-                          })()}
-                        </div>
-                      )}
-                    </>
-                  )}
                 </div>
               )}
 
@@ -2737,31 +2111,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
           </motion.div>
         </motion.div>
       )}</AnimatePresence>
-      {/* Developer Send Message Modal */}
-      <AnimatePresence>{devMessageTo && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDevMessageTo(null)}>
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-violet-500 to-purple-600 flex items-center justify-center"><MessageSquare className="h-5 w-5 text-white" /></div>
-                <div>
-                  <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>إرسال رسالة</h2>
-                  <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>إلى: {devMessageTo.userName}</p>
-                </div>
-              </div>
-              <button onClick={() => setDevMessageTo(null)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
-            </div>
-            <textarea value={devMessageContent} onChange={(e) => setDevMessageContent(e.target.value)} placeholder="اكتب رسالتك هنا..." rows={4} className={`w-full px-4 py-3 rounded-xl border resize-none ${darkMode ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400' : 'bg-slate-50 border-slate-200 placeholder-slate-400'} mb-4`} />
-            <div className="flex gap-3">
-              <button onClick={sendDevMessage} disabled={!devMessageContent.trim() || devMessageSending} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white font-medium disabled:opacity-50 flex items-center justify-center gap-2">
-                {devMessageSending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />} إرسال
-              </button>
-              <button onClick={() => setDevMessageTo(null)} className={`px-6 py-3 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}>إلغاء</button>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}</AnimatePresence>
-
       {/* OTP Verification Modal */}
       <AnimatePresence>{showOtpVerification && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowOtpVerification(false)}>

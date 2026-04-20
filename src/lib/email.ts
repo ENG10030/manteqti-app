@@ -1,147 +1,207 @@
 import { Resend } from 'resend';
 
-// Initialize Resend client (lazy - only creates instance when API key exists)
-let resendInstance: Resend | null = null;
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-function getResend(): Resend | null {
-  if (!process.env.RESEND_API_KEY) return null;
-  if (!resendInstance) {
-    resendInstance = new Resend(process.env.RESEND_API_KEY);
-  }
-  return resendInstance;
-}
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+const APP_NAME = 'منطقتي | Manteqti';
 
 interface SendOTPParams {
   to: string;
   otp: string;
-  type: 'registration' | 'verification' | 'login';
+  name?: string;
 }
 
-export async function sendOTPEmail({ to, otp, type }: SendOTPParams): Promise<boolean> {
-  const resend = getResend();
-  
-  const subjectMap = {
-    registration: 'مرحباً بك في منطقتي - تأكيد البريد الإلكتروني',
-    verification: 'تأكيد البريد الإلكتروني - منطقتي',
-    login: 'رمز التحقق - منطقتي',
-  };
-
-  const messageMap = {
-    registration: 'شكراً لانضمامك إلى منطقتي! لتأكيد بريدك الإلكتروني، يرجى إدخال الرمز التالي:',
-    verification: 'لتأكيد بريدك الإلكتروني، يرجى إدخال الرمز التالي:',
-    login: 'لتسجيل الدخول، يرجى إدخال الرمز التحقق التالي:',
-  };
-
-  const html = `
-    <div dir="rtl" style="font-family: 'Segoe UI', Tahoma, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #ffffff;">
-      <div style="text-align: center; margin-bottom: 30px;">
-        <h1 style="color: #e11d48; margin: 0; font-size: 28px;">🏠 منطقتي | Manteqti</h1>
-        <p style="color: #9ca3af; margin-top: 5px; font-size: 14px;">منصة العقارات المصرية</p>
-      </div>
-      <div style="background: linear-gradient(135deg, #fff1f2 0%, #fce7f3 100%); border-radius: 16px; padding: 30px; text-align: center;">
-        <h2 style="color: #1f2937; margin-bottom: 15px;">${subjectMap[type]}</h2>
-        <p style="color: #4b5563; margin-bottom: 25px; font-size: 16px; line-height: 1.6;">
-          ${messageMap[type]}
-        </p>
-        <div style="background: #ffffff; border-radius: 12px; padding: 20px 40px; display: inline-block; box-shadow: 0 4px 15px rgba(225, 29, 72, 0.15);">
-          <span style="font-size: 36px; font-weight: bold; color: #e11d48; letter-spacing: 8px;">${otp}</span>
-        </div>
-        <p style="color: #6b7280; margin-top: 25px; font-size: 14px;">
-          هذا الرمز صالح لمدة 30 دقيقة فقط
-        </p>
-      </div>
-      <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #f3f4f6;">
-        <p style="color: #9ca3af; font-size: 12px; margin: 0;">
-          إذا لم تقم بطلب هذا الرمز، يمكنك تجاهل هذه الرسالة
-        </p>
-        <p style="color: #d1d5db; font-size: 11px; margin-top: 10px;">
-          © ${new Date().getFullYear()} منطقتي - جميع الحقوق محفوظة
-        </p>
-      </div>
-    </div>
-  `;
-
-  // Try Resend first
-  if (resend) {
-    try {
-      const { data, error } = await resend.emails.send({
-        from: 'منطقتي <noreply@manteqti.app>',
-        to: [to],
-        subject: subjectMap[type],
-        html,
-      });
-      if (error) {
-        console.error('Resend error:', error);
-        return false;
-      }
-      console.log(`📧 OTP email sent via Resend to ${to}`);
-      return true;
-    } catch (err) {
-      console.error('Resend send error:', err);
-    }
-  }
-
-  // Fallback: console.log for development
-  console.log(`📧 [DEV] Email verification OTP for ${to}: ${otp}`);
-  console.log(`📧 [DEV] Resend not configured. Set RESEND_API_KEY in .env to send real emails.`);
-  return false;
+interface SendWelcomeParams {
+  to: string;
+  name: string;
 }
 
-export async function sendPasswordResetEmail(to: string, resetUrl: string, userName: string): Promise<boolean> {
-  const resend = getResend();
+interface SendPaymentConfirmedParams {
+  to: string;
+  name: string;
+  apartmentTitle?: string;
+  amount: number;
+}
 
-  const html = `
-    <div dir="rtl" style="font-family: 'Segoe UI', Tahoma, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #ffffff;">
-      <div style="text-align: center; margin-bottom: 30px;">
-        <h1 style="color: #e11d48; margin: 0; font-size: 28px;">🏠 منطقتي | Manteqti</h1>
-      </div>
-      <div style="background: linear-gradient(135deg, #fff1f2 0%, #fce7f3 100%); border-radius: 16px; padding: 30px;">
-        <h2 style="color: #1f2937; margin-bottom: 20px;">استعادة كلمة المرور</h2>
-        <p style="color: #4b5563; margin-bottom: 20px; line-height: 1.6;">
-          مرحباً ${userName}،
-        </p>
-        <p style="color: #4b5563; margin-bottom: 30px; line-height: 1.6;">
-          لقد تلقينا طلباً لاستعادة كلمة المرور الخاصة بحسابك. اضغط على الزر أدناه لتعيين كلمة مرور جديدة:
-        </p>
-        <div style="text-align: center;">
-          <a href="${resetUrl}" style="display: inline-block; background: linear-gradient(135deg, #e11d48 0%, #be123c 100%); color: white; padding: 15px 40px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 16px;">
-            استعادة كلمة المرور
-          </a>
-        </div>
-        <p style="color: #6b7280; margin-top: 30px; font-size: 14px;">
-          هذا الرابط صالح لمدة ساعة واحدة فقط.
-        </p>
-      </div>
-      <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #f3f4f6;">
-        <p style="color: #9ca3af; font-size: 12px;">
-          إذا لم تطلب استعادة كلمة المرور، يمكنك تجاهل هذه الرسالة.
-        </p>
-        <p style="color: #d1d5db; font-size: 11px; margin-top: 10px;">
-          © ${new Date().getFullYear()} منطقتي - جميع الحقوق محفوظة
-        </p>
-      </div>
-    </div>
-  `;
+export async function sendOTPEmail({ to, otp, name }: SendOTPParams) {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: [to],
+      subject: `رمز التحقق: ${otp}`,
+      html: `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; direction: rtl; }
+            .container { max-width: 480px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+            .header { background: linear-gradient(135deg, #7c3aed, #a855f7); padding: 32px; text-align: center; }
+            .header h1 { color: white; margin: 0; font-size: 24px; }
+            .header p { color: rgba(255,255,255,0.8); margin: 8px 0 0; font-size: 14px; }
+            .content { padding: 32px; text-align: center; }
+            .greeting { font-size: 16px; color: #334155; margin-bottom: 24px; }
+            .otp-box { background: linear-gradient(135deg, #f5f3ff, #ede9fe); border: 2px dashed #a855f7; border-radius: 16px; padding: 24px; margin: 24px 0; }
+            .otp-code { font-size: 40px; font-weight: 800; letter-spacing: 12px; color: #7c3aed; font-family: 'Courier New', monospace; direction: ltr; }
+            .note { font-size: 13px; color: #94a3b8; margin-top: 16px; }
+            .footer { background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0; }
+            .footer p { color: #94a3b8; font-size: 12px; margin: 4px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🏠 ${APP_NAME}</h1>
+              <p>لوحة الشقق الذكية</p>
+            </div>
+            <div class="content">
+              <p class="greeting">${name ? `مرحباً <strong>${name}</strong>` : 'مرحباً'} 👋</p>
+              <p style="color: #475569; font-size: 15px;">استخدم الرمز التالي لتأكيد بريدك الإلكتروني:</p>
+              <div class="otp-box">
+                <div class="otp-code">${otp}</div>
+              </div>
+              <p class="note">⏰ الرمز صالح لمدة <strong>30 دقيقة</strong></p>
+              <p class="note">🔒 لا تشارك هذا الرمز مع أي شخص</p>
+            </div>
+            <div class="footer">
+              <p>تم الإرسال تلقائياً من ${APP_NAME}</p>
+              <p>إذا لم تقم بطلب هذا الرمز، تجاهل هذا البريد</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+    });
 
-  if (resend) {
-    try {
-      const { data, error } = await resend.emails.send({
-        from: 'منطقتي <noreply@manteqti.app>',
-        to: [to],
-        subject: 'استعادة كلمة المرور - منطقتي',
-        html,
-      });
-      if (error) {
-        console.error('Resend error:', error);
-        return false;
-      }
-      console.log(`📧 Password reset email sent via Resend to ${to}`);
-      return true;
-    } catch (err) {
-      console.error('Resend send error:', err);
+    if (error) {
+      console.error('Resend error:', error);
+      return { success: false, error: error.message };
     }
-  }
 
-  console.log(`📧 [DEV] Password reset URL for ${to}: ${resetUrl}`);
-  return false;
+    console.log(`📧 OTP email sent to ${to}, ID: ${data?.id}`);
+    return { success: true, messageId: data?.id };
+  } catch (error: any) {
+    console.error('Error sending OTP email:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendWelcomeEmail({ to, name }: SendWelcomeParams) {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: [to],
+      subject: `مرحباً بك في ${APP_NAME} 🎉`,
+      html: `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; direction: rtl; }
+            .container { max-width: 480px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+            .header { background: linear-gradient(135deg, #059669, #10b981); padding: 32px; text-align: center; }
+            .header h1 { color: white; margin: 0; font-size: 24px; }
+            .content { padding: 32px; text-align: center; }
+            .content p { color: #475569; font-size: 15px; line-height: 1.8; }
+            .badge { display: inline-block; background: #fef3c7; color: #92400e; padding: 8px 16px; border-radius: 8px; font-size: 14px; margin: 16px 0; }
+            .footer { background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0; }
+            .footer p { color: #94a3b8; font-size: 12px; margin: 4px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🎉 مرحباً ${name}!</h1>
+              <p style="color: rgba(255,255,255,0.9); margin-top: 8px;">تم إنشاء حسابك بنجاح</p>
+            </div>
+            <div class="content">
+              <p>أهلاً بك في <strong>${APP_NAME}</strong> - منصتك الأمثل للعقارات</p>
+              <div class="badge">⏳ بانتظار موافقة الإدارة على حسابك</div>
+              <p>سيتم إشعارك فور تفعيل حسابك</p>
+            </div>
+            <div class="footer">
+              <p>${APP_NAME} - لوحة الشقق الذكية</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+    });
+
+    if (error) {
+      console.error('Resend error:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, messageId: data?.id };
+  } catch (error: any) {
+    console.error('Error sending welcome email:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function sendPaymentConfirmedEmail({ to, name, apartmentTitle, amount }: SendPaymentConfirmedParams) {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: [to],
+      subject: `✅ تم تأكيد دفعتك - ${APP_NAME}`,
+      html: `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; direction: rtl; }
+            .container { max-width: 480px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+            .header { background: linear-gradient(135deg, #059669, #10b981); padding: 32px; text-align: center; }
+            .header h1 { color: white; margin: 0; font-size: 22px; }
+            .content { padding: 32px; }
+            .content p { color: #475569; font-size: 15px; line-height: 1.8; }
+            .info-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; margin: 16px 0; }
+            .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #dcfce7; }
+            .info-row:last-child { border-bottom: none; }
+            .info-label { color: #6b7280; font-size: 14px; }
+            .info-value { color: #166534; font-weight: 600; font-size: 14px; }
+            .footer { background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0; }
+            .footer p { color: #94a3b8; font-size: 12px; margin: 4px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>✅ تم تأكيد دفعتك</h1>
+              <p style="color: rgba(255,255,255,0.9); margin-top: 8px;">يمكنك الآن الوصول لبيانات التواصل</p>
+            </div>
+            <div class="content">
+              <p>مرحباً <strong>${name}</strong>،</p>
+              <p>تم تأكيد دفعتك بنجاح. يمكنك الآن عرض بيانات التواصل للعقار المطلوب.</p>
+              <div class="info-box">
+                ${apartmentTitle ? `<div class="info-row"><span class="info-label">العقار</span><span class="info-value">${apartmentTitle}</span></div>` : ''}
+                <div class="info-row"><span class="info-label">المبلغ</span><span class="info-value">${amount.toLocaleString()} ج.م</span></div>
+              </div>
+              <p>سجل دخولك واستعرض بيانات التواصل مباشرة 🏠</p>
+            </div>
+            <div class="footer">
+              <p>${APP_NAME} - لوحة الشقق الذكية</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+    });
+
+    if (error) {
+      console.error('Resend error:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, messageId: data?.id };
+  } catch (error: any) {
+    console.error('Error sending payment confirmed email:', error);
+    return { success: false, error: error.message };
+  }
 }
