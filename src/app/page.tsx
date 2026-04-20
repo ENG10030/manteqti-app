@@ -182,6 +182,11 @@ export default function App() {
   const [paymentMethod, setPaymentMethod] = useState<string>('');
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [userPaidApartments, setUserPaidApartments] = useState<string[]>([]);
+  const [userPayments, setUserPayments] = useState<Payment[]>([]);
+  const [showMyPayments, setShowMyPayments] = useState(false);
+  const [pendingUsers, setPendingUsers] = useState<Array<{ id: string; name: string; identifier: string; email: string; phone: string | null; isApproved: boolean; createdAt: string }>>([]);
+  const [devMessageTo, setDevMessageTo] = useState<{ userId: string; userName: string } | null>(null);
+  const [devMessageText, setDevMessageText] = useState('');
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
@@ -216,7 +221,7 @@ export default function App() {
   });
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'favorites' | 'payments' | 'messages' | 'users' | 'blocked' | 'settings' | 'logs' | 'editRequests'>('stats');
+  const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'favorites' | 'payments' | 'messages' | 'userApprovals' | 'users' | 'blocked' | 'settings' | 'logs' | 'editRequests'>('stats');
   const [likes, setLikes] = useState<Array<{ id: string; apartmentId: string; userId: string; user: { id: string; name: string }; apartment: { id: string; title: string } | null; createdAt: string }>>([]);
   const [comments, setComments] = useState<Array<{ id: string; apartmentId: string; userId: string; content: string; status: string; user: { id: string; name: string }; createdAt: string }>>([]);
   const [newComment, setNewComment] = useState('');
@@ -294,7 +299,9 @@ export default function App() {
       const res = await fetch('/api/payments');
       const data = await res.json();
       if (Array.isArray(data)) {
-        const paidIds = data.filter((p: Payment) => p.userId === currentUser?.id && p.status === 'Paid').map((p: Payment) => p.inquiry?.apartmentId).filter((id): id is string => Boolean(id));
+        const myPayments = data.filter((p: Payment) => p.userId === currentUser?.id);
+        setUserPayments(myPayments);
+        const paidIds = myPayments.filter((p: Payment) => p.status === 'Paid').map((p: Payment) => p.inquiry?.apartmentId).filter((id): id is string => Boolean(id));
         setUserPaidApartments(paidIds);
       }
     } catch {}
@@ -315,11 +322,46 @@ export default function App() {
   const fetchDevData = async () => {
     if (!isDeveloper) return;
     try {
-      const [inqRes, payRes] = await Promise.all([fetch('/api/inquiries'), fetch('/api/payments')]);
-      const [inqData, payData] = await Promise.all([inqRes.json(), payRes.json()]);
+      const [inqRes, payRes, pendRes] = await Promise.all([fetch('/api/inquiries'), fetch('/api/payments'), fetch('/api/users?pending=true')]);
+      const [inqData, payData, pendData] = await Promise.all([inqRes.json(), payRes.json(), pendRes.json()]);
       setInquiries(Array.isArray(inqData) ? inqData : []); 
       setPayments(Array.isArray(payData) ? payData : []);
+      if (pendData.users) setPendingUsers(pendData.users);
     } catch {}
+  };
+
+  const handleApproveUser = async (userId: string, userName: string, confirmed: boolean = false) => {
+    if (!confirmed) {
+      setConfirmDialog({ isOpen: true, title: 'تأكيد التسجيل', message: `هل تريد تأكيد تسجيل "${userName}"؟`, confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm: () => handleApproveUser(userId, userName, true), type: 'info' });
+      return;
+    }
+    setConfirmDialog(prev => ({ ...prev, loading: true }));
+    try {
+      const res = await fetch(`/api/users/${userId}/approve`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'approve' }) });
+      if (res.ok) { fetchDevData(); fetchAllUsers(); addToast('تم تأكيد التسجيل ✅', 'success'); }
+    } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+  };
+
+  const handleRejectUser = async (userId: string, userName: string, confirmed: boolean = false) => {
+    if (!confirmed) {
+      setConfirmDialog({ isOpen: true, title: 'رفض التسجيل', message: `هل تريد رفض تسجيل "${userName}" وحذف حسابه بالكامل؟\n\n⚠️ سيتم حذف جميع بياناته.`, confirmText: 'رفض وحذف', cancelText: 'إلغاء', onConfirm: () => handleRejectUser(userId, userName, true), type: 'danger' });
+      return;
+    }
+    setConfirmDialog(prev => ({ ...prev, loading: true }));
+    try {
+      const res = await fetch(`/api/users/${userId}/approve`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reject' }) });
+      if (res.ok) { fetchDevData(); fetchAllUsers(); addToast('تم رفض التسجيل وحذف الحساب', 'success'); }
+    } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+  };
+
+  const handleDevSendMessage = async () => {
+    if (!devMessageTo || !devMessageText.trim()) return;
+    try {
+      await fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ senderId: currentUser?.id, receiverId: devMessageTo.userId, content: devMessageText.trim() }) });
+      setDevMessageText(''); setDevMessageTo(null);
+      fetchMessages();
+      addToast('تم إرسال الرسالة ✅', 'success');
+    } catch { addToast('فشل إرسال الرسالة', 'error'); }
   };
 
   // Fetch settings
@@ -645,11 +687,16 @@ export default function App() {
       const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), password: authPassword }) });
       const data = await res.json();
       if (res.ok) {
-        setCurrentUser(data.user); setShowAuth(false);
+        if (data.pendingApproval) {
+          setCurrentUser(data.user); setShowAuth(false);
+          addToast('حسابك قيد المراجعة. بانتظار موافقة الإدارة ⏳', 'info');
+        } else {
+          setCurrentUser(data.user); setShowAuth(false);
+          addToast(`مرحباً ${data.user.name}!`, 'success');
+        }
         if (rememberMe) { localStorage.setItem('manteqti_remembered_identifier', authIdentifier.trim().toLowerCase()); localStorage.setItem('manteqti_remember_me', 'true'); }
         else { localStorage.removeItem('manteqti_remembered_identifier'); localStorage.removeItem('manteqti_remember_me'); }
         setAuthPassword('');
-        addToast(`مرحباً ${data.user.name}!`, 'success');
       } else if (data.emailVerificationRequired) {
         // البريد الإلكتروني غير مؤكد - إظهار نافذة التأكيد
         setShowAuth(false);
@@ -1254,6 +1301,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <User className="h-4 w-4 inline ml-2" /><span className="text-sm font-medium">{currentUser.name}</span>
                     {myPendingApartments.length > 0 && <span className="absolute -top-1 -left-1 w-5 h-5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center">{myPendingApartments.length}</span>}
                   </button>
+                  <button onClick={() => { fetchUserPayments(); setShowMyPayments(true); }} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-100 hover:bg-slate-200'} transition-all`} title="المدفوعات"><CreditCard className="h-4 w-4" /></button>
                   <button onClick={handleLogout} className="p-3 rounded-xl bg-rose-500/10 text-rose-500"><LogOut className="h-5 w-5" /></button>
                 </div>
               ) : (
@@ -1418,6 +1466,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 ) : currentUser ? (
   <>
     <button onClick={() => { fetchMyPendingApartments(); setShowMyPending(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><User className="h-5 w-5" />حسابي{myPendingApartments.length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-amber-500 text-white text-xs">{myPendingApartments.length}</span>}</button>
+    <button onClick={() => { fetchUserPayments(); setShowMyPayments(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><CreditCard className="h-5 w-5" />المدفوعات</button>
     <button onClick={() => { handleLogout(); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-red-400' : 'bg-slate-100 text-red-500'}`}><LogOut className="h-5 w-5" />تسجيل الخروج</button>
   </>
 ) : (
@@ -1459,6 +1508,61 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                   </div>
                 ))}</div>
               )}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}</AnimatePresence>
+
+      {/* My Payments Modal */}
+      <AnimatePresence>{showMyPayments && currentUser && !isDeveloper && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowMyPayments(false)}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-2xl rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl max-h-[80vh] overflow-hidden flex flex-col`}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><CreditCard className="h-6 w-6 text-violet-500" />المدفوعات</h2>
+              <button onClick={() => setShowMyPayments(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
+            </div>
+            <div className={`grid grid-cols-3 gap-3 mb-4`}>
+              <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-emerald-50'}`}><p className={`text-2xl font-bold ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>{userPayments.filter(p => p.status === 'Paid').length}</p><p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>مؤكدة</p></div>
+              <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-amber-50'}`}><p className={`text-2xl font-bold ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>{userPayments.filter(p => p.status === 'Pending').length}</p><p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>قيد الانتظار</p></div>
+              <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-red-50'}`}><p className={`text-2xl font-bold ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{userPayments.filter(p => p.status === 'Failed').length}</p><p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>مرفوضة</p></div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {userPayments.length === 0 ? <div className="text-center py-12"><CreditCard className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد مدفوعات بعد</p></div> : <div className="space-y-3">{userPayments.map(pay => (
+                <div key={pay.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                  <div className="flex items-center justify-between"><div><div className="flex items-center gap-2"><p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{pay.amount} ج.م</p><span className={`px-2 py-0.5 rounded-full text-xs ${pay.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : pay.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{pay.status === 'Paid' ? '✅ مؤكد' : pay.status === 'Pending' ? '⏳ قيد الانتظار' : '❌ مرفوض'}</span></div><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{pay.method} • {new Date(pay.createdAt).toLocaleDateString('ar-EG')}</p>{pay.inquiry?.apartment && <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>🏠 {pay.inquiry.apartment.title}</p>}</div></div>
+                  {pay.status === 'Pending' && <p className={`text-xs mt-2 ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>⏳ بانتظار تأكيد المطور</p>}
+                  {pay.status === 'Paid' && <p className={`text-xs mt-2 ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>✅ تم تأكيد الدفع - يمكنك الآن عرض بيانات التواصل</p>}
+                </div>
+              ))}</div>}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}</AnimatePresence>
+
+      {/* Pending Approval Screen */}
+      <AnimatePresence>{currentUser && !isDeveloper && !(currentUser as any).isApproved && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className={`w-full max-w-md rounded-2xl p-8 text-center ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-amber-100 flex items-center justify-center"><Hourglass className="h-10 w-10 text-amber-500 animate-pulse" /></div>
+            <h2 className={`text-2xl font-bold mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>⏳ حسابك قيد المراجعة</h2>
+            <p className={`mb-6 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>تم استلام تسجيلك وسيتم مراجعته من قبل الإدارة. ستصلك إشعار عند التفعيل.</p>
+            <button onClick={handleLogout} className={`w-full py-3 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-600'} hover:opacity-80`}>تسجيل الخروج</button>
+          </motion.div>
+        </motion.div>
+      )}</AnimatePresence>
+
+      {/* Dev Send Message Modal */}
+      <AnimatePresence>{devMessageTo && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDevMessageTo(null)}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>📨 إرسال رسالة لـ {devMessageTo.userName}</h2>
+              <button onClick={() => { setDevMessageTo(null); setDevMessageText(''); }} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
+            </div>
+            <textarea value={devMessageText} onChange={(e) => setDevMessageText(e.target.value)} placeholder="اكتب رسالتك هنا..." rows={4} className={`w-full px-4 py-3 rounded-xl border mb-4 resize-none ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-50 border-slate-200'}`} />
+            <div className="flex gap-3">
+              <button onClick={handleDevSendMessage} disabled={!devMessageText.trim()} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium disabled:opacity-50 flex items-center justify-center gap-2"><Send className="h-4 w-4" />إرسال</button>
+              <button onClick={() => { setDevMessageTo(null); setDevMessageText(''); }} className={`px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>إلغاء</button>
             </div>
           </motion.div>
         </motion.div>
@@ -1719,7 +1823,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <button onClick={() => setShowDevPanel(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
               </div>
               <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
-                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل' }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'blocked', icon: Ban, label: 'محظورين' }, { id: 'settings', icon: Settings, label: 'الإعدادات' } ].map(tab => (
+                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل' }, { id: 'userApprovals', icon: ShieldCheck, label: 'تأكيد التسجيل', count: pendingUsers.length }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'blocked', icon: Ban, label: 'محظورين' }, { id: 'settings', icon: Settings, label: 'الإعدادات' } ].map(tab => (
                   <button key={tab.id} onClick={() => setDevTab(tab.id as any)} className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-all ${devTab === tab.id ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                     <tab.icon className="h-4 w-4" />{tab.label}
                     {tab.count !== undefined && tab.count > 0 && <span className={`px-2 py-0.5 rounded-full text-xs ${devTab === tab.id ? 'bg-white/20' : 'bg-amber-500 text-white'}`}>{tab.count}</span>}
@@ -1871,6 +1975,31 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 </div>
               )}
 
+              {/* User Approvals Tab */}
+              {devTab === 'userApprovals' && (
+                <div className="space-y-4">
+                  <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>تسجيلات جديدة بانتظار التأكيد</p>
+                  {pendingUsers.length === 0 ? (
+                    <div className="text-center py-12"><ShieldCheck className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد تسجيلات معلقة ✅</p></div>
+                  ) : pendingUsers.map(u => (
+                    <div key={u.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{u.name}</p>
+                          <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{u.email}</p>
+                          <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(u.createdAt).toLocaleDateString('ar-EG')}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => handleApproveUser(u.id, u.name)} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-emerald-500 text-white text-sm hover:bg-emerald-600 transition-colors"><Check className="h-4 w-4" />تأكيد</button>
+                          <button onClick={() => setDevMessageTo({ userId: u.id, userName: u.name })} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-violet-500 text-white text-sm hover:bg-violet-600 transition-colors"><Send className="h-4 w-4" />رسالة</button>
+                          <button onClick={() => handleRejectUser(u.id, u.name)} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600 transition-colors"><X className="h-4 w-4" />حذف</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Payments Tab */}
               {devTab === 'payments' && (
                 <div className="space-y-4">
@@ -1954,6 +2083,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                         <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{u.identifier || u.email}</p>
                       </div>
                       <div className="flex gap-2">
+                        <button onClick={() => { fetchUserDetail(u.id); setSelectedUserDetailId(u.id); }} className="px-4 py-2 rounded-lg bg-violet-500 text-white text-sm hover:bg-violet-600 transition-colors">تفاصيل</button>
+                        <button onClick={() => setDevMessageTo({ userId: u.id, userName: u.name })} className="p-2 rounded-lg bg-blue-500 text-white text-sm hover:bg-blue-600 transition-colors" title="إرسال رسالة"><Send className="h-4 w-4" /></button>
                         {u.isBlocked ? (
                           <button onClick={() => unblockUser(u.id)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm">إلغاء الحظر</button>
                         ) : (

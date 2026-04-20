@@ -117,33 +117,21 @@ export async function POST(request: Request) {
         phone: phone || null,
         identifier: userEmail,
         role: isDeveloper ? "DEVELOPER" : "USER",
-        isApproved: isDeveloper ? true : false,
-        emailVerified: isDeveloper ? true : false,
+        isApproved: isDeveloper,
+        emailVerified: isDeveloper,
       },
     });
 
-    // If not developer, send OTP for email verification AND require admin approval
-    if (!isDeveloper) {
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-      await db.user.update({
-        where: { id: user.id },
-        data: { otp, otpExpires },
-      });
-    }
-
     return NextResponse.json({
-      message: isDeveloper ? "تم إنشاء الحساب بنجاح" : "تم إنشاء الحساب! في انتظار تأكيد البريد الإلكتروني ومراجعة الإدارة",
+      message: isDeveloper ? "تم إنشاء الحساب بنجاح" : "تم إنشاء الحساب بنجاح. بانتظار موافقة الإدارة",
       user: {
         id: user.id,
         email: user.email,
         name: user.name,
         identifier: user.identifier,
         role: user.role,
+        isApproved: user.isApproved,
       },
-      pendingApproval: !isDeveloper,
-      emailVerificationRequired: !isDeveloper,
     });
   } catch (error) {
     console.error("Register error:", error);

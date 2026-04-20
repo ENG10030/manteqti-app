@@ -45,10 +45,9 @@ export async function GET(request: NextRequest) {
         identifier: true,
         role: true,
         isBlocked: true,
+        isApproved: true,
         blockedAt: true,
         blockReason: true,
-        isApproved: true,
-        emailVerified: true,
         createdAt: true,
       }
     })

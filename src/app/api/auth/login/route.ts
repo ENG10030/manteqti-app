@@ -48,12 +48,33 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if account is waiting for developer approval
-    if (!user.isApproved && user.role !== "DEVELOPER") {
-      return NextResponse.json({
+    // Check if user is approved (developers are always approved)
+    if (!user.isApproved && user.role !== 'DEVELOPER') {
+      const token = sign(
+        { userId: user.id, identifier: user.identifier, role: user.role },
+        JWT_SECRET,
+        { expiresIn: "7d" }
+      );
+      const response = NextResponse.json({
+        message: "حسابك قيد المراجعة. بانتظار موافقة الإدارة",
         pendingApproval: true,
-        error: "حسابك قيد المراجعة. يرجى الانتظار حتى يتم تأكيد تسجيلك من قبل الإدارة.",
-      }, { status: 403 });
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          identifier: user.identifier,
+          role: user.role,
+          isApproved: false,
+        },
+      });
+      response.cookies.set("auth-token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 7,
+        path: "/",
+      });
+      return response;
     }
 
     const token = sign(
@@ -71,6 +92,7 @@ export async function POST(request: Request) {
         identifier: user.identifier,
         role: user.role,
         emailVerified: user.emailVerified,
+        isApproved: user.isApproved,
       },
     });
 
