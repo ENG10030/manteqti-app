@@ -226,7 +226,7 @@ export default function App() {
   });
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'favorites' | 'payments' | 'messages' | 'userApprovals' | 'users' | 'blocked' | 'settings' | 'logs' | 'editRequests'>('stats');
+  const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'favorites' | 'payments' | 'messages' | 'userApprovals' | 'users' | 'blocked' | 'settings' | 'logs' | 'editRequests' | 'userLogs'>('stats');
   const [likes, setLikes] = useState<Array<{ id: string; apartmentId: string; userId: string; user: { id: string; name: string }; apartment: { id: string; title: string } | null; createdAt: string }>>([]);
   const [comments, setComments] = useState<Array<{ id: string; apartmentId: string; userId: string; content: string; status: string; user: { id: string; name: string }; createdAt: string }>>([]);
   const [newComment, setNewComment] = useState('');
@@ -252,6 +252,12 @@ export default function App() {
 
   // Operation Logs
   const [operationLogs, setOperationLogs] = useState<any[]>([]);
+
+  // Approval Logs
+  const [approvalLogs, setApprovalLogs] = useState<Array<{ id: string; userId: string; action: string; userName: string; userEmail: string | null; reason: string | null; performedBy: string | null; createdAt: string }>>([]);
+  const [approvalLogsLoading, setApprovalLogsLoading] = useState(false);
+  const [userLogTab, setUserLogTab] = useState<'all' | 'approved' | 'rejected' | 'revoked'>('all');
+  const [userMessagesForLog, setUserMessagesForLog] = useState<Array<{ id: string; senderId: string; receiverId: string | null; content: string; isRead: boolean; createdAt: string; sender?: { id: string; name: string; identifier: string } }>>([]);
 
   const addToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -332,6 +338,7 @@ export default function App() {
       setInquiries(Array.isArray(inqData) ? inqData : []); 
       setPayments(Array.isArray(payData) ? payData : []);
       if (pendData.users) setPendingUsers(pendData.users);
+      fetchApprovalLogs();
     } catch {}
   };
 
@@ -474,6 +481,119 @@ export default function App() {
       const data = await res.json();
       setOperationLogs(Array.isArray(data) ? data : []);
     } catch {}
+  };
+
+  // Fetch approval logs
+  const fetchApprovalLogs = async () => {
+    setApprovalLogsLoading(true);
+    try {
+      const res = await fetch('/api/approval-logs?limit=100');
+      const data = await res.json();
+      setApprovalLogs(Array.isArray(data) ? data : []);
+    } catch {}
+    setApprovalLogsLoading(false);
+  };
+
+  // Revoke user approval (set isApproved back to false)
+  const handleRevokeApproval = async (userId: string, userName: string, confirmed: boolean = false) => {
+    if (!confirmed) {
+      setConfirmDialog({ isOpen: true, title: 'إلغاء تأكيد المستخدم', message: `هل أنت متأكد من إلغاء تأكيد "${userName}"؟\n\n⚠️ سيتم إلغاء تأكيد حسابه وسيتطلب إعادة تأكيد.`, confirmText: 'إلغاء التأكيد', cancelText: 'رجوع', onConfirm: () => handleRevokeApproval(userId, userName, true), type: 'warning' });
+      return;
+    }
+    setConfirmDialog(prev => ({ ...prev, loading: true }));
+    try {
+      const res = await fetch(`/api/users/${userId}/approve`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'revoke' }) });
+      if (res.ok) {
+        fetchDevData(); fetchAllUsers(); fetchApprovalLogs(); fetchOperationLogs();
+        addToast('تم إلغاء تأكيد التسجيل ✅', 'success');
+      } else {
+        const data = await res.json();
+        addToast(data.error || 'فشل إلغاء التأكيد', 'error');
+      }
+    } catch { addToast('حدث خطأ', 'error'); }
+    finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+  };
+
+  // Delete an approval log entry
+  const handleDeleteApprovalLog = async (logId: string) => {
+    setConfirmDialog({
+      isOpen: true, title: 'حذف سجل التأكيد', message: 'هل أنت متأكد من حذف هذا السجل؟',
+      confirmText: 'حذف', cancelText: 'إلغاء', type: 'danger',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, loading: true }));
+        try {
+          const res = await fetch(`/api/approval-logs?id=${logId}`, { method: 'DELETE' });
+          if (res.ok) {
+            setApprovalLogs(prev => prev.filter(l => l.id !== logId));
+            addToast('تم حذف سجل التأكيد ✅', 'success');
+          } else { addToast('فشل حذف السجل', 'error'); }
+        } catch { addToast('حدث خطأ', 'error'); }
+        finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+      }
+    });
+  };
+
+  // Clear all approval logs
+  const handleClearApprovalLogs = async (confirmed: boolean = false) => {
+    if (!confirmed) {
+      setConfirmDialog({ isOpen: true, title: 'حذف جميع سجلات التأكيد', message: 'هل أنت متأكد من حذف جميع سجلات التأكيد؟ لا يمكن التراجع عن هذا الإجراء!', confirmText: 'حذف الكل', cancelText: 'إلغاء', onConfirm: () => handleClearApprovalLogs(true), type: 'danger' });
+      return;
+    }
+    setConfirmDialog(prev => ({ ...prev, loading: true }));
+    try {
+      const res = await fetch('/api/approval-logs?clearAll=true', { method: 'DELETE' });
+      if (res.ok) {
+        setApprovalLogs([]);
+        addToast('تم حذف جميع سجلات التأكيد ✅', 'success');
+      } else { addToast('فشل حذف السجلات', 'error'); }
+    } catch { addToast('حدث خطأ', 'error'); }
+    finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+  };
+
+  // Delete an operation log entry
+  const handleDeleteOperationLog = async (logId: string) => {
+    setConfirmDialog({
+      isOpen: true, title: 'حذف سجل العملية', message: 'هل أنت متأكد من حذف هذا السجل؟',
+      confirmText: 'حذف', cancelText: 'إلغاء', type: 'danger',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, loading: true }));
+        try {
+          const res = await fetch(`/api/logs?id=${logId}`, { method: 'DELETE' });
+          if (res.ok) {
+            setOperationLogs(prev => prev.filter(l => l.id !== logId));
+            addToast('تم حذف السجل ✅', 'success');
+          } else { addToast('فشل حذف السجل', 'error'); }
+        } catch { addToast('حدث خطأ', 'error'); }
+        finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+      }
+    });
+  };
+
+  // Clear all operation logs
+  const handleClearAllLogs = async (confirmed: boolean = false) => {
+    if (!confirmed) {
+      setConfirmDialog({ isOpen: true, title: 'حذف جميع السجلات', message: 'هل أنت متأكد من حذف جميع سجلات العمليات؟ لا يمكن التراجع عن هذا الإجراء!', confirmText: 'حذف الكل', cancelText: 'إلغاء', onConfirm: () => handleClearAllLogs(true), type: 'danger' });
+      return;
+    }
+    setConfirmDialog(prev => ({ ...prev, loading: true }));
+    try {
+      const res = await fetch('/api/logs?clearAll=true', { method: 'DELETE' });
+      if (res.ok) {
+        setOperationLogs([]);
+        addToast('تم حذف جميع السجلات ✅', 'success');
+      } else { addToast('فشل حذف السجلات', 'error'); }
+    } catch { addToast('حدث خطأ', 'error'); }
+    finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+  };
+
+  // Fetch messages for a specific user (for log display)
+  const fetchUserMessagesForLog = async (userId: string) => {
+    try {
+      const res = await fetch(`/api/messages?userId=${userId}&isDeveloper=true`);
+      const data = await res.json();
+      const userMsgs = (Array.isArray(data) ? data : []).filter((m: any) => m.senderId === userId || m.receiverId === userId);
+      setUserMessagesForLog(userMsgs);
+    } catch { setUserMessagesForLog([]); }
   };
 
   // Fetch edit requests
@@ -1790,6 +1910,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                   {selectedUserDetail.isApproved === false && (
                     <button onClick={() => { handleApproveUser(selectedUserDetail.id, selectedUserDetail.name); setSelectedUserDetail({ ...selectedUserDetail, isApproved: true }); }} className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm flex items-center gap-1"><Check className="h-4 w-4" />تأكيد التسجيل</button>
                   )}
+                  <button onClick={() => { setSelectedUserDetail(null); setUserDetailData({ apartments: [], payments: [], inquiries: [] }); handleDeleteUser(selectedUserDetail.id, selectedUserDetail.name); }} className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600 flex items-center gap-1"><Trash2 className="h-4 w-4" />حذف المستخدم</button>
                 </div>
               </div>
               {/* Loading */}
@@ -2147,7 +2268,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <button onClick={() => setShowDevPanel(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
               </div>
               <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
-                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل' }, { id: 'userApprovals', icon: ShieldCheck, label: 'تأكيد التسجيل', count: pendingUsers.length }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'blocked', icon: Ban, label: 'محظورين' }, { id: 'settings', icon: Settings, label: 'الإعدادات' }, { id: 'logs', icon: Activity, label: 'السجل' } ].map(tab => (
+                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل' }, { id: 'userApprovals', icon: ShieldCheck, label: 'تأكيد المستخدمين', count: pendingUsers.length }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'userLogs', icon: BookOpen, label: 'سجل المستخدمين', count: approvalLogs.length }, { id: 'blocked', icon: Ban, label: 'محظورين' }, { id: 'settings', icon: Settings, label: 'الإعدادات' }, { id: 'logs', icon: Activity, label: 'السجل' } ].map(tab => (
                   <button key={tab.id} onClick={() => setDevTab(tab.id as any)} className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-all ${devTab === tab.id ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                     <tab.icon className="h-4 w-4" />{tab.label}
                     {tab.count !== undefined && tab.count > 0 && <span className={`px-2 py-0.5 rounded-full text-xs ${devTab === tab.id ? 'bg-white/20' : 'bg-amber-500 text-white'}`}>{tab.count}</span>}
@@ -2300,28 +2421,65 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 </div>
               )}
 
-              {/* User Approvals Tab */}
+              {/* User Approvals Tab - تأكيد المستخدمين */}
               {devTab === 'userApprovals' && (
                 <div className="space-y-4">
-                  <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>تسجيلات جديدة بانتظار التأكيد</p>
-                  {pendingUsers.length === 0 ? (
-                    <div className="text-center py-12"><ShieldCheck className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد تسجيلات معلقة ✅</p></div>
-                  ) : pendingUsers.map(u => (
-                    <div key={u.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{u.name}</p>
-                          <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{u.email}</p>
-                          <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(u.createdAt).toLocaleDateString('ar-EG')}</p>
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => handleApproveUser(u.id, u.name)} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-emerald-500 text-white text-sm hover:bg-emerald-600 transition-colors"><Check className="h-4 w-4" />تأكيد</button>
-                          <button onClick={() => setDevMessageTo({ userId: u.id, userName: u.name })} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-violet-500 text-white text-sm hover:bg-violet-600 transition-colors"><Send className="h-4 w-4" />رسالة</button>
-                          <button onClick={() => handleRejectUser(u.id, u.name)} className="flex items-center gap-1 px-3 py-2 rounded-lg bg-red-500 text-white text-sm hover:bg-red-600 transition-colors"><X className="h-4 w-4" />حذف</button>
-                        </div>
-                      </div>
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>إدارة تأكيد المستخدمين - عرض جميع المستخدمين</p>
+                    <div className="flex gap-1.5">
+                      <button onClick={fetchAllUsers} className={`px-3 py-1 rounded-lg text-xs ${darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}>تحديث</button>
                     </div>
-                  ))}
+                  </div>
+                  {allUsers.length === 0 ? (
+                    <div className="text-center py-12"><ShieldCheck className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا يوجد مستخدمين</p></div>
+                  ) : (
+                    <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                      {allUsers.map(u => (
+                        <div key={u.id} className={`p-4 rounded-xl border ${u.isApproved ? (darkMode ? 'bg-emerald-900/10 border-emerald-800/30' : 'bg-emerald-50/50 border-emerald-200/50') : (darkMode ? 'bg-amber-900/10 border-amber-800/30' : 'bg-amber-50/50 border-amber-200/50')}`}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 ${u.isApproved ? 'bg-gradient-to-br from-emerald-500 to-teal-600' : 'bg-gradient-to-br from-amber-500 to-orange-600'}`}>
+                                {u.name?.charAt(0) || '?'}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className={`font-bold truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{u.name}</p>
+                                  {u.isApproved ? (
+                                    <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700 shrink-0">✅ مؤكد</span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700 shrink-0">⏳ بانتظار التأكيد</span>
+                                  )}
+                                  {u.isBlocked && <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700 shrink-0">🚫 محظور</span>}
+                                </div>
+                                <p className={`text-sm mt-0.5 truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>📧 {u.identifier || u.email}{u.phone ? ` • 📞 ${u.phone}` : ''}</p>
+                                <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>📅 {new Date(u.createdAt).toLocaleDateString('ar-EG')} • {new Date(u.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</p>
+                              </div>
+                            </div>
+                            <div className="flex gap-1.5 flex-wrap shrink-0">
+                              {u.isApproved ? (
+                                <button onClick={() => handleRevokeApproval(u.id, u.name)} className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs hover:bg-amber-600 transition-colors flex items-center gap-1" title="إلغاء التأكيد">
+                                  <RefreshCw className="h-3 w-3" /><span className="hidden sm:inline">إلغاء التأكيد</span>
+                                </button>
+                              ) : (
+                                <button onClick={() => handleApproveUser(u.id, u.name)} className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-xs hover:bg-emerald-600 transition-colors flex items-center gap-1" title="تأكيد">
+                                  <Check className="h-3 w-3" /><span className="hidden sm:inline">تأكيد</span>
+                                </button>
+                              )}
+                              <button onClick={() => setDevMessageTo({ userId: u.id, userName: u.name })} className="px-3 py-1.5 rounded-lg bg-blue-500 text-white text-xs hover:bg-blue-600 transition-colors flex items-center gap-1" title="تواصل">
+                                <Send className="h-3 w-3" /><span className="hidden sm:inline">تواصل</span>
+                              </button>
+                              <button onClick={() => { setSelectedUserDetail(u); fetchUserDetail(u.id); }} className="px-3 py-1.5 rounded-lg bg-violet-500 text-white text-xs hover:bg-violet-600 transition-colors flex items-center gap-1" title="تفاصيل">
+                                <Eye className="h-3 w-3" /><span className="hidden sm:inline">تفاصيل</span>
+                              </button>
+                              <button onClick={() => handleDeleteUser(u.id, u.name)} className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs hover:bg-red-600 transition-colors flex items-center gap-1" title="حذف">
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2447,6 +2605,102 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* User Logs Tab - سجل المستخدمين */}
+              {devTab === 'userLogs' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className={`text-sm font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>سجل تأكيد المستخدمين والمدفوعات</p>
+                      <div className="flex gap-1.5">
+                        <button onClick={() => { setUserLogTab('all'); fetchApprovalLogs(); }} className={`px-3 py-1 rounded-lg text-xs transition-colors ${userLogTab === 'all' ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white' : (darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-200 text-slate-600 hover:bg-slate-300')}`}>الكل</button>
+                        <button onClick={() => { setUserLogTab('approved'); }} className={`px-3 py-1 rounded-lg text-xs transition-colors ${userLogTab === 'approved' ? 'bg-emerald-500 text-white' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'}`}>✅ مؤكد</button>
+                        <button onClick={() => { setUserLogTab('revoked'); }} className={`px-3 py-1 rounded-lg text-xs transition-colors ${userLogTab === 'revoked' ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}>↩️ ملغي</button>
+                        <button onClick={() => { setUserLogTab('rejected'); }} className={`px-3 py-1 rounded-lg text-xs transition-colors ${userLogTab === 'rejected' ? 'bg-red-500 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}>❌ مرفوض</button>
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button onClick={() => fetchApprovalLogs()} className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-200 text-slate-500'}`} title="تحديث"><RefreshCw className="h-4 w-4" /></button>
+                      <button onClick={() => handleClearApprovalLogs()} className={`p-1.5 rounded-lg hover:bg-red-100 text-red-400 hover:text-red-600`} title="حذف الكل"><Trash2 className="h-4 w-4" /></button>
+                    </div>
+                  </div>
+
+                  {approvalLogs.length === 0 ? (
+                    <div className="text-center py-12"><BookOpen className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد سجلات تأكيد</p></div>
+                  ) : (
+                    <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                      {approvalLogs
+                        .filter(log => userLogTab === 'all' || log.action === userLogTab)
+                        .map(log => {
+                          const actionConfig: Record<string, { label: string; color: string; bgColor: string; icon: string }> = {
+                            'approve': { label: 'تأكيد تسجيل', color: 'text-emerald-700', bgColor: 'bg-emerald-100', icon: '✅' },
+                            'revoke': { label: 'إلغاء تأكيد', color: 'text-amber-700', bgColor: 'bg-amber-100', icon: '↩️' },
+                            'reject': { label: 'رفض تسجيل', color: 'text-red-700', bgColor: 'bg-red-100', icon: '❌' },
+                          };
+                          const config = actionConfig[log.action] || { label: log.action, color: 'text-slate-700', bgColor: 'bg-slate-100', icon: '📋' };
+                          const userPaymentsCount = payments.filter(p => p.userId === log.userId).length;
+                          const userExists = allUsers.some(u => u.id === log.userId);
+
+                          return (
+                            <div key={log.id} className={`p-3 rounded-xl border ${darkMode ? 'bg-slate-700/50 border-slate-600/50' : 'bg-white border-slate-200'}`}>
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className={`px-2 py-0.5 rounded-full text-xs shrink-0 ${config.bgColor} ${config.color}`}>{config.icon} {config.label}</span>
+                                  <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{log.userName}</p>
+                                  {log.userEmail && <p className={`text-xs truncate ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{log.userEmail}</p>}
+                                  {userPaymentsCount > 0 && <span className={`px-1.5 py-0.5 rounded text-xs ${darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>💳 {userPaymentsCount} مدفوعات</span>}
+                                  {!userExists && log.action !== 'reject' && <span className="px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-500">محذوف</span>}
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(log.createdAt).toLocaleString('ar-EG')}</span>
+                                  <button onClick={() => handleDeleteApprovalLog(log.id)} className="p-1 rounded hover:bg-red-100 text-red-400 hover:text-red-600 transition-colors" title="حذف السجل"><Trash2 className="h-3.5 w-3.5" /></button>
+                                </div>
+                              </div>
+                              {log.reason && <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>📋 {log.reason}</p>}
+                              {/* Show messages for this user if expanded */}
+                              <div className="flex gap-1.5 mt-2">
+                                {userExists && (
+                                  <button onClick={() => fetchUserMessagesForLog(log.userId)} className={`px-2 py-1 rounded text-xs ${darkMode ? 'bg-slate-600 text-slate-300 hover:bg-slate-500' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'} flex items-center gap-1`}>
+                                    <MessageCircle className="h-3 w-3" /> عرض الرسائل
+                                  </button>
+                                )}
+                                {userExists && log.action === 'revoke' && (
+                                  <button onClick={() => handleApproveUser(log.userId, log.userName)} className="px-2 py-1 rounded text-xs bg-emerald-100 text-emerald-700 hover:bg-emerald-200 flex items-center gap-1">
+                                    <Check className="h-3 w-3" /> إعادة تأكيد
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+
+                  {/* User messages section when viewing a user's messages */}
+                  {userMessagesForLog.length > 0 && (
+                    <div className={`mt-4 p-4 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-200'}`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className={`font-bold text-sm ${darkMode ? 'text-white' : 'text-slate-900'}`}>💬 رسائل المستخدم ({userMessagesForLog.length})</h4>
+                        <button onClick={() => setUserMessagesForLog([])} className={`p-1 rounded ${darkMode ? 'hover:bg-slate-600 text-slate-400' : 'hover:bg-slate-200 text-slate-500'}`}><X className="h-4 w-4" /></button>
+                      </div>
+                      <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                        {userMessagesForLog.map(msg => (
+                          <div key={msg.id} className={`p-3 rounded-lg ${darkMode ? 'bg-slate-600' : 'bg-white'} border ${darkMode ? 'border-slate-500' : 'border-slate-200'}`}>
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <div className="flex items-center gap-2">
+                                <span className={`text-xs ${msg.senderId === currentUser?.id ? (darkMode ? 'text-violet-400' : 'text-violet-600') : (darkMode ? 'text-emerald-400' : 'text-emerald-600')}`}>{msg.senderId === currentUser?.id ? 'المطور' : (msg.sender?.name || 'مستخدم')}</span>
+                                <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(msg.createdAt).toLocaleString('ar-EG')}</span>
+                              </div>
+                              <button onClick={() => handleDeleteMessage(msg.id)} className="p-1 rounded hover:bg-red-100 text-red-400 hover:text-red-600" title="حذف الرسالة"><Trash2 className="h-3 w-3" /></button>
+                            </div>
+                            <p className={`text-sm whitespace-pre-line ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{msg.content}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2585,9 +2839,21 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               {/* Logs Tab */}
               {devTab === 'logs' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>سجل العمليات والأحداث</p>
-                    <button onClick={fetchOperationLogs} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" title="تحديث"><RefreshCw className={`h-4 w-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`} /></button>
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>سجل العمليات والأحداث</p>
+                      <div className="flex gap-1.5">
+                        <button onClick={() => { fetchOperationLogs(); }} className={`px-3 py-1 rounded-lg text-xs ${darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}>الكل</button>
+                        <button onClick={async () => { try { const res = await fetch('/api/logs?action=APPROVE_USER&limit=50'); const data = await res.json(); setOperationLogs(Array.isArray(data) ? data : []); } catch {} }} className="px-3 py-1 rounded-lg text-xs bg-emerald-100 text-emerald-700 hover:bg-emerald-200">✅ التأكيدات</button>
+                        <button onClick={async () => { try { const res = await fetch('/api/logs?action=USER_REGISTER&limit=50'); const data = await res.json(); setOperationLogs(Array.isArray(data) ? data : []); } catch {} }} className="px-3 py-1 rounded-lg text-xs bg-blue-100 text-blue-700 hover:bg-blue-200">📝 التسجيلات</button>
+                        <button onClick={async () => { try { const res = await fetch('/api/logs?action=BLOCK_USER&limit=50'); const data = await res.json(); setOperationLogs(Array.isArray(data) ? data : []); } catch {} }} className="px-3 py-1 rounded-lg text-xs bg-red-100 text-red-700 hover:bg-red-200">🚫 الحظر</button>
+                        <button onClick={async () => { try { const res = await fetch('/api/logs?action=REVOKE_APPROVAL&limit=50'); const data = await res.json(); setOperationLogs(Array.isArray(data) ? data : []); } catch {} }} className="px-3 py-1 rounded-lg text-xs bg-amber-100 text-amber-700 hover:bg-amber-200">↩️ إلغاء التأكيد</button>
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <button onClick={fetchOperationLogs} className={`p-1.5 rounded-lg ${darkMode ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-200 text-slate-500'}`} title="تحديث"><RefreshCw className="h-4 w-4" /></button>
+                      <button onClick={() => handleClearAllLogs()} className="p-1.5 rounded-lg hover:bg-red-100 text-red-400 hover:text-red-600" title="حذف الكل"><Trash2 className="h-4 w-4" /></button>
+                    </div>
                   </div>
                   {operationLogs.length === 0 ? (
                     <div className="text-center py-12"><Activity className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد عمليات مسجلة</p></div>
@@ -2595,17 +2861,22 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <div className="space-y-2 max-h-[500px] overflow-y-auto">
                       {operationLogs.map((log: any) => {
                         const actionLabels: Record<string, { label: string; color: string; icon: string }> = {
+                          'USER_REGISTER': { label: 'تسجيل جديد', color: 'bg-blue-100 text-blue-700', icon: '📝' },
+                          'DEVELOPER_AUTO_REGISTER': { label: 'تسجيل مطور', color: 'bg-violet-100 text-violet-700', icon: '👑' },
                           'APPROVE_USER': { label: 'تأكيد تسجيل', color: 'bg-emerald-100 text-emerald-700', icon: '✅' },
                           'REJECT_USER': { label: 'رفض تسجيل', color: 'bg-red-100 text-red-700', icon: '❌' },
+                          'REVOKE_APPROVAL': { label: 'إلغاء تأكيد', color: 'bg-amber-100 text-amber-700', icon: '↩️' },
                           'BLOCK_USER': { label: 'حظر مستخدم', color: 'bg-red-100 text-red-700', icon: '🚫' },
                           'UNBLOCK_USER': { label: 'فك حظر', color: 'bg-emerald-100 text-emerald-700', icon: '🔓' },
                           'DELETE_USER': { label: 'حذف مستخدم', color: 'bg-red-100 text-red-700', icon: '🗑️' },
                           'DELETE_MESSAGE': { label: 'حذف رسالة', color: 'bg-amber-100 text-amber-700', icon: '💬' },
                           'UPDATE_SETTINGS': { label: 'تحديث إعدادات', color: 'bg-violet-100 text-violet-700', icon: '⚙️' },
+                          'APPROVE_APARTMENT': { label: 'موافقة عقار', color: 'bg-emerald-100 text-emerald-700', icon: '🏠' },
+                          'REJECT_APARTMENT': { label: 'رفض عقار', color: 'bg-red-100 text-red-700', icon: '❌' },
                         };
                         const actionInfo = actionLabels[log.action] || { label: log.action, color: 'bg-slate-100 text-slate-700', icon: '📋' };
                         let detailText = '';
-                        try { const d = JSON.parse(log.details || '{}'); detailText = d.userName || d.reason || d.identifier || (typeof d === 'string' ? d : ''); } catch { detailText = log.details || ''; }
+                        try { const d = JSON.parse(log.details || '{}'); detailText = d.userName || d.reason || d.identifier || d.email || (typeof d === 'string' ? d : ''); } catch { detailText = log.details || ''; }
                         return (
                           <div key={log.id} className={`p-3 rounded-lg ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
                             <div className="flex items-center justify-between gap-2">
@@ -2613,7 +2884,10 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                                 <span className={`px-2 py-0.5 rounded-full text-xs shrink-0 ${actionInfo.color}`}>{actionInfo.icon} {actionInfo.label}</span>
                                 {detailText && <p className={`text-sm truncate ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{detailText}</p>}
                               </div>
-                              <span className={`text-xs shrink-0 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(log.createdAt).toLocaleString('ar-EG')}</span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(log.createdAt).toLocaleString('ar-EG')}</span>
+                                <button onClick={() => handleDeleteOperationLog(log.id)} className="p-1 rounded hover:bg-red-100 text-red-400 hover:text-red-600 transition-colors" title="حذف السجل"><Trash2 className="h-3.5 w-3.5" /></button>
+                              </div>
                             </div>
                           </div>
                         );

@@ -208,3 +208,14 @@ model OperationLog {
   userAgent  String?
   createdAt  DateTime @default(now())
 }
+
+model ApprovalLog {
+  id            String    @id @default(cuid())
+  userId        String
+  action        String    // approve, reject, revoke
+  userName      String
+  userEmail     String?
+  reason        String?
+  performedBy   String?
+  createdAt     DateTime  @default(now())
+}

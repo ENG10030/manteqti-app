@@ -104,3 +104,51 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, message: 'Log skipped' });
   }
 }
+
+// Delete a specific log or clear all logs (developer only)
+export async function DELETE(request: NextRequest) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    if (decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const logId = searchParams.get('id');
+    const clearAll = searchParams.get('clearAll');
+
+    if (clearAll === 'true') {
+      try {
+        await db.operationLog.deleteMany({});
+        return NextResponse.json({ message: 'تم حذف جميع السجلات' });
+      } catch {
+        return NextResponse.json({ error: 'فشل حذف السجلات' }, { status: 500 });
+      }
+    }
+
+    if (!logId) {
+      return NextResponse.json({ error: 'معرف السجل مطلوب' }, { status: 400 });
+    }
+
+    try {
+      await db.operationLog.delete({ where: { id: logId } });
+      return NextResponse.json({ message: 'تم حذف السجل' });
+    } catch {
+      return NextResponse.json({ error: 'فشل حذف السجل' }, { status: 500 });
+    }
+  } catch (error) {
+    console.error('Error deleting log:', error);
+    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+  }
+}
