@@ -2096,7 +2096,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                               if (e.key === 'Enter' && e.currentTarget.value.trim()) {
                                 const replyContent = e.currentTarget.value.trim();
                                 e.currentTarget.value = '';
-                                handleDevReplyMessage(msg.sender.id, replyContent);
+                                if (msg.sender) handleDevReplyMessage(msg.sender.id, replyContent);
                               }
                             }}
                           />
@@ -2106,7 +2106,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                               if (input?.value.trim()) {
                                 const replyContent = input.value.trim();
                                 input.value = '';
-                                handleDevReplyMessage(msg.sender.id, replyContent);
+                                if (msg.sender) handleDevReplyMessage(msg.sender.id, replyContent);
                               }
                             }}
                             className="px-3 py-2 rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 text-white text-sm"
