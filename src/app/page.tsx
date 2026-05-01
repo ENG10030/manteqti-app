@@ -274,13 +274,25 @@ export default function App() {
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const [onlineCount, setOnlineCount] = useState(0);
 
-  // Socket.io - connect ONCE only, never reconnect on state changes
+  // Refs for stable function references (avoids stale closures in socket/polling)
+  const fetchApartmentsRef = useRef<(retry?: number, isInitial?: boolean) => Promise<void>>();
+  const fetchMessagesRef = useRef<() => Promise<void>>();
+  const fetchSettingsRef = useRef<() => Promise<void>>();
+  const currentUserRef = useRef<User | null>(null);
+  const isDeveloperRef = useRef(false);
+  const initialLoadRef = useRef(true);
+
+  // Keep refs in sync with state (no re-renders, just ref updates)
+  useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
+  useEffect(() => { isDeveloperRef.current = isDeveloper; }, [isDeveloper]);
+
+  // Socket.io - connect ONCE only, uses refs to avoid stale closures
   useEffect(() => {
     try {
       const socket = io('/?XTransformPort=3004', {
         transports: ['polling', 'websocket'],
         reconnection: true,
-        reconnectionAttempts: 5,
+        reconnectionAttempts: 3,
         reconnectionDelay: 5000,
         timeout: 5000,
       });
@@ -291,41 +303,33 @@ export default function App() {
       socket.on('disconnect', () => { setIsRealtimeConnected(false); });
 
       socket.on('apartments-changed', () => {
-        fetchApartments(0, false);
+        fetchApartmentsRef.current?.(0, false);
       });
 
       socket.on('messages-changed', () => {
-        if (currentUser) fetchMessages();
+        if (currentUserRef.current) fetchMessagesRef.current?.();
       });
 
       socket.on('notification', (data: { event: string }) => {
-        if (data.event === 'settings-updated') fetchSettings();
+        if (data.event === 'settings-updated') fetchSettingsRef.current?.();
       });
 
       socket.on('online-count', (data: { count: number }) => {
         setOnlineCount(data.count);
       });
 
+      // Suppress connection errors silently (socket.io not available on Vercel)
+      socket.on('connect_error', () => {
+        setIsRealtimeConnected(false);
+      });
+
       return () => { socket.disconnect(); socketRef.current = null; };
     } catch {
- // Socket.io not available (e.g. CSP blocks it) - polling fallback handles it
+ // Socket.io not available - polling fallback handles it
     }
   }, []); // Empty deps = connect only ONCE on mount
 
-  // Fetch current user on mount
-  useEffect(() => {
-    fetch('/api/auth/me').then(r => r.json()).then(data => {
-      if (data.user) {
-        setCurrentUser(data.user);
-        if (data.user.isBlocked) setIsBlocked(true);
-        if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
-      }
-    });
-  }, []);
-
-  // Fetch apartments
-  useEffect(() => { fetchApartments(0, true); }, []);
-  
+  // ========== fetchApartments (stable function, ref updated each render) ==========
   const fetchApartments = async (retryCount = 0, isInitial = false) => {
     try {
       if (isInitial) setLoading(true);
@@ -342,13 +346,79 @@ export default function App() {
     } catch (err: any) {
       if (retryCount < 3) setTimeout(() => fetchApartments(retryCount + 1, isInitial), 1000 * (retryCount + 1));
       else { setApartments([]); setAllApartments([]); }
-    } finally { if (isInitial) { setLoading(false); setInitialLoad(false); } }
+    } finally { if (isInitial) { setLoading(false); setInitialLoad(false); initialLoadRef.current = false; } }
   };
+  // Keep ref in sync so socket/polling can call latest version
+  useEffect(() => { fetchApartmentsRef.current = fetchApartments; });
 
-  // Fetch user payments and pending apartments
+  // ========== SINGLE initialization: auth → apartments → dev data ==========
   useEffect(() => {
-    if (currentUser && !isDeveloper && !initialLoad) { fetchUserPayments(); fetchMyPendingApartments(); }
-  }, [currentUser, isDeveloper]);
+    let cancelled = false;
+    
+    const init = async () => {
+      // Step 1: Fetch auth
+      try {
+        const authRes = await fetch('/api/auth/me');
+        const authData = await authRes.json();
+        if (cancelled) return;
+        if (authData.user) {
+          setCurrentUser(authData.user);
+          currentUserRef.current = authData.user;
+          if (authData.user.isBlocked) setIsBlocked(true);
+          const isDev = authData.user.identifier === DEVELOPER_EMAIL;
+          setIsDeveloper(isDev);
+          isDeveloperRef.current = isDev;
+        }
+      } catch {}
+
+      // Step 2: Fetch apartments
+      await fetchApartments(0, true);
+      if (cancelled) return;
+
+      // Step 3: Load user-specific data (using refs, no dependency on state)
+      const user = currentUserRef.current;
+      const dev = isDeveloperRef.current;
+      
+      if (user && !dev) {
+        // Regular user data
+        try {
+          const payRes = await fetch('/api/payments');
+          const payData = await payRes.json();
+          if (cancelled) return;
+          if (Array.isArray(payData)) {
+            const myPayments = payData.filter((p: Payment) => p.userId === user.id);
+            setUserPayments(myPayments);
+            const paidIds = myPayments.filter((p: Payment) => p.status === 'Paid').map((p: Payment) => p.inquiry?.apartmentId).filter((id): id is string => Boolean(id));
+            setUserPaidApartments(paidIds);
+          }
+        } catch {}
+        try {
+          const pendRes = await fetch('/api/apartments?status=pending');
+          const pendData = await pendRes.json();
+          if (cancelled) return;
+          if (Array.isArray(pendData)) {
+            setMyPendingApartments(pendData.filter((apt: Apartment) => apt.createdBy === user.id));
+          }
+        } catch {}
+      }
+
+      // Step 4: Fetch likes for current user
+      if (user) {
+        try {
+          const likesRes = await fetch(`/api/likes?userId=${user.id}`);
+          const likesData = await likesRes.json();
+          if (cancelled) return;
+          if (Array.isArray(likesData)) {
+            setLikes(likesData);
+            setFavorites(likesData.map((l: any) => l.apartmentId));
+          }
+        } catch {}
+      }
+    };
+
+    init();
+    return () => { cancelled = true; };
+  }, []); // Run ONCE on mount — no cascade!
 
   const fetchUserPayments = async () => {
     try {
@@ -495,6 +565,7 @@ export default function App() {
       });
     } catch {}
   };
+  useEffect(() => { fetchSettingsRef.current = fetchSettings; });
 
   // Update settings
   const updateSettings = async (newSettings: Partial<typeof settings>) => {
@@ -732,27 +803,36 @@ export default function App() {
     }
   };
 
+  // Dev data loading handled in init useEffect above.
+  // This useEffect only handles subsequent auth changes (login/logout during session)
+  const hasMountedRef = useRef(false);
   useEffect(() => {
-    if (!initialLoad) {
-      fetchSettings();
-      if (isDeveloper && currentUser) { fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
+    // Skip the first run (handled by init useEffect)
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
     }
-  }, [isDeveloper, currentUser, initialLoad]);
+    if (initialLoadRef.current) return;
+    fetchSettings();
+    if (isDeveloper && currentUser) { fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
+    if (currentUser && !isDeveloper) { fetchUserPayments(); fetchMyPendingApartments(); fetchUserLikes(); }
+  }, [isDeveloper, currentUser]);
 
-  // Smart auto-refresh every 30 seconds (lightweight polling)
-  // Single batched refresh to minimize re-renders
+  // Smart auto-refresh every 30 seconds with visibility API (skip when tab hidden)
   useEffect(() => {
     const interval = setInterval(async () => {
-      if (initialLoad) return;
-      // Batch all fetches to minimize re-renders
+      if (initialLoadRef.current) return;
+      // Skip polling when tab is not visible
+      if (typeof document !== 'undefined' && document.hidden) return;
+      // Use refs for stable access to latest functions
       await Promise.allSettled([
-        fetchSettings(),
-        fetchApartments(0, false),
-        ...(currentUser ? [fetchMessages()] : []),
+        fetchSettingsRef.current?.(),
+        fetchApartmentsRef.current?.(0, false),
+        ...(currentUserRef.current ? [fetchMessagesRef.current?.()] : []),
       ]);
     }, 30000);
     return () => clearInterval(interval);
-  }, [initialLoad, currentUser]);
+  }, []); // Empty deps — uses refs, never re-creates
 
   // Fetch likes
   const fetchUserLikes = async () => {
@@ -799,6 +879,7 @@ export default function App() {
       setMessages(Array.isArray(data) ? data : []); 
     } catch {}
   };
+  useEffect(() => { fetchMessagesRef.current = fetchMessages; });
 
   const fetchBlockedUsers = async () => {
     try { 
@@ -846,10 +927,7 @@ export default function App() {
     setUserDetailLoading(false);
   };
 
-  // Load user likes after initial load
-  useEffect(() => {
-    if (currentUser && !initialLoad) fetchUserLikes();
-  }, [currentUser, initialLoad]);
+  // User likes loaded in init useEffect — no separate effect needed
 
   // Load all localStorage data on mount (single effect)
   useEffect(() => {

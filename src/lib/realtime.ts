@@ -4,30 +4,49 @@
 const REALTIME_SERVICE_URL = process.env.REALTIME_SERVICE_URL || 'http://localhost:3005';
 
 let isNotifying = false;
+let realtimeAvailable: boolean | null = null; // null = not checked yet
 
 /**
  * Notify all connected clients about a change.
  * This is fire-and-forget - errors are logged but don't block the API response.
  */
 export async function notifyRealtime(event: string, payload?: any) {
-  // Skip in test/build environments
+  // Skip in test/build/browser environments
   if (typeof window !== 'undefined') return;
   if (process.env.NODE_ENV === 'test') return;
+
+  // Skip if we already know the service is not available (avoid repeated failed requests)
+  if (realtimeAvailable === false) return;
 
   // Prevent stack overflow if notification triggers another notification
   if (isNotifying) return;
   isNotifying = true;
 
   try {
-    await fetch(`${REALTIME_SERVICE_URL}/notify`, {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    
+    const res = await fetch(`${REALTIME_SERVICE_URL}/notify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ event, payload }),
-      signal: AbortSignal.timeout(3000), // 3 second timeout
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeout);
+    
+    if (res.ok) {
+      realtimeAvailable = true;
+    } else {
+      realtimeAvailable = false;
+      console.log(`[Realtime] Service returned ${res.status}, disabling notifications`);
+    }
   } catch (err) {
-    // Silent fail - realtime is optional, don't break main functionality
-    console.log(`[Realtime] Notification skipped (${event}): service not available`);
+    // Mark as unavailable after first failure to avoid repeated attempts
+    if (realtimeAvailable === null) {
+      console.log(`[Realtime] Notification service not available (${REALTIME_SERVICE_URL}), notifications disabled`);
+    }
+    realtimeAvailable = false;
   } finally {
     isNotifying = false;
   }

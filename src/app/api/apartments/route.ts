@@ -29,7 +29,13 @@ export async function GET(request: Request) {
     const status = searchParams.get("status");
     const type = searchParams.get("type");
     const area = searchParams.get("area");
-    const user = await getCurrentUser(request);
+    
+    let user = null;
+    try {
+      user = await getCurrentUser(request);
+    } catch (authErr: any) {
+      console.warn("Auth check failed, continuing as guest:", authErr.message);
+    }
     const isDeveloper = user?.role === "DEVELOPER";
 
     const where: any = {};
@@ -52,13 +58,17 @@ export async function GET(request: Request) {
 
     // استبعاد عقارات المحظورين للمستخدمين العاديين
     if (!isDeveloper) {
-      const blockedUsers = await db.user.findMany({
-        where: { isBlocked: true },
-        select: { id: true },
-      });
-      const blockedIds = blockedUsers.map((u) => u.id);
-      if (blockedIds.length > 0) {
-        where.createdBy = { notIn: blockedIds };
+      try {
+        const blockedUsers = await db.user.findMany({
+          where: { isBlocked: true },
+          select: { id: true },
+        });
+        const blockedIds = blockedUsers.map((u) => u.id);
+        if (blockedIds.length > 0) {
+          where.createdBy = { notIn: blockedIds };
+        }
+      } catch (blockErr: any) {
+        console.warn("Blocked users check failed:", blockErr.message);
       }
     }
 
@@ -77,10 +87,13 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json(apartments);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Get apartments error:", error);
     return NextResponse.json(
-      { error: "حدث خطأ أثناء جلب العقارات" },
+      { 
+        error: "حدث خطأ أثناء جلب العقارات",
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      },
       { status: 500 }
     );
   }
