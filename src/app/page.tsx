@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, MapPin, Bed, Bath, Phone, ExternalLink, X,
@@ -11,8 +11,8 @@ import {
   CheckCircle2, XCircle, Image as ImageIcon, Video,
   ChevronLeft, ChevronRight, Plus, Trash2, ShieldCheck, Hourglass,
   Send, Bot, Home, Crown, Diamond, Ban, Brain, Search,
-  Play, Upload, Link, Activity, Wallet, PieChart, Layers, Key, ArrowUp,
-  Download, RefreshCw as RefreshCwIcon, Smartphone, Banknote, Zap, Save,
+  VideoIcon, Activity, Wallet, Key, ArrowUp, Layers,
+  Download, Smartphone, Zap, Save,
   Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
@@ -688,9 +688,9 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchSettings(); // Always fetch settings for all users
-    if (isDeveloper) { fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
-  }, [isDeveloper]);
+    fetchSettings();
+    if (isDeveloper && currentUser) { fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
+  }, [isDeveloper, currentUser]);
 
   // Auto-refresh settings every 30 seconds so users see changes immediately
   useEffect(() => {
@@ -1207,7 +1207,7 @@ export default function App() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: 'developer-' + Date.now(), message: prompt })
+        body: JSON.stringify({ sessionId: 'developer-persistent-session', message: prompt })
       });
       const data = await res.json();
       if (data.success) setAiResponse(data.response);
@@ -1343,12 +1343,10 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
   const toggleFavorite = async (apartmentId: string) => {
     if (!currentUser) {
-      setFavorites(prev => {
-        const newFavorites = prev.includes(apartmentId) ? prev.filter(f => f !== apartmentId) : [...prev, apartmentId];
-        localStorage.setItem('manteqti_favorites', JSON.stringify(newFavorites));
-        addToast(newFavorites.includes(apartmentId) ? 'تمت الإضافة للمفضلة ❤️' : 'تمت الإزالة من المفضلة', newFavorites.includes(apartmentId) ? 'success' : 'info');
-        return newFavorites;
-      });
+      const newFavorites = favorites.includes(apartmentId) ? favorites.filter(f => f !== apartmentId) : [...favorites, apartmentId];
+      localStorage.setItem('manteqti_favorites', JSON.stringify(newFavorites));
+      setFavorites(newFavorites);
+      addToast(newFavorites.includes(apartmentId) ? 'تمت الإضافة للمفضلة ❤️' : 'تمت الإزالة من المفضلة', newFavorites.includes(apartmentId) ? 'success' : 'info');
       return;
     }
     try {

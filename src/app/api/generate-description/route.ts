@@ -11,7 +11,7 @@ function generateFallbackDescription(data: {
   const { type, area, bedrooms, bathrooms, price, features } = data;
   const typeText = type === 'rent' ? 'للإيجار' : 'للبيع';
   
-  let description = `🏠 ${typeText === 'للإيجار' ? 'شقة فاخرة للإيجار' : 'شقة فاخرة للبيع'} في ${area}
+  let description = `🏠 شقة فاخرة ${typeText} في ${area}
 
 ✨ المواصفات:
 • ${bedrooms} غرف نوم
@@ -19,7 +19,7 @@ function generateFallbackDescription(data: {
 • تصميم عصري وفاخر
 
 📍 الموقع:
- ${area} - موقع متميز قريب من جميع الخدمات والمرافق
+${area} - موقع متميز قريب من جميع الخدمات والمرافق
 
 💰 السعر: ${price ? price.toLocaleString() + ' ج.م' : 'للتفاوض'}`;
 
@@ -36,6 +36,50 @@ export async function POST(request: NextRequest) {
   try {
     const { type, area, bedrooms, bathrooms, features, price } = await request.json();
 
+    // Try to use AI SDK for generating description
+    try {
+      const mod: any = await import('z-ai-web-dev-sdk').catch(() => null);
+      
+      if (mod?.default && typeof mod.default.create === 'function') {
+        const zai = await mod.default.create();
+
+        const prompt = `اكتب وصف عقاري جذاب ومقنع باللغة العربية لهذه الشقة:
+- النوع: ${type === 'rent' ? 'إيجار' : 'بيع'}
+- المنطقة: ${area}
+- عدد الغرف: ${bedrooms}
+- عدد الحمامات: ${bathrooms}
+- السعر: ${price ? price.toLocaleString() + ' ج.م' : 'للتفاوض'}
+${features && features.length > 0 ? `- المميزات: ${features.join('، ')}` : ''}
+
+اكتب وصف احترافي يجذب المشترين/المستأجرين. استخدم الرموز التعبيرية. لا تتجاوز 150 كلمة.`;
+
+        const completionPromise = zai.chat.completions.create({
+          messages: [
+            { role: 'system', content: 'أنت كاتب وصف عقاري محترف. اكتب أوصاف جذابة ومقنعة باللغة العربية.' },
+            { role: 'user', content: prompt }
+          ],
+          thinking: { type: 'disabled' }
+        });
+
+        const timeoutPromise = new Promise<null>((_, reject) => {
+          setTimeout(() => reject(new Error('AI timeout')), 15000);
+        });
+
+        const completion = await Promise.race([completionPromise, timeoutPromise]);
+
+        if (completion?.choices?.[0]?.message?.content) {
+          return NextResponse.json({
+            success: true,
+            description: completion.choices[0].message.content,
+            ai: true
+          });
+        }
+      }
+    } catch {
+      // AI not available, use fallback
+    }
+
+    // Fallback description
     const description = generateFallbackDescription({ type, area, bedrooms, bathrooms, price, features });
     
     return NextResponse.json({
