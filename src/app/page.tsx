@@ -274,70 +274,43 @@ export default function App() {
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const [onlineCount, setOnlineCount] = useState(0);
 
+  // Socket.io - connect ONCE only, never reconnect on state changes
   useEffect(() => {
-    const socket = io('/?XTransformPort=3004', {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 2000,
-      timeout: 10000,
-    });
+    try {
+      const socket = io('/?XTransformPort=3004', {
+        transports: ['polling', 'websocket'],
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 5000,
+        timeout: 5000,
+      });
 
-    socketRef.current = socket;
+      socketRef.current = socket;
 
-    socket.on('connect', () => {
-      setIsRealtimeConnected(true);
-    });
+      socket.on('connect', () => { setIsRealtimeConnected(true); });
+      socket.on('disconnect', () => { setIsRealtimeConnected(false); });
 
-    socket.on('disconnect', () => {
-      setIsRealtimeConnected(false);
-    });
+      socket.on('apartments-changed', () => {
+        fetchApartments(0, false);
+      });
 
-    // Listen for apartment changes - auto refresh for ALL users
-    socket.on('apartments-changed', (data: { event: string; timestamp: string }) => {
-      if (!initialLoad) {
-        // Silently refresh apartments without showing full-page loading
-        fetchApartments(0, false).then(() => {
-          // Show subtle toast notification
-          const messages: Record<string, string> = {
-            'apartment-created': '🏠 تم إضافة عقار جديد!',
-            'apartment-updated': '✏️ تم تحديث عقار',
-            'apartment-deleted': '🗑️ تم حذف عقار',
-            'apartment-approved': '✅ تم الموافقة على عقار جديد',
-          };
-          addToast(messages[data.event] || 'تم تحديث البيانات', 'info');
-        });
+      socket.on('messages-changed', () => {
+        if (currentUser) fetchMessages();
+      });
 
-        // Also refresh developer data if logged in as developer
-        if (isDeveloper) {
-          fetchDevData();
-        }
-      }
-    });
+      socket.on('notification', (data: { event: string }) => {
+        if (data.event === 'settings-updated') fetchSettings();
+      });
 
-    // Listen for message updates
-    socket.on('messages-changed', () => {
-      if (!initialLoad && currentUser) {
-        fetchMessages();
-      }
-    });
+      socket.on('online-count', (data: { count: number }) => {
+        setOnlineCount(data.count);
+      });
 
-    // Listen for settings changes (prices updated by developer)
-    socket.on('notification', (data: { event: string; payload?: any }) => {
-      if (data.event === 'settings-updated' && !initialLoad) {
-        fetchSettings();
-      }
-    });
-
-    // Listen for online count updates
-    socket.on('online-count', (data: { count: number }) => {
-      setOnlineCount(data.count);
-    });
-
-    return () => {
-      socket.disconnect();
-    };
-  }, [initialLoad, isDeveloper, currentUser]);
+      return () => { socket.disconnect(); socketRef.current = null; };
+    } catch {
+ // Socket.io not available (e.g. CSP blocks it) - polling fallback handles it
+    }
+  }, []); // Empty deps = connect only ONCE on mount
 
   // Fetch current user on mount
   useEffect(() => {
@@ -766,15 +739,18 @@ export default function App() {
     }
   }, [isDeveloper, currentUser, initialLoad]);
 
-  // Smart auto-refresh every 15 seconds (fallback for when WebSocket is not connected)
-  // This works on Vercel where WebSocket is not available
+  // Smart auto-refresh every 30 seconds (lightweight polling)
+  // Single batched refresh to minimize re-renders
   useEffect(() => {
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
       if (initialLoad) return;
-      fetchSettings();
-      fetchApartments(0, false);
-      if (currentUser) fetchMessages();
-    }, 15000); // every 15 seconds
+      // Batch all fetches to minimize re-renders
+      await Promise.allSettled([
+        fetchSettings(),
+        fetchApartments(0, false),
+        ...(currentUser ? [fetchMessages()] : []),
+      ]);
+    }, 30000);
     return () => clearInterval(interval);
   }, [initialLoad, currentUser]);
 
