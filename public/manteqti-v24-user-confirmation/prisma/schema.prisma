@@ -1,0 +1,221 @@
+// Manteqti - PostgreSQL Schema for Vercel production
+// For local SQLite development, change provider to "sqlite"
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+model User {
+  id                    String    @id @default(cuid())
+  identifier            String    @unique
+  name                  String
+  email                 String?
+  phone                 String?
+  password              String
+  role                  String    @default("user")
+  isBlocked             Boolean   @default(false)
+  blockedAt             DateTime?
+  blockReason           String?
+  isApproved            Boolean   @default(true)
+  passwordResetToken    String?
+  passwordResetExpires  DateTime?
+  otp                   String?
+  otpExpires            DateTime?
+  emailVerified         Boolean   @default(false)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  apartments    Apartment[]
+  inquiries     Inquiry[]
+  payments      Payment[]
+  likes         Like[]
+  comments      Comment[]
+  messages      Message[]
+  editRequests  PropertyEditRequest[]
+  blockedUsers  BlockedUser[]  @relation("BlockedUserRelation")
+}
+
+model Apartment {
+  id               String    @id @default(cuid())
+  title            String
+  price            Int
+  area             String
+  bedrooms         Int
+  bathrooms        Int
+  floor            Int?
+  apartmentSize    Int?
+  description      String
+  ownerPhone       String
+  mapLink          String?
+  imageUrl         String?
+  images           String?
+  videoUrl         String?
+  videos           String?
+  amenities        String?
+  isFeatured       Boolean   @default(false)
+  isVip            Boolean   @default(false)
+  type             String    @default("rent")
+  status           String    @default("pending")
+  statusChangedAt  DateTime?
+  paymentRef       String?
+  createdBy        String?
+  approvedBy       String?
+  approvedAt       DateTime?
+  views            Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user          User?         @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  inquiries     Inquiry[]
+  likes         Like[]
+  comments      Comment[]
+  editRequests  PropertyEditRequest[]
+}
+
+model Inquiry {
+  id              String   @id @default(cuid())
+  apartmentId     String
+  userId          String?
+  name            String
+  email           String
+  phone           String
+  message         String
+  lifecycleStatus String   @default("new")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  payment   Payment?
+}
+
+model Payment {
+  id             String   @id @default(cuid())
+  inquiryId      String   @unique
+  method         String
+  status         String   @default("Pending")
+  inquiryStatus  String   @default("new")
+  amount         Int
+  transactionRef String?
+  paymentLink    String?
+  userId         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  inquiry Inquiry @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model Like {
+  id          String   @id @default(cuid())
+  apartmentId String
+  userId      String
+  createdAt   DateTime @default(now())
+
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([apartmentId, userId])
+}
+
+model Comment {
+  id          String   @id @default(cuid())
+  apartmentId String
+  userId      String
+  content     String
+  status      String   @default("pending")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Message {
+  id         String    @id @default(cuid())
+  senderId   String
+  receiverId String?
+  content    String
+  isRead     Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+
+  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+}
+
+model PropertyEditRequest {
+  id           String   @id @default(cuid())
+  apartmentId  String
+  userId       String
+  editType     String   @default("update")
+  changes      String?
+  newImages    String?
+  newVideos    String?
+  newPrice     Int?
+  newStatus    String?
+  description  String?
+  status       String   @default("pending")
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  reviewNotes  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BlockedUser {
+  id        String   @id @default(cuid())
+  userId    String
+  reason    String?
+  blockedAt DateTime @default(now())
+
+  user User @relation("BlockedUserRelation", fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Settings {
+  id                  String   @id @default(cuid())
+  contactFee          Int      @default(50)
+  regularFee          Int      @default(30)
+  featuredFee         Int      @default(100)
+  premiumFee          Int      @default(200)
+  vipFee              Int      @default(300)
+  saleDisplayFee      Int      @default(100)
+  rentDisplayFee      Int      @default(75)
+  otherServicesFee    Int      @default(50)
+  highlightFee        Int      @default(150)
+  priorityListingFee  Int      @default(200)
+  verifiedListingFee  Int      @default(250)
+  currency            String   @default("ج.م")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model OperationLog {
+  id         String   @id @default(cuid())
+  action     String
+  entityType String?
+  entityId   String?
+  details    String?
+  userId     String?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+}
+
+model ApprovalLog {
+  id            String    @id @default(cuid())
+  userId        String
+  action        String    // approve, reject, revoke
+  userName      String
+  userEmail     String?
+  reason        String?
+  performedBy   String?
+  createdAt     DateTime  @default(now())
+}

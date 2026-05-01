@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import { sendOTPEmail } from "@/lib/email";
 
 // قائمة نطاقات البريد المؤقتة المحظورة
 const BLOCKED_DOMAINS = [
@@ -107,7 +108,11 @@ export async function POST(request: Request) {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const isDeveloper = userEmail === (process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com");
+    const isDeveloper = userEmail === "ahmadmamdouh10030@gmail.com";
+    
+    // Generate OTP for email verification
+    const otp = crypto.randomInt(100000, 999999).toString();
+    const otpExpires = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
 
     const user = await db.user.create({
       data: {
@@ -117,38 +122,25 @@ export async function POST(request: Request) {
         phone: phone || null,
         identifier: userEmail,
         role: isDeveloper ? "DEVELOPER" : "USER",
-        isApproved: isDeveloper,
-        emailVerified: isDeveloper,
+        isApproved: true,
+        emailVerified: false,
+        otp,
+        otpExpires,
       },
     });
 
-    // Log registration in OperationLog
-    try {
-      await db.operationLog.create({
-        data: {
-          action: isDeveloper ? "DEVELOPER_AUTO_REGISTER" : "USER_REGISTER",
-          entityType: "User",
-          entityId: user.id,
-          details: JSON.stringify({
-            userName: user.name,
-            email: user.email,
-            phone: phone || null,
-            needsApproval: !isDeveloper,
-          }),
-          userId: user.id,
-        },
-      });
-    } catch {}
+    // Send OTP via email service (Resend) or fallback to console.log in dev
+    await sendOTPEmail({ to: userEmail, otp, type: 'registration' });
 
     return NextResponse.json({
-      message: isDeveloper ? "تم إنشاء الحساب بنجاح" : "تم إنشاء الحساب بنجاح. بانتظار موافقة الإدارة",
+      message: "تم إنشاء الحساب بنجاح",
+      emailVerificationRequired: true,
       user: {
         id: user.id,
         email: user.email,
         name: user.name,
         identifier: user.identifier,
         role: user.role,
-        isApproved: user.isApproved,
       },
     });
   } catch (error) {

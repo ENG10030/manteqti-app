@@ -1,6 +1,12 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let _resend: Resend | null = null;
+function getResend(): Resend {
+  if (!_resend) {
+    _resend = new Resend(process.env.RESEND_API_KEY || '');
+  }
+  return _resend;
+}
 
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
 const APP_NAME = 'منطقتي | Manteqti';
@@ -25,7 +31,7 @@ interface SendPaymentConfirmedParams {
 
 export async function sendOTPEmail({ to, otp, name }: SendOTPParams) {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: `${APP_NAME} <${FROM_EMAIL}>`,
       to: [to],
       subject: `رمز التحقق: ${otp}`,
@@ -90,7 +96,7 @@ export async function sendOTPEmail({ to, otp, name }: SendOTPParams) {
 
 export async function sendWelcomeEmail({ to, name }: SendWelcomeParams) {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: `${APP_NAME} <${FROM_EMAIL}>`,
       to: [to],
       subject: `مرحباً بك في ${APP_NAME} 🎉`,
@@ -145,7 +151,7 @@ export async function sendWelcomeEmail({ to, name }: SendWelcomeParams) {
 
 export async function sendPaymentConfirmedEmail({ to, name, apartmentTitle, amount }: SendPaymentConfirmedParams) {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: `${APP_NAME} <${FROM_EMAIL}>`,
       to: [to],
       subject: `✅ تم تأكيد دفعتك - ${APP_NAME}`,
@@ -219,7 +225,7 @@ interface SendApartmentApprovedParams {
 export async function sendApartmentApprovedEmail({ to, name, apartmentTitle, apartmentType, price, area }: SendApartmentApprovedParams) {
   try {
     const typeLabel = apartmentType === 'rent' ? 'إيجار' : 'بيع';
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: `${APP_NAME} <${FROM_EMAIL}>`,
       to: [to],
       subject: `✅ تم الموافقة على عقارك - ${APP_NAME}`,
@@ -279,7 +285,7 @@ interface SendApartmentRejectedParams {
 
 export async function sendApartmentRejectedEmail({ to, name, apartmentTitle, reason }: SendApartmentRejectedParams) {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: `${APP_NAME} <${FROM_EMAIL}>`,
       to: [to],
       subject: `❌ تم رفض عقارك - ${APP_NAME}`,
@@ -329,7 +335,7 @@ interface SendNewMessageParams {
 
 export async function sendNewMessageEmail({ to, name, senderName }: SendNewMessageParams) {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: `${APP_NAME} <${FROM_EMAIL}>`,
       to: [to],
       subject: `💬 رسالة جديدة من ${senderName} - ${APP_NAME}`,

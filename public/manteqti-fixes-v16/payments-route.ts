@@ -1,0 +1,162 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { cookies } from 'next/headers';
+import { verify } from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
+export async function GET() {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    const isDeveloper = decoded.role === 'DEVELOPER';
+
+    // المطور يرى كل المدفوعات، المستخدم العادي يرى مدفوعاته فقط
+    const where: any = {};
+    if (!isDeveloper) {
+      where.userId = decoded.userId;
+    }
+
+    const payments = await db.payment.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        inquiry: {
+          include: {
+            apartment: true
+          }
+        }
+      }
+    });
+
+    return NextResponse.json(payments.map(p => ({
+      id: p.id,
+      inquiryId: p.inquiryId,
+      method: p.method,
+      status: p.status,
+      inquiryStatus: p.inquiryStatus,
+      amount: p.amount,
+      transactionRef: p.transactionRef,
+      paymentLink: p.paymentLink,
+      userId: p.userId,
+      createdAt: p.createdAt.toISOString(),
+      inquiry: p.inquiry ? {
+        id: p.inquiry.id,
+        apartmentId: p.inquiry.apartmentId,
+        name: p.inquiry.name,
+        email: p.inquiry.email,
+        phone: p.inquiry.phone,
+        message: p.inquiry.message,
+        apartment: p.inquiry.apartment ? {
+          id: p.inquiry.apartment.id,
+          title: p.inquiry.apartment.title,
+          price: p.inquiry.apartment.price
+        } : null
+      } : null
+    })));
+  } catch (error) {
+    console.error('Error fetching payments:', error);
+    return NextResponse.json({ error: 'Failed to fetch payments' }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    const data = await request.json();
+
+    const payment = await db.payment.create({
+      data: {
+        inquiryId: data.inquiryId,
+        method: data.method,
+        status: data.status || 'Pending',
+        inquiryStatus: data.inquiryStatus || 'Contacted',
+        amount: data.amount,
+        transactionRef: data.transactionRef,
+        paymentLink: data.paymentLink,
+        userId: data.userId
+      }
+    });
+
+    return NextResponse.json({
+      id: payment.id,
+      inquiryId: payment.inquiryId,
+      method: payment.method,
+      status: payment.status,
+      inquiryStatus: payment.inquiryStatus,
+      amount: payment.amount,
+      transactionRef: payment.transactionRef,
+      paymentLink: payment.paymentLink,
+      createdAt: payment.createdAt.toISOString()
+    });
+  } catch (error) {
+    console.error('Error creating payment:', error);
+    return NextResponse.json({ error: 'Failed to create payment' }, { status: 500 });
+  }
+}
+
+// حذف مدفوعة أو مسح جميع المدفوعات (للمطور)
+export async function DELETE(request: NextRequest) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    if (decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (id) {
+      // حذف مدفوعة واحدة
+      try {
+        await db.payment.delete({ where: { id } });
+        return NextResponse.json({ success: true, message: 'تم حذف المدفوعة' });
+      } catch {
+        return NextResponse.json({ error: 'المدفوعة غير موجودة' }, { status: 404 });
+      }
+    } else {
+      // مسح جميع المدفوعات
+      try {
+        await db.payment.deleteMany({});
+        return NextResponse.json({ success: true, message: 'تم مسح جميع المدفوعات' });
+      } catch {
+        return NextResponse.json({ error: 'حدث خطأ أثناء مسح المدفوعات' }, { status: 500 });
+      }
+    }
+  } catch (error) {
+    console.error('Error deleting payments:', error);
+    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+  }
+}

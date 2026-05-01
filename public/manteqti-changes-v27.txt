@@ -1,0 +1,96 @@
+============================================================
+  التغييرات فقط - v27
+============================================================
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📄 الملف 1: src/app/page.tsx
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+▸ التغيير 1: سطر 3 - حذف useRef غير مستخدم
+──────────────
+قبل: import { useState, useEffect, useCallback, useRef } from 'react';
+بعد:  import { useState, useEffect, useCallback } from 'react';
+──────────────
+
+▸ التغيير 2: سطر 14-16 - تنظيف الاستدعاءات غير المستخدمة
+──────────────
+قبل:
+  Play, Upload, Link, Activity, Wallet, PieChart, Layers, Key, ArrowUp,
+  Download, RefreshCw as RefreshCwIcon, Smartphone, Banknote, Zap, Save,
+
+بعد:
+  VideoIcon, Activity, Wallet, Key, ArrowUp, Layers,
+  Download, Smartphone, Zap, Save,
+──────────────
+
+▸ التغيير 3: سطر 690-693 - إضافة currentUser guard
+──────────────
+قبل:
+  useEffect(() => {
+    fetchSettings(); // Always fetch settings for all users
+    if (isDeveloper) { fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
+  }, [isDeveloper]);
+
+بعد:
+  useEffect(() => {
+    fetchSettings();
+    if (isDeveloper && currentUser) { fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
+  }, [isDeveloper, currentUser]);
+──────────────
+
+▸ التغيير 4: سطر 1210 - إصلاح AI session ID
+──────────────
+قبل: body: JSON.stringify({ sessionId: 'developer-' + Date.now(), message: prompt })
+بعد:  body: JSON.stringify({ sessionId: 'developer-persistent-session', message: prompt })
+──────────────
+
+▸ التغيير 5: سطر 1344-1351 - إصلاح إعادة التحميل
+──────────────
+قبل:
+  const toggleFavorite = async (apartmentId: string) => {
+    if (!currentUser) {
+      setFavorites(prev => {
+        const newFavorites = prev.includes(apartmentId) ? prev.filter(f => f !== apartmentId) : [...prev, apartmentId];
+        localStorage.setItem('manteqti_favorites', JSON.stringify(newFavorites));
+        addToast(newFavorites.includes(apartmentId) ? 'تمت الإضافة للمفضلة ❤️' : 'تمت الإزالة من المفضلة', newFavorites.includes(apartmentId) ? 'success' : 'info');
+        return newFavorites;
+      });
+      return;
+    }
+
+بعد:
+  const toggleFavorite = async (apartmentId: string) => {
+    if (!currentUser) {
+      const newFavorites = favorites.includes(apartmentId) ? favorites.filter(f => f !== apartmentId) : [...favorites, apartmentId];
+      localStorage.setItem('manteqti_favorites', JSON.stringify(newFavorites));
+      setFavorites(newFavorites);
+      addToast(newFavorites.includes(apartmentId) ? 'تمت الإضافة للمفضلة ❤️' : 'تمت الإزالة من المفضلة', newFavorites.includes(apartmentId) ? 'success' : 'info');
+      return;
+    }
+──────────────
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📄 الملف 2: src/app/api/chat/route.ts (استبدال كامل)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+▸ التغييرات:
+  - حذف in-memory Map (كان يضيع في serverless)
+  - إضافة 13+ كلمة مفتاحية جديدة (فيلا، تمليك، نصائح، معادي...)
+  - AI SDK مع timeout 20 ثانية
+  - إرسال system prompt مع كل رسالة
+  - الملف كامل موجود في chat-route.ts بالـ ZIP
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📄 الملف 3: src/app/api/generate-description/route.ts (استبدال كامل)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+▸ التغييرات:
+  - إضافة AI SDK لتوليد أوصاف احترافية
+  - prompt ذكي بالعربي
+  - timeout 15 ثانية
+  - fallback إذا AI غير متوفر
+  - الملف كامل موجود في generate-description-route.ts بالـ ZIP
+
+============================================================

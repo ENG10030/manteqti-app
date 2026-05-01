@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { sendOTPEmail } from '@/lib/email';
 import crypto from 'crypto';
 
 // Rate limiting for OTP requests (in-memory)
@@ -69,8 +70,9 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    // In production, send OTP via email service
-    console.log(`📧 Email verification OTP for ${identifier}: ${otp}`);
+    // Send OTP via email
+    const emailTo = user.email || normalizedIdentifier;
+    await sendOTPEmail({ to: emailTo, otp, name: user.name });
 
     return NextResponse.json({ 
       success: true,
