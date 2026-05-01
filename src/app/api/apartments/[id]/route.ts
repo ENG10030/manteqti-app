@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { notifyApartmentsChanged } from "@/lib/realtime";
+import { sendApartmentApprovedEmail, sendApartmentRejectedEmail } from "@/lib/email";
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
@@ -166,6 +167,18 @@ export async function PATCH(
 
     // Notify all connected clients
     notifyApartmentsChanged('approved', id);
+
+    // Send email notification to apartment owner
+    if (apartment.createdBy) {
+      const owner = await db.user.findUnique({ where: { id: apartment.createdBy }, select: { name: true, email: true } });
+      if (owner?.email && process.env.RESEND_API_KEY) {
+        if (action === 'approve') {
+          sendApartmentApprovedEmail({ to: owner.email, name: owner.name, apartmentTitle: apartment.title, apartmentType: apartment.type, price: apartment.price, area: apartment.area });
+        } else if (action === 'reject') {
+          sendApartmentRejectedEmail({ to: owner.email, name: owner.name, apartmentTitle: apartment.title });
+        }
+      }
+    }
 
     return NextResponse.json({
       message: "تم تحديث العقار بنجاح",

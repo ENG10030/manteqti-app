@@ -3,6 +3,8 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { requireApprovedUser } from '@/lib/auth-middleware';
+import { sendNewMessageEmail } from '@/lib/email';
+import { notifyRealtime } from '@/lib/realtime';
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
@@ -101,6 +103,20 @@ export async function POST(request: NextRequest) {
         }
       }
     });
+
+    // Send email notification to receiver (if not to self and RESEND_API_KEY is set)
+    if (process.env.RESEND_API_KEY && receiverId) {
+      const [sender, receiver] = await Promise.all([
+        db.user.findUnique({ where: { id: auth.userId }, select: { name: true } }),
+        db.user.findUnique({ where: { id: receiverId }, select: { name: true, email: true } }),
+      ]);
+      if (receiver?.email && sender?.name) {
+        sendNewMessageEmail({ to: receiver.email, name: receiver.name, senderName: sender.name });
+      }
+    }
+
+    // Notify connected clients about new message
+    notifyRealtime('message-sent', { senderId: auth.userId, receiverId });
 
     return NextResponse.json({ success: true, message });
   } catch (error) {

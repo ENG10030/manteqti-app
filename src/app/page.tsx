@@ -766,13 +766,17 @@ export default function App() {
     }
   }, [isDeveloper, currentUser, initialLoad]);
 
-  // Auto-refresh settings every 30 seconds so users see changes immediately
+  // Smart auto-refresh every 15 seconds (fallback for when WebSocket is not connected)
+  // This works on Vercel where WebSocket is not available
   useEffect(() => {
     const interval = setInterval(() => {
+      if (initialLoad) return;
       fetchSettings();
-    }, 30000);
+      fetchApartments(0, false);
+      if (currentUser) fetchMessages();
+    }, 15000); // every 15 seconds
     return () => clearInterval(interval);
-  }, []);
+  }, [initialLoad, currentUser]);
 
   // Fetch likes
   const fetchUserLikes = async () => {

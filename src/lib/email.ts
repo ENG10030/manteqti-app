@@ -205,3 +205,168 @@ export async function sendPaymentConfirmedEmail({ to, name, apartmentTitle, amou
     return { success: false, error: error.message };
   }
 }
+
+// ========== إيميل موافقة على عقار ==========
+interface SendApartmentApprovedParams {
+  to: string;
+  name: string;
+  apartmentTitle: string;
+  apartmentType: string;
+  price: number;
+  area: string;
+}
+
+export async function sendApartmentApprovedEmail({ to, name, apartmentTitle, apartmentType, price, area }: SendApartmentApprovedParams) {
+  try {
+    const typeLabel = apartmentType === 'rent' ? 'إيجار' : 'بيع';
+    const { data, error } = await resend.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: [to],
+      subject: `✅ تم الموافقة على عقارك - ${APP_NAME}`,
+      html: `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head><meta charset="UTF-8"><style>
+          body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; direction: rtl; }
+          .container { max-width: 480px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+          .header { background: linear-gradient(135deg, #059669, #10b981); padding: 32px; text-align: center; }
+          .header h1 { color: white; margin: 0; font-size: 22px; }
+          .content { padding: 32px; }
+          .content p { color: #475569; font-size: 15px; line-height: 1.8; }
+          .info-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; margin: 16px 0; }
+          .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #dcfce7; }
+          .info-row:last-child { border-bottom: none; }
+          .info-label { color: #6b7280; font-size: 14px; }
+          .info-value { color: #166534; font-weight: 600; font-size: 14px; }
+          .footer { background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0; }
+          .footer p { color: #94a3b8; font-size: 12px; margin: 4px 0; }
+        </style></head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>✅ تم الموافقة على عقارك!</h1>
+              <p style="color: rgba(255,255,255,0.9); margin-top: 8px;">عقارك الآن متاح للمستخدمين</p>
+            </div>
+            <div class="content">
+              <p>مرحباً <strong>${name}</strong>،</p>
+              <p>بشرى سارة! تمت الموافقة على إعلانك وظهر الآن في الموقع لجميع المستخدمين 🎉</p>
+              <div class="info-box">
+                <div class="info-row"><span class="info-label">العقار</span><span class="info-value">${apartmentTitle}</span></div>
+                <div class="info-row"><span class="info-label">النوع</span><span class="info-value">${typeLabel}</span></div>
+                <div class="info-row"><span class="info-label">المنطقة</span><span class="info-value">${area}</span></div>
+                <div class="info-row"><span class="info-label">السعر</span><span class="info-value">${price.toLocaleString()} ج.م</span></div>
+              </div>
+              <p>يمكنك متابعة تفاعل المستخدمين من لوحة التحكم 📊</p>
+            </div>
+            <div class="footer"><p>${APP_NAME} - لوحة الشقق الذكية</p></div>
+          </div>
+        </body>
+        </html>
+      `,
+    });
+    if (error) { console.error('Resend error:', error); return { success: false, error: error.message }; }
+    return { success: true, messageId: data?.id };
+  } catch (error: any) { console.error('Error sending approved email:', error); return { success: false, error: error.message }; }
+}
+
+// ========== إيميل رفض عقار ==========
+interface SendApartmentRejectedParams {
+  to: string;
+  name: string;
+  apartmentTitle: string;
+  reason?: string;
+}
+
+export async function sendApartmentRejectedEmail({ to, name, apartmentTitle, reason }: SendApartmentRejectedParams) {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: [to],
+      subject: `❌ تم رفض عقارك - ${APP_NAME}`,
+      html: `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head><meta charset="UTF-8"><style>
+          body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; direction: rtl; }
+          .container { max-width: 480px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+          .header { background: linear-gradient(135deg, #dc2626, #ef4444); padding: 32px; text-align: center; }
+          .header h1 { color: white; margin: 0; font-size: 22px; }
+          .content { padding: 32px; }
+          .content p { color: #475569; font-size: 15px; line-height: 1.8; }
+          .info-box { background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 16px; margin: 16px 0; }
+          .footer { background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0; }
+          .footer p { color: #94a3b8; font-size: 12px; margin: 4px 0; }
+        </style></head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>❌ تم رفض إعلانك</h1>
+              <p style="color: rgba(255,255,255,0.9); margin-top: 8px;">لقد تم مراجعة ورفض إعلانك</p>
+            </div>
+            <div class="content">
+              <p>مرحباً <strong>${name}</strong>،</p>
+              <p>للأسف تم رفض إعلانك "<strong>${apartmentTitle}</strong>" بعد المراجعة.</p>
+              ${reason ? `<div class="info-box"><p style="margin:0;color:#991b1b;font-size:14px;">📝 <strong>سبب الرفض:</strong> ${reason}</p></div>` : ''}
+              <p>يمكنك تعديل الإعلان وإعادة إرساله مرة أخرى. إذا كان لديك استفسار، تواصل معنا عبر الموقع 💬</p>
+            </div>
+            <div class="footer"><p>${APP_NAME} - لوحة الشقق الذكية</p></div>
+          </div>
+        </body>
+        </html>
+      `,
+    });
+    if (error) { console.error('Resend error:', error); return { success: false, error: error.message }; }
+    return { success: true, messageId: data?.id };
+  } catch (error: any) { console.error('Error sending rejected email:', error); return { success: false, error: error.message }; }
+}
+
+// ========== إيميل رسالة جديدة ==========
+interface SendNewMessageParams {
+  to: string;
+  name: string;
+  senderName: string;
+}
+
+export async function sendNewMessageEmail({ to, name, senderName }: SendNewMessageParams) {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: [to],
+      subject: `💬 رسالة جديدة من ${senderName} - ${APP_NAME}`,
+      html: `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head><meta charset="UTF-8"><style>
+          body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; direction: rtl; }
+          .container { max-width: 480px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+          .header { background: linear-gradient(135deg, #7c3aed, #a855f7); padding: 32px; text-align: center; }
+          .header h1 { color: white; margin: 0; font-size: 22px; }
+          .content { padding: 32px; text-align: center; }
+          .content p { color: #475569; font-size: 15px; line-height: 1.8; }
+          .sender-box { background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 12px; padding: 16px; margin: 16px 0; }
+          .footer { background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0; }
+          .footer p { color: #94a3b8; font-size: 12px; margin: 4px 0; }
+        </style></head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>💬 رسالة جديدة</h1>
+              <p style="color: rgba(255,255,255,0.9); margin-top: 8px;">لديك رسالة جديدة على ${APP_NAME}</p>
+            </div>
+            <div class="content">
+              <p>مرحباً <strong>${name}</strong>،</p>
+              <div class="sender-box">
+                <p style="margin:0;color:#5b21b6;font-size:16px;">📨 لديك رسالة جديدة من <strong>${senderName}</strong></p>
+              </div>
+              <p>سجل دخولك للاطلاع على الرسالة والرد 📱</p>
+            </div>
+            <div class="footer"><p>${APP_NAME} - لوحة الشقق الذكية</p></div>
+          </div>
+        </body>
+        </html>
+      `,
+    });
+    if (error) { console.error('Resend error:', error); return { success: false, error: error.message }; }
+    return { success: true, messageId: data?.id };
+  } catch (error: any) { console.error('Error sending message email:', error); return { success: false, error: error.message }; }
+}
