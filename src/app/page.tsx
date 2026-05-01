@@ -275,9 +275,9 @@ export default function App() {
   const [onlineCount, setOnlineCount] = useState(0);
 
   // Refs for stable function references (avoids stale closures in socket/polling)
-  const fetchApartmentsRef = useRef<(retry?: number, isInitial?: boolean) => Promise<void>>();
-  const fetchMessagesRef = useRef<() => Promise<void>>();
-  const fetchSettingsRef = useRef<() => Promise<void>>();
+  const fetchApartmentsRef = useRef<((retry?: number, isInitial?: boolean) => Promise<void>) | undefined>(undefined);
+  const fetchMessagesRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const fetchSettingsRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const currentUserRef = useRef<User | null>(null);
   const isDeveloperRef = useRef(false);
   const initialLoadRef = useRef(true);
