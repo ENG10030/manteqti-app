@@ -311,7 +311,6 @@ export default function App() {
         // Also refresh developer data if logged in as developer
         if (isDeveloper) {
           fetchDevData();
-          fetchPendingUsers();
         }
       }
     });
