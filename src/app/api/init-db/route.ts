@@ -56,12 +56,10 @@ export async function GET() {
             data: {
               contactFee: 50,
               featuredFee: 100,
-              premiumFee: 200,
               vipFee: 300,
               saleDisplayFee: 100,
               rentDisplayFee: 75,
               otherServicesFee: 50,
-              highlightFee: 150,
               priorityListingFee: 200,
               verifiedListingFee: 250,
               currency: 'ج.م',

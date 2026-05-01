@@ -186,6 +186,7 @@ export default function App() {
   const [inquirySubmitting, setInquirySubmitting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>('');
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [selectedPayments, setSelectedPayments] = useState<string[]>([]);
   const [userPaidApartments, setUserPaidApartments] = useState<string[]>([]);
   const [userPayments, setUserPayments] = useState<Payment[]>([]);
   const [showMyPayments, setShowMyPayments] = useState(false);
@@ -203,12 +204,10 @@ export default function App() {
     contactFee: number; 
     regularFee: number;
     featuredFee: number; 
-    premiumFee: number; 
     vipFee: number;
     saleDisplayFee: number;
     rentDisplayFee: number;
     otherServicesFee: number;
-    highlightFee: number;
     priorityListingFee: number;
     verifiedListingFee: number;
     currency: string;
@@ -216,12 +215,10 @@ export default function App() {
     contactFee: 50, 
     regularFee: 30,
     featuredFee: 100, 
-    premiumFee: 200, 
     vipFee: 300,
     saleDisplayFee: 100,
     rentDisplayFee: 75,
     otherServicesFee: 50,
-    highlightFee: 150,
     priorityListingFee: 200,
     verifiedListingFee: 250,
     currency: 'ج.م'
@@ -553,12 +550,10 @@ export default function App() {
         contactFee: data.contactFee || data.settings?.contactFee || 50, 
         regularFee: data.regularFee || data.settings?.regularFee || 30,
         featuredFee: data.featuredFee || data.settings?.featuredFee || 100, 
-        premiumFee: data.premiumFee || data.settings?.premiumFee || 200, 
         vipFee: data.vipFee || data.settings?.vipFee || 300,
         saleDisplayFee: data.saleDisplayFee || data.settings?.saleDisplayFee || 100,
         rentDisplayFee: data.rentDisplayFee || data.settings?.rentDisplayFee || 75,
         otherServicesFee: data.otherServicesFee || data.settings?.otherServicesFee || 50,
-        highlightFee: data.highlightFee || data.settings?.highlightFee || 150,
         priorityListingFee: data.priorityListingFee || data.settings?.priorityListingFee || 200,
         verifiedListingFee: data.verifiedListingFee || data.settings?.verifiedListingFee || 250,
         currency: data.currency || data.settings?.currency || 'ج.م'
@@ -1297,6 +1292,70 @@ export default function App() {
         fetchDevData();
         addToast('تم رفض الدفع', 'success');
       }
+    } finally {
+      setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+    }
+  };
+
+  // حذف مدفوعات محددة
+  const handleDeletePayments = async (paymentIds: string[], confirmed: boolean = false) => {
+    if (!confirmed) {
+      setConfirmDialog({
+        isOpen: true, title: '🗑️ حذف المدفوعات',
+        message: `هل أنت متأكد من حذف ${paymentIds.length} مدفوعة؟\n\nلا يمكن التراجع عن هذا الإجراء!`,
+        confirmText: 'حذف', cancelText: 'إلغاء',
+        onConfirm: () => handleDeletePayments(paymentIds, true), type: 'danger'
+      });
+      return;
+    }
+    setConfirmDialog(prev => ({ ...prev, loading: true }));
+    try {
+      const res = await fetch('/api/payments', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: paymentIds })
+      });
+      if (res.ok) {
+        fetchDevData();
+        const data = await res.json();
+        addToast(`تم حذف ${data.deleted} مدفوعة بنجاح ✅`, 'success');
+      } else {
+        addToast('فشل حذف المدفوعات', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ', 'error');
+    } finally {
+      setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+    }
+  };
+
+  // حذف جميع المدفوعات
+  const handleDeleteAllPayments = async (confirmed: boolean = false) => {
+    if (!confirmed) {
+      setConfirmDialog({
+        isOpen: true, title: '🗑️ حذف جميع المدفوعات',
+        message: `هل أنت متأكد من حذف جميع المدفوعات (${payments.length} مدفوعة)؟\n\n⚠️ سيتم حذف سجل المدفوعات بالكامل!\nلا يمكن التراجع عن هذا الإجراء!`,
+        confirmText: 'حذف الكل', cancelText: 'إلغاء',
+        onConfirm: () => handleDeleteAllPayments(true), type: 'danger'
+      });
+      return;
+    }
+    setConfirmDialog(prev => ({ ...prev, loading: true }));
+    try {
+      const res = await fetch('/api/payments', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      if (res.ok) {
+        fetchDevData();
+        const data = await res.json();
+        addToast(`تم حذف ${data.deleted} مدفوعة بنجاح ✅`, 'success');
+      } else {
+        addToast('فشل حذف المدفوعات', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ', 'error');
     } finally {
       setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
     }
@@ -2618,18 +2677,40 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-amber-900/30' : 'bg-amber-50'}`}><p className={`text-xl font-bold ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>{payments.filter(p => p.status === 'Pending').length}</p><p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>قيد الانتظار</p></div>
                     <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-red-900/30' : 'bg-red-50'}`}><p className={`text-xl font-bold ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{payments.filter(p => p.status === 'Failed').length}</p><p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>مرفوضة</p></div>
                   </div>
+                  {/* أزرار الحذف */}
+                  {payments.length > 0 && (
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => { if (selectedPayments.length === payments.length) setSelectedPayments([]); else setSelectedPayments(payments.map(p => p.id)); }} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${selectedPayments.length === payments.length ? 'bg-violet-500 text-white' : (darkMode ? 'bg-slate-600 text-slate-300 hover:bg-slate-500' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')}`}>
+                          {selectedPayments.length === payments.length ? '✅ إلغاء التحديد' : '☐ تحديد الكل'}
+                        </button>
+                        {selectedPayments.length > 0 && (
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${darkMode ? 'bg-violet-900/30 text-violet-400' : 'bg-violet-100 text-violet-700'}`}>{selectedPayments.length} محدد</span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        {selectedPayments.length > 0 && (
+                          <button onClick={() => handleDeletePayments(selectedPayments)} className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs font-medium hover:bg-red-600 transition-colors flex items-center gap-1"><Trash2 className="h-3 w-3" />حذف المحدد ({selectedPayments.length})</button>
+                        )}
+                        <button onClick={() => handleDeleteAllPayments()} className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-medium hover:bg-red-700 transition-colors flex items-center gap-1"><Trash2 className="h-3 w-3" />حذف الكل ({payments.length})</button>
+                      </div>
+                    </div>
+                  )}
                   {payments.length === 0 ? <div className="text-center py-12"><CreditCard className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد مدفوعات</p></div> : payments.map(payment => (
-                    <div key={payment.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                    <div key={payment.id} className={`p-4 rounded-xl transition-all ${selectedPayments.includes(payment.id) ? (darkMode ? 'bg-red-900/20 border-2 border-red-500/50' : 'bg-red-50 border-2 border-red-300') : (darkMode ? 'bg-slate-700' : 'bg-slate-50')}`}>
                       <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{payment.amount} ج.م</p>
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${payment.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : payment.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{payment.status === 'Paid' ? '✅ مدفوع' : payment.status === 'Pending' ? '⏳ قيد الانتظار' : '❌ مرفوض'}</span>
-                            <span className={`px-2 py-0.5 rounded-full text-xs ${darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>{payment.method}</span>
+                        <div className="flex items-start gap-3 flex-1 min-w-0">
+                          <input type="checkbox" checked={selectedPayments.includes(payment.id)} onChange={(e) => { if (e.target.checked) setSelectedPayments([...selectedPayments, payment.id]); else setSelectedPayments(selectedPayments.filter(id => id !== payment.id)); }} className="mt-1 shrink-0 cursor-pointer" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{payment.amount} ج.م</p>
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${payment.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : payment.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{payment.status === 'Paid' ? '✅ مدفوع' : payment.status === 'Pending' ? '⏳ قيد الانتظار' : '❌ مرفوض'}</span>
+                              <span className={`px-2 py-0.5 rounded-full text-xs ${darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>{payment.method}</span>
+                            </div>
+                            <p className={`text-sm mt-1 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>👤 {payment.inquiry?.name || 'غير معروف'}{payment.inquiry?.phone ? ` • 📞 ${payment.inquiry.phone}` : ''}</p>
+                            {payment.inquiry?.apartment && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>🏠 {payment.inquiry.apartment.title} - {payment.inquiry.apartment.price} ج.م</p>}
+                            <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(payment.createdAt).toLocaleString('ar-EG')}</p>
                           </div>
-                          <p className={`text-sm mt-1 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>👤 {payment.inquiry?.name || 'غير معروف'}{payment.inquiry?.phone ? ` • 📞 ${payment.inquiry.phone}` : ''}</p>
-                          {payment.inquiry?.apartment && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>🏠 {payment.inquiry.apartment.title} - {payment.inquiry.apartment.price} ج.م</p>}
-                          <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(payment.createdAt).toLocaleString('ar-EG')}</p>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           {payment.status === 'Pending' && (
@@ -2638,6 +2719,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                               <button onClick={() => handleRejectPayment(payment.id)} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors" title="رفض الدفع"><X className="h-4 w-4" /></button>
                             </div>
                           )}
+                          <button onClick={() => handleDeletePayments([payment.id])} className="p-2 rounded-lg hover:bg-red-500/10 text-red-400 hover:text-red-600 transition-colors" title="حذف"><Trash2 className="h-4 w-4" /></button>
                         </div>
                       </div>
                     </div>
@@ -2887,20 +2969,12 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <input type="number" min="0" value={settings.rentDisplayFee} onChange={(e) => setSettings({ ...settings, rentDisplayFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                     <div>
-                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>✨ رسوم إبراز العقار</label>
-                      <input type="number" min="0" value={settings.highlightFee} onChange={(e) => setSettings({ ...settings, highlightFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
-                    </div>
-                    <div>
                       <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>🔝 رسوم أولوية العرض</label>
                       <input type="number" min="0" value={settings.priorityListingFee} onChange={(e) => setSettings({ ...settings, priorityListingFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                     <div>
                       <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>✅ رسوم التحقق من العقار</label>
                       <input type="number" min="0" value={settings.verifiedListingFee} onChange={(e) => setSettings({ ...settings, verifiedListingFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
-                    </div>
-                    <div>
-                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>💎 رسوم الباقة المميزة</label>
-                      <input type="number" min="0" value={settings.premiumFee} onChange={(e) => setSettings({ ...settings, premiumFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                     <div>
                       <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>🛠️ رسوم خدمات أخرى</label>
@@ -2955,7 +3029,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <div className={`p-2.5 rounded-lg ${settings.vipFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>👑 VIP: {settings.vipFee === 0 ? 'مجاني ✨' : `${settings.vipFee} ${settings.currency}`}</div>
                       <div className={`p-2.5 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>📋 بيع: {settings.saleDisplayFee} {settings.currency}</div>
                       <div className={`p-2.5 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>🔑 إيجار: {settings.rentDisplayFee} {settings.currency}</div>
-                      <div className={`p-2.5 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>✨ إبراز: {settings.highlightFee} {settings.currency}</div>
                       <div className={`p-2.5 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>🔝 أولوية: {settings.priorityListingFee} {settings.currency}</div>
                     </div>
                     <p className={`text-xs mt-2 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>💡 الأسعار تتحدث للمستخدمين تلقائياً بدون تحديث الصفحة</p>

@@ -115,3 +115,43 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to create payment' }, { status: 500 });
   }
 }
+
+// DELETE - حذف مدفوعات (developer only)
+// Body: { ids: string[] } لحذف محددة, أو {} لحذف الكل
+export async function DELETE(request: NextRequest) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    if (decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح - للمطور فقط' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const ids: string[] = body.ids;
+
+    if (ids && ids.length > 0) {
+      // حذف مدفوعات محددة
+      const result = await db.payment.deleteMany({
+        where: { id: { in: ids } }
+      });
+      return NextResponse.json({ message: `تم حذف ${result.count} مدفوعة بنجاح`, deleted: result.count });
+    } else {
+      // حذف جميع المدفوعات
+      const result = await db.payment.deleteMany({});
+      return NextResponse.json({ message: `تم حذف ${result.count} مدفوعة بنجاح`, deleted: result.count });
+    }
+  } catch (error) {
+    console.error('Error deleting payments:', error);
+    return NextResponse.json({ error: 'Failed to delete payments' }, { status: 500 });
+  }
+}
