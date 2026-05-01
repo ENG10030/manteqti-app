@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
+import { notifyRealtime } from "@/lib/realtime";
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 const DEVELOPER_EMAIL = "ahmadmamdouh10030@gmail.com";
@@ -144,6 +145,9 @@ export async function PUT(request: Request) {
         },
       });
     } catch {}
+
+    // Notify all connected clients about settings change
+    notifyRealtime('settings-updated', validatedData);
 
     return NextResponse.json({
       message: "تم تحديث الإعدادات بنجاح",

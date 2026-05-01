@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
+import { notifyApartmentsChanged } from "@/lib/realtime";
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
@@ -107,6 +108,9 @@ export async function PUT(
       },
     });
 
+    // Notify all connected clients
+    notifyApartmentsChanged('updated', id);
+
     return NextResponse.json({
       message: "تم تحديث العقار بنجاح",
       apartment: updatedApartment,
@@ -160,6 +164,9 @@ export async function PATCH(
       data: updateData,
     });
 
+    // Notify all connected clients
+    notifyApartmentsChanged('approved', id);
+
     return NextResponse.json({
       message: "تم تحديث العقار بنجاح",
       apartment: updatedApartment,
@@ -201,6 +208,9 @@ export async function DELETE(
     await db.apartment.delete({
       where: { id },
     });
+
+    // Notify all connected clients
+    notifyApartmentsChanged('deleted', id);
 
     return NextResponse.json({ message: "تم حذف العقار بنجاح" });
   } catch (error) {

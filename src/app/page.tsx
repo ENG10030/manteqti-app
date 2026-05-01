@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, MapPin, Bed, Bath, Phone, ExternalLink, X,
@@ -16,6 +16,7 @@ import {
   Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
+import { io } from 'socket.io-client';
 
 // Developer credentials
 const DEVELOPER_EMAIL = 'ahmadmamdouh10030@gmail.com';
@@ -115,6 +116,7 @@ export default function App() {
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [darkMode, setDarkMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -267,6 +269,77 @@ export default function App() {
 
   const hasPaidForApartment = useCallback((apartmentId: string) => isDeveloper || userPaidApartments.includes(apartmentId), [userPaidApartments, isDeveloper]);
 
+  // ========== Real-time Socket.io Connection ==========
+  const socketRef = useRef<any>(null);
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
+  const [onlineCount, setOnlineCount] = useState(0);
+
+  useEffect(() => {
+    const socket = io('/?XTransformPort=3004', {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
+      timeout: 10000,
+    });
+
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      setIsRealtimeConnected(true);
+    });
+
+    socket.on('disconnect', () => {
+      setIsRealtimeConnected(false);
+    });
+
+    // Listen for apartment changes - auto refresh for ALL users
+    socket.on('apartments-changed', (data: { event: string; timestamp: string }) => {
+      if (!initialLoad) {
+        // Silently refresh apartments without showing full-page loading
+        fetchApartments(0, false).then(() => {
+          // Show subtle toast notification
+          const messages: Record<string, string> = {
+            'apartment-created': '🏠 تم إضافة عقار جديد!',
+            'apartment-updated': '✏️ تم تحديث عقار',
+            'apartment-deleted': '🗑️ تم حذف عقار',
+            'apartment-approved': '✅ تم الموافقة على عقار جديد',
+          };
+          addToast(messages[data.event] || 'تم تحديث البيانات', 'info');
+        });
+
+        // Also refresh developer data if logged in as developer
+        if (isDeveloper) {
+          fetchDevData();
+          fetchPendingUsers();
+        }
+      }
+    });
+
+    // Listen for message updates
+    socket.on('messages-changed', () => {
+      if (!initialLoad && currentUser) {
+        fetchMessages();
+      }
+    });
+
+    // Listen for settings changes (prices updated by developer)
+    socket.on('notification', (data: { event: string; payload?: any }) => {
+      if (data.event === 'settings-updated' && !initialLoad) {
+        fetchSettings();
+      }
+    });
+
+    // Listen for online count updates
+    socket.on('online-count', (data: { count: number }) => {
+      setOnlineCount(data.count);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [initialLoad, isDeveloper, currentUser]);
+
   // Fetch current user on mount
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(data => {
@@ -279,11 +352,11 @@ export default function App() {
   }, []);
 
   // Fetch apartments
-  useEffect(() => { fetchApartments(); }, []);
+  useEffect(() => { fetchApartments(0, true); }, []);
   
-  const fetchApartments = async (retryCount = 0) => {
+  const fetchApartments = async (retryCount = 0, isInitial = false) => {
     try {
-      setLoading(true);
+      if (isInitial) setLoading(true);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       const res = await fetch('/api/apartments', { signal: controller.signal });
@@ -295,14 +368,14 @@ export default function App() {
       setAllApartments(processedData);
       setError(null);
     } catch (err: any) {
-      if (retryCount < 3) setTimeout(() => fetchApartments(retryCount + 1), 1000 * (retryCount + 1));
+      if (retryCount < 3) setTimeout(() => fetchApartments(retryCount + 1, isInitial), 1000 * (retryCount + 1));
       else { setApartments([]); setAllApartments([]); }
-    } finally { setLoading(false); }
+    } finally { if (isInitial) { setLoading(false); setInitialLoad(false); } }
   };
 
   // Fetch user payments and pending apartments
   useEffect(() => {
-    if (currentUser && !isDeveloper) { fetchUserPayments(); fetchMyPendingApartments(); }
+    if (currentUser && !isDeveloper && !initialLoad) { fetchUserPayments(); fetchMyPendingApartments(); }
   }, [currentUser, isDeveloper]);
 
   const fetchUserPayments = async () => {
@@ -688,9 +761,11 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchSettings();
-    if (isDeveloper && currentUser) { fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
-  }, [isDeveloper, currentUser]);
+    if (!initialLoad) {
+      fetchSettings();
+      if (isDeveloper && currentUser) { fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
+    }
+  }, [isDeveloper, currentUser, initialLoad]);
 
   // Auto-refresh settings every 30 seconds so users see changes immediately
   useEffect(() => {
@@ -792,28 +867,22 @@ export default function App() {
     setUserDetailLoading(false);
   };
 
-  useEffect(() => { if (currentUser) fetchUserLikes(); }, [currentUser]);
-
-  // Load favorites from localStorage
+  // Load user likes after initial load
   useEffect(() => {
-    try { const saved = localStorage.getItem('manteqti_favorites'); if (saved) setFavorites(JSON.parse(saved)); } catch {}
-  }, []);
+    if (currentUser && !initialLoad) fetchUserLikes();
+  }, [currentUser, initialLoad]);
 
-  // Load remembered identifier
+  // Load all localStorage data on mount (single effect)
   useEffect(() => {
     try {
+      const saved = localStorage.getItem('manteqti_favorites');
+      if (saved) setFavorites(JSON.parse(saved));
       const remembered = localStorage.getItem('manteqti_remembered_identifier');
       const rememberMeFlag = localStorage.getItem('manteqti_remember_me');
       if (remembered && rememberMeFlag === 'true') { setAuthIdentifier(remembered); setRememberMe(true); }
-    } catch {}
-  }, []);
-
-  // Load remembered dev email
-  useEffect(() => {
-    try {
       const devEmailSaved = localStorage.getItem('manteqti_dev_email');
       const devRemember = localStorage.getItem('manteqti_dev_remember');
-      if (devEmailSaved && devRemember === 'true') { setDevEmail(devEmailSaved); setRememberMe(true); }
+      if (devEmailSaved && devRemember === 'true') { setDevEmail(devEmailSaved); }
     } catch {}
   }, []);
 
@@ -1587,6 +1656,13 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               <div>
                 <h1 className="text-2xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent">منطقتي | Manteqti</h1>
                 <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لوحة الشقق الذكية</p>
+                {/* Live indicator */}
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${isRealtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`} />
+                  <span className={`text-[10px] ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                    {isRealtimeConnected ? `مباشر${onlineCount > 1 ? ` (${onlineCount})` : ''}` : 'غير متصل'}
+                  </span>
+                </div>
               </div>
             </div>
 

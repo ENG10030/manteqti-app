@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
+import { notifyApartmentsChanged } from "@/lib/realtime";
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
@@ -157,6 +158,9 @@ export async function POST(request: Request) {
         isVip: false,
       },
     });
+
+    // Notify all connected clients
+    notifyApartmentsChanged('created', apartment.id);
 
     return NextResponse.json({
       message:
