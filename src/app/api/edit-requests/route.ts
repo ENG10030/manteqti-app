@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
+import { requireApprovedUser } from '@/lib/auth-middleware';
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
@@ -70,19 +71,10 @@ export async function GET(request: NextRequest) {
 // إنشاء طلب تعديل جديد
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
+    const { auth, errorResponse } = await requireApprovedUser(request);
+    if (errorResponse || !auth) return errorResponse!;
 
-    const tokenUserId = decoded.userId;
+    const tokenUserId = auth.userId;
     const body = await request.json();
 
     // التحقق من وجود العقار
@@ -103,7 +95,7 @@ export async function POST(request: NextRequest) {
     const existingRequest = await db.propertyEditRequest.findFirst({
       where: {
         apartmentId: body.apartmentId,
-        userId: body.userId,
+        userId: tokenUserId,
         status: 'pending',
       },
     });
@@ -127,7 +119,7 @@ export async function POST(request: NextRequest) {
     const editRequest = await db.propertyEditRequest.create({
       data: {
         apartmentId: body.apartmentId,
-        userId: body.userId,
+        userId: tokenUserId,
         editType,
         newImages: body.newImages ? JSON.stringify(body.newImages) : null,
         newVideos: body.newVideos ? JSON.stringify(body.newVideos) : null,

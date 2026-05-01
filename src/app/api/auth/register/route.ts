@@ -122,6 +122,24 @@ export async function POST(request: Request) {
       },
     });
 
+    // Log registration in OperationLog
+    try {
+      await db.operationLog.create({
+        data: {
+          action: isDeveloper ? "DEVELOPER_AUTO_REGISTER" : "USER_REGISTER",
+          entityType: "User",
+          entityId: user.id,
+          details: JSON.stringify({
+            userName: user.name,
+            email: user.email,
+            phone: phone || null,
+            needsApproval: !isDeveloper,
+          }),
+          userId: user.id,
+        },
+      });
+    } catch {}
+
     return NextResponse.json({
       message: isDeveloper ? "تم إنشاء الحساب بنجاح" : "تم إنشاء الحساب بنجاح. بانتظار موافقة الإدارة",
       user: {

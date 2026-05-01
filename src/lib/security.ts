@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomBytes, randomInt } from 'crypto';
 
 /**
  * Validate Egyptian phone number
@@ -17,25 +17,34 @@ export function isValidEmail(email: string): boolean {
 }
 
 /**
- * Validate password strength
+ * Validate password strength (at least 6 chars with complexity)
  */
 export function isStrongPassword(password: string): boolean {
-  return password.length >= 6;
+  if (password.length < 6) return false;
+  let score = 0;
+  if (/[a-z]/.test(password)) score++;
+  if (/[A-Z]/.test(password)) score++;
+  if (/[0-9]/.test(password)) score++;
+  if (/[^a-zA-Z0-9]/.test(password)) score++;
+  return score >= 2; // At least 2 character types
 }
 
 /**
- * Hash password using SHA-256
+ * Hash password using bcrypt (secure)
+ * @deprecated Use bcryptjs directly instead: import bcrypt from 'bcryptjs'; bcrypt.hash(password, 10)
  */
 export async function hashPassword(password: string): Promise<string> {
-  return createHash('sha256').update(password).digest('hex');
+  const bcrypt = await import('bcryptjs');
+  return bcrypt.hash(password, 10);
 }
 
 /**
- * Verify password against hash
+ * Verify password against hash using bcrypt (secure)
+ * @deprecated Use bcryptjs directly instead: import bcrypt from 'bcryptjs'; bcrypt.compare(password, hash)
  */
 export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  const passwordHash = await hashPassword(password);
-  return passwordHash === hash;
+  const bcrypt = await import('bcryptjs');
+  return bcrypt.compare(password, hash);
 }
 
 /**
@@ -49,7 +58,7 @@ export function generateToken(length: number = 32): string {
  * Generate OTP code
  */
 export function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return randomInt(100000, 999999).toString();
 }
 
 /**
@@ -69,5 +78,5 @@ export function sanitizeString(str: string): string {
 export function isValidId(id: string): boolean {
   const cuidRegex = /^c[a-z0-9]{24}$/;
   const cuid2Regex = /^[a-z0-9]{24,32}$/;
-  return cuidRegex.test(id) || cuid2Regex.test(id) || id.length >= 10;
+  return cuidRegex.test(id) || cuid2Regex.test(id);
 }

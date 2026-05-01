@@ -42,6 +42,19 @@ export async function POST(
         }
       })
 
+      // Log approval
+      try {
+        await db.operationLog.create({
+          data: {
+            action: "APPROVE_APARTMENT",
+            entityType: "Apartment",
+            entityId: apartmentId,
+            details: JSON.stringify({ title: apartment.title, price: apartment.price, area: apartment.area }),
+            userId: user.id,
+          },
+        });
+      } catch {}
+
       return NextResponse.json({
         success: true,
         apartment: updatedApartment,
@@ -55,6 +68,19 @@ export async function POST(
           status: "rejected"
         }
       })
+
+      // Log rejection
+      try {
+        await db.operationLog.create({
+          data: {
+            action: "REJECT_APARTMENT",
+            entityType: "Apartment",
+            entityId: apartmentId,
+            details: JSON.stringify({ title: apartment.title }),
+            userId: user.id,
+          },
+        });
+      } catch {}
 
       return NextResponse.json({
         success: true,

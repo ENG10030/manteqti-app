@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
         amount: data.amount,
         transactionRef: data.transactionRef,
         paymentLink: data.paymentLink,
-        userId: data.userId
+        userId: decoded.userId
       }
     });
 

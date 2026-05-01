@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { requireApprovedUser } from '@/lib/auth-middleware';
 
 // الموافقة على التعليق أو رفضه
 export async function PUT(
@@ -7,6 +8,10 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { auth, errorResponse } = await requireApprovedUser(request);
+    if (errorResponse) return errorResponse;
+    if (auth.role !== 'DEVELOPER') return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+
     const { id } = await params;
     const body = await request.json();
     const { status } = body;
@@ -46,6 +51,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { auth, errorResponse } = await requireApprovedUser(request);
+    if (errorResponse) return errorResponse;
+    if (auth.role !== 'DEVELOPER') return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+
     const { id } = await params;
 
     await db.comment.delete({

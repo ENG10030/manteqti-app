@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
+import { requireApprovedUser } from '@/lib/auth-middleware';
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
@@ -48,6 +49,9 @@ export async function GET(request: NextRequest) {
 // إضافة تعليق جديد
 export async function POST(request: NextRequest) {
   try {
+    const { auth, errorResponse } = await requireApprovedUser(request);
+    if (errorResponse || !auth) return errorResponse!;
+
     const body = await request.json();
     const { apartmentId, content } = body;
 
@@ -55,23 +59,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 });
     }
 
-    // JWT verification for developer status
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    let isDeveloper = false;
-    let userId = body.userId;
-
-    if (token) {
-      try {
-        const decoded = verify(token, JWT_SECRET) as any;
-        if (decoded.role === 'DEVELOPER') isDeveloper = true;
-        if (decoded.userId) userId = decoded.userId;
-      } catch {}
-    }
-
-    if (!userId) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-    }
+    const isDeveloper = auth.role === 'DEVELOPER';
+    const userId = auth.userId;
 
     const comment = await db.comment.create({
       data: {

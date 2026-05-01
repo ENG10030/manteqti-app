@@ -108,6 +108,15 @@ export async function POST(request: Request) {
     const finalAction = action || "block";
 
     if (finalAction === "block") {
+      // Prevent blocking a developer
+      const targetUser = await db.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      });
+      if (targetUser?.role === "DEVELOPER") {
+        return NextResponse.json({ error: "لا يمكن حظر مطور" }, { status: 403 });
+      }
+
       const user = await db.user.update({
         where: { id: userId },
         data: {

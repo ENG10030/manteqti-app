@@ -78,6 +78,13 @@ export async function PUT(
       return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
     }
 
+    // Prevent non-developers from setting privileged fields
+    if (user.role !== 'DEVELOPER') {
+      delete body.isFeatured;
+      delete body.isVip;
+      delete body.status;
+    }
+
     const updatedApartment = await db.apartment.update({
       where: { id },
       data: {

@@ -101,6 +101,14 @@ export async function POST(request: Request) {
       );
     }
 
+    // Only approved users or developers can create apartments
+    if (!user.isApproved && user.role !== 'DEVELOPER') {
+      return NextResponse.json(
+        { error: "حسابك قيد المراجعة. بانتظار موافقة الإدارة", pendingApproval: true },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const {
       title,

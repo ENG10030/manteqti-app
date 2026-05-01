@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
+import { JWT_SECRET } from '@/lib/auth';
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
 
 // حذف إعجاب (بواسطة ID الإعجاب أو apartmentId + userId)
 export async function DELETE(
@@ -42,10 +43,15 @@ export async function DELETE(
         }
       });
     } else {
-      // حذف بواسطة ID الإعجاب
-      await db.like.delete({
-        where: { id },
-      });
+      // حذف بواسطة ID الإعجاب - يجب التحقق من الملكية
+      const like = await db.like.findUnique({ where: { id } });
+      if (!like) {
+        return NextResponse.json({ error: 'الإعجاب غير موجود' }, { status: 404 });
+      }
+      if (like.userId !== tokenUserId && decoded.role !== 'DEVELOPER') {
+        return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+      }
+      await db.like.delete({ where: { id } });
     }
 
     return NextResponse.json({ success: true });

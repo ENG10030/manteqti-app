@@ -5,7 +5,7 @@ import { verify } from "jsonwebtoken";
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 const DEVELOPER_EMAIL = "ahmadmamdouh10030@gmail.com";
 
-async function isDeveloper(request: Request) {
+async function isDeveloper(request: Request): Promise<boolean> {
   const cookieHeader = request.headers.get("cookie");
   const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
   const token = cookies.get("auth-token");
@@ -25,6 +25,21 @@ async function isDeveloper(request: Request) {
     return user?.role === "DEVELOPER" || user?.identifier === DEVELOPER_EMAIL;
   } catch {
     return false;
+  }
+}
+
+async function getCurrentUserId(request: Request): Promise<string | null> {
+  const cookieHeader = request.headers.get("cookie");
+  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
+  const token = cookies.get("auth-token");
+
+  if (!token) return null;
+
+  try {
+    const decoded = verify(token, JWT_SECRET) as { userId: string };
+    return decoded.userId;
+  } catch {
+    return null;
   }
 }
 
@@ -117,12 +132,14 @@ export async function PUT(request: Request) {
     }
 
     // Log settings change
+    const currentUserId = await getCurrentUserId(request);
     try {
       await db.operationLog.create({
         data: {
           action: 'UPDATE_SETTINGS',
           entityType: 'Settings',
           entityId: settings.id,
+          userId: currentUserId,
           details: JSON.stringify(validatedData),
         },
       });

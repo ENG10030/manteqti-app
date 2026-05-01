@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
+import { requireApprovedUser } from '@/lib/auth-middleware';
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
@@ -71,13 +72,11 @@ export async function GET(request: NextRequest) {
 // إرسال رسالة جديدة
 export async function POST(request: NextRequest) {
   try {
-    const auth = await getAuthUser(request);
-    if (!auth) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-    }
+    const { auth, errorResponse } = await requireApprovedUser(request);
+    if (errorResponse || !auth) return errorResponse!;
 
     const body = await request.json();
-    const { senderId, content, receiverId } = body;
+    const { content, receiverId } = body;
 
     if (!content || !content.trim()) {
       return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 });
@@ -88,24 +87,6 @@ export async function POST(request: NextRequest) {
 
     if (!sanitizedContent) {
       return NextResponse.json({ error: 'محتوى الرسالة غير صالح' }, { status: 400 });
-    }
-
-    // Verify the sender matches the token user
-    const effectiveSenderId = senderId || auth.userId;
-    if (effectiveSenderId !== auth.userId) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
-    }
-
-    // Check if sender is blocked
-    const sender = await db.user.findUnique({
-      where: { id: auth.userId }
-    });
-
-    if (sender?.isBlocked) {
-      return NextResponse.json({
-        error: 'تم حظرك من استخدام الموقع. تواصل مع المطور.',
-        isBlocked: true
-      }, { status: 403 });
     }
 
     const message = await db.message.create({

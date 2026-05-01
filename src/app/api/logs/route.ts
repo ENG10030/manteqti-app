@@ -70,10 +70,15 @@ export async function POST(request: NextRequest) {
     if (!token) {
       return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
     }
+    let decoded: any;
     try {
-      verify(token, JWT_SECRET);
+      decoded = verify(token, JWT_SECRET);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    if (decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
 
     const data = await request.json();
