@@ -40,6 +40,17 @@
     "node_modules",
     "examples",
     "skills",
-    "download"
+    "download",
+    "deploy",
+    "deploy-v16",
+    "manteqti-final-complete",
+    "manteqti-final-fixed",
+    "manteqti-fixes-v16",
+    "manteqti-fixes-v17",
+    "manteqti-fixes-v5",
+    "manteqti-vipfee-fix",
+    "public",
+    "tests",
+    "mini-services"
   ]
 }
