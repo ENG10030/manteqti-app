@@ -91,7 +91,7 @@ export async function GET(
     // جلب إعدادات الرسوم
     const settings = await db.settings.findFirst();
     const isContactFree = !settings || settings.contactFee === 0;
-    const isContactHidden = apartment.contactHidden === true;
+    const isContactHidden = (apartment as any).contactHidden === true;
 
     const canSeeOwnerContact = !isContactHidden && (
       isContactFree
