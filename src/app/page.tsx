@@ -896,9 +896,11 @@ export default function App() {
       if (res.ok) {
         if (data.pendingApproval) {
           setCurrentUser(data.user); setShowAuth(false);
+          if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
           addToast('حسابك قيد المراجعة. بانتظار موافقة الإدارة ⏳', 'info');
         } else {
           setCurrentUser(data.user); setShowAuth(false);
+          if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
           addToast(`مرحباً ${data.user.name}!`, 'success');
         }
         if (rememberMe) { localStorage.setItem('manteqti_remembered_identifier', authIdentifier.trim().toLowerCase()); localStorage.setItem('manteqti_remember_me', 'true'); }
@@ -930,11 +932,12 @@ export default function App() {
         } else {
           // Check if user needs approval
           if (data.user && !data.user.isApproved) {
-            setShowAuth(false);
+            setCurrentUser(data.user); setShowAuth(false);
+            if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
             addToast('تم إنشاء الحساب بنجاح! حسابك قيد المراجعة وسيتم إشعارك فور الموافقة ⏳', 'info');
           } else {
-            setCurrentUser(data.user);
-            setShowAuth(false);
+            setCurrentUser(data.user); setShowAuth(false);
+            if (data.user && data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
             addToast(`مرحباً ${data.user.name}!`, 'success');
           }
         }
