@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     const type = searchParams.get("type");
     const area = searchParams.get("area");
     
-    let user = null;
+    let user: Awaited<ReturnType<typeof getCurrentUser>> = null;
     try {
       user = await getCurrentUser(request);
     } catch (authErr: any) {
