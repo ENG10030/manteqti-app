@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+export const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 export interface AuthUser {
   id: string;
