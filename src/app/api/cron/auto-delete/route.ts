@@ -10,11 +10,11 @@ const HOURS_UNTIL_DELETE = 48;
 
 export async function GET(request: NextRequest) {
   try {
-    // Verify cron secret for security (optional but recommended)
+    // M-11 FIX: Require CRON_SECRET - fail closed
     const authHeader = request.headers.get('authorization');
     const cronSecret = process.env.CRON_SECRET;
     
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
