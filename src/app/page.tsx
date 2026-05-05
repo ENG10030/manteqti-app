@@ -550,20 +550,23 @@ export default function App() {
     try {
       const res = await fetch('/api/settings');
       const data = await res.json();
-      if (res.ok) setSettings({ 
-        contactFee: data.contactFee || data.settings?.contactFee || 50, 
-        regularFee: data.regularFee || data.settings?.regularFee || 30,
-        featuredFee: data.featuredFee || data.settings?.featuredFee || 100, 
-        premiumFee: data.premiumFee || data.settings?.premiumFee || 200, 
-        vipFee: data.vipFee || data.settings?.vipFee || 300,
-        saleDisplayFee: data.saleDisplayFee || data.settings?.saleDisplayFee || 100,
-        rentDisplayFee: data.rentDisplayFee || data.settings?.rentDisplayFee || 75,
-        otherServicesFee: data.otherServicesFee || data.settings?.otherServicesFee || 50,
-        highlightFee: data.highlightFee || data.settings?.highlightFee || 150,
-        priorityListingFee: data.priorityListingFee || data.settings?.priorityListingFee || 200,
-        verifiedListingFee: data.verifiedListingFee || data.settings?.verifiedListingFee || 250,
-        currency: data.currency || data.settings?.currency || 'ج.م'
-      });
+      if (res.ok) {
+        const s = data.settings || data;
+        setSettings({ 
+          contactFee: s.contactFee ?? 50, 
+          regularFee: s.regularFee ?? 30,
+          featuredFee: s.featuredFee ?? 100, 
+          premiumFee: s.premiumFee ?? 200, 
+          vipFee: s.vipFee ?? 300,
+          saleDisplayFee: s.saleDisplayFee ?? 100,
+          rentDisplayFee: s.rentDisplayFee ?? 75,
+          otherServicesFee: s.otherServicesFee ?? 50,
+          highlightFee: s.highlightFee ?? 150,
+          priorityListingFee: s.priorityListingFee ?? 200,
+          verifiedListingFee: s.verifiedListingFee ?? 250,
+          currency: s.currency ?? 'ج.م'
+        });
+      }
     } catch {}
   };
   useEffect(() => { fetchSettingsRef.current = fetchSettings; });
@@ -579,7 +582,8 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok) {
-        setSettings(prev => ({ ...prev, ...newSettings }));
+        // Re-fetch settings from DB to confirm saved values
+        await fetchSettings();
         addToast('تم تحديث الإعدادات بنجاح ✅', 'success');
       } else {
         addToast(data.error || 'فشل تحديث الإعدادات', 'error');
@@ -3010,18 +3014,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <input type="text" maxLength={10} value={settings.currency} onChange={(e) => setSettings({ ...settings, currency: e.target.value.replace(/<[^>]*>/g, '').slice(0, 10) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                   </div>
-                  <div className="flex gap-3">
-                    <button onClick={() => updateSettings(settings)} disabled={settingsLoading} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2">{settingsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}حفظ كمسودة</button>
-                    <button onClick={async () => { setSettingsLoading(true); try { const res = await fetch('/api/settings', { method: 'POST' }); const data = await res.json(); if (res.ok) { addToast('تم نشر الإعدادات للمستخدمين بنجاح ✅', 'success'); fetchSettings(); } else { addToast(data.error || 'فشل النشر', 'error'); } } catch { addToast('حدث خطأ', 'error'); } finally { setSettingsLoading(false); } }} disabled={settingsLoading} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"><Zap className="h-4 w-4" />نشر للمستخدمين</button>
-                  </div>
-                  <div className={`p-3 rounded-xl text-sm ${darkMode ? 'bg-amber-900/20 border border-amber-700' : 'bg-amber-50 border border-amber-200'}`}>
-                    <p className={`font-medium ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>💡 كيفية عمل الإعدادات:</p>
-                    <ul className={`mt-1 space-y-1 ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>
-                      <li>• <strong>حفظ كمسودة:</strong> يحفظ التغييرات لك ك مطور فقط</li>
-                      <li>• <strong>نشر للمستخدمين:</strong> ينشر الأسعار الحالية لجميع المستخدمين</li>
-                      <li>• التغييرات لن تظهر للمستخدمين حتى تضغط "نشر"</li>
-                    </ul>
-                  </div>
+                  <button onClick={() => updateSettings(settings)} disabled={settingsLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2">{settingsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}حفظ الإعدادات</button>
                   {/* Developer Password Change */}
                   <div className={`p-4 rounded-xl border-2 ${darkMode ? 'bg-slate-700 border-amber-500/30' : 'bg-amber-50 border-amber-200'}`}>
                     <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Key className="h-5 w-5 text-amber-500" />تغيير كلمة مرور المطور</h3>

@@ -73,28 +73,8 @@ const DEFAULT_SETTINGS = {
   currency: "ج.م",
 };
 
-// Helper: format settings for response (strip nulls, etc.)
-function formatSettings(s: any) {
-  return {
-    contactFee: s.contactFee ?? 50,
-    regularFee: s.regularFee ?? 30,
-    featuredFee: s.featuredFee ?? 100,
-    premiumFee: s.premiumFee ?? 200,
-    vipFee: s.vipFee ?? 300,
-    saleDisplayFee: s.saleDisplayFee ?? 100,
-    rentDisplayFee: s.rentDisplayFee ?? 75,
-    otherServicesFee: s.otherServicesFee ?? 50,
-    highlightFee: s.highlightFee ?? 150,
-    priorityListingFee: s.priorityListingFee ?? 200,
-    verifiedListingFee: s.verifiedListingFee ?? 250,
-    currency: s.currency ?? 'ج.م',
-  };
-}
-
-// GET - جلب الإعدادات (public - all users can read)
-// For regular users: returns published fees if available, otherwise current fees
-// For developer: always returns current (draft) fees
-export async function GET(request: Request) {
+// GET - جلب الإعدادات (public - all users see the same current settings)
+export async function GET() {
   try {
     let settings = await db.settings.findFirst();
 
@@ -102,23 +82,8 @@ export async function GET(request: Request) {
       settings = await db.settings.create({ data: DEFAULT_SETTINGS });
     }
 
-    const devRequest = await isDeveloper(request);
-
-    // If there are published fees and this is NOT a developer request, return published fees
-    if (!devRequest && settings.publishedFees) {
-      try {
-        const published = JSON.parse(settings.publishedFees);
-        return NextResponse.json(
-          { settings: formatSettings(published), isPublished: true },
-          { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache' } }
-        );
-      } catch {
-        // If publishedFees is corrupted, fall through to current settings
-      }
-    }
-
     return NextResponse.json(
-      { settings: formatSettings(settings), isPublished: false },
+      { settings },
       { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache' } }
     );
   } catch (error) {
@@ -130,7 +95,7 @@ export async function GET(request: Request) {
   }
 }
 
-// PUT - تحديث الإعدادات (developer only)
+// PUT - تحديث الإعدادات (developer only) - changes take effect immediately for ALL users
 export async function PUT(request: Request) {
   try {
     if (!(await isDeveloper(request))) {
@@ -180,69 +145,17 @@ export async function PUT(request: Request) {
       });
     } catch {}
 
-    // Do NOT notify regular users about settings change - only developer sees the update
-    // The developer must explicitly publish for users to see changes
+    // Notify ALL connected clients about settings change immediately
+    notifyRealtime('settings-updated', validatedData);
 
     return NextResponse.json({
-      message: "تم تحديث الإعدادات بنجاح (مسودة)",
-      settings: formatSettings(settings),
+      message: "تم تحديث الإعدادات بنجاح ✅",
+      settings,
     });
   } catch (error) {
     console.error("Update settings error:", error);
     return NextResponse.json(
       { error: "حدث خطأ أثناء تحديث الإعدادات" },
-      { status: 500 }
-    );
-  }
-}
-
-// POST - نشر الإعدادات للمستخدمين (developer only)
-// This copies current settings to publishedFees so users see the changes
-export async function POST(request: Request) {
-  try {
-    if (!(await isDeveloper(request))) {
-      return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
-    }
-
-    let settings = await db.settings.findFirst();
-
-    if (!settings) {
-      settings = await db.settings.create({ data: DEFAULT_SETTINGS });
-    }
-
-    // Create published snapshot of current fees
-    const publishedFees = JSON.stringify(formatSettings(settings));
-
-    settings = await db.settings.update({
-      where: { id: settings.id },
-      data: { publishedFees },
-    });
-
-    // Notify all connected clients about settings change
-    notifyRealtime('settings-updated', formatSettings(settings));
-
-    // Log publish action
-    const currentUserId = await getCurrentUserId(request);
-    try {
-      await db.operationLog.create({
-        data: {
-          action: 'PUBLISH_SETTINGS',
-          entityType: 'Settings',
-          entityId: settings.id,
-          userId: currentUserId,
-          details: publishedFees,
-        },
-      });
-    } catch {}
-
-    return NextResponse.json({
-      message: "تم نشر الإعدادات للمستخدمين بنجاح ✅",
-      settings: formatSettings(settings),
-    });
-  } catch (error) {
-    console.error("Publish settings error:", error);
-    return NextResponse.json(
-      { error: "حدث خطأ أثناء نشر الإعدادات" },
       { status: 500 }
     );
   }

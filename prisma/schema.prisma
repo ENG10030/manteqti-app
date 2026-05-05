@@ -194,7 +194,6 @@ model Settings {
   priorityListingFee  Int      @default(200)
   verifiedListingFee  Int      @default(250)
   currency            String   @default("ج.م")
-  publishedFees       String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
