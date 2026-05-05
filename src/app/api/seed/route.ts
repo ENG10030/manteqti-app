@@ -253,7 +253,7 @@ export async function GET() {
     const existingSettings = await db.settings.findFirst();
     if (!existingSettings) {
       await db.settings.create({
-        data: { contactFee: 50, regularFee: 30, featuredFee: 100, vipFee: 300, saleDisplayFee: 100, rentDisplayFee: 75, otherServicesFee: 50, priorityListingFee: 200, verifiedListingFee: 250, currency: "ج.م" },
+        data: { contactFee: 50, regularFee: 30, featuredFee: 100, premiumFee: 200, vipFee: 300, saleDisplayFee: 100, rentDisplayFee: 75, otherServicesFee: 50, highlightFee: 150, priorityListingFee: 200, verifiedListingFee: 250, currency: "ج.م" },
       });
     }
 
