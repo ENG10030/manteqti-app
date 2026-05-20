@@ -571,6 +571,14 @@ export default function App() {
   };
   useEffect(() => { fetchSettingsRef.current = fetchSettings; });
 
+  // Auto-refresh settings every 30 seconds so users see developer changes immediately
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchSettingsRef.current?.();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Update settings
   const updateSettings = async (newSettings: Partial<typeof settings>) => {
     setSettingsLoading(true);
