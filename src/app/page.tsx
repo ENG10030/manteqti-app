@@ -1384,36 +1384,27 @@ export default function App() {
     }
   };
 
-  // Handle file upload
+  // Handle file upload - رفع متعدد بالتوازي
   const handleFileUpload = async (files: FileList | null, type: 'image' | 'video'): Promise<string[]> => {
     if (!files || files.length === 0) return [];
     
-    const uploadedUrls: string[] = [];
-    
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    const fileArray = Array.from(files);
+    const uploadPromises = fileArray.map(async (file) => {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('type', type);
-      
       try {
-        const res = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData
-        });
-        
+        const res = await fetch('/api/upload', { method: 'POST', body: formData });
         const data = await res.json();
-        if (res.ok && data.url) {
-          uploadedUrls.push(data.url);
-        } else {
-          addToast(data.error || `فشل في رفع ${file.name}`, 'error');
-        }
-      } catch {
-        addToast(`فشل في رفع ${file.name}`, 'error');
-      }
-    }
+        if (res.ok && data.url) return { success: true, url: data.url, name: file.name };
+        else { addToast(data.error || `فشل في رفع ${file.name}`, 'error'); return { success: false, url: '', name: file.name }; }
+      } catch { addToast(`فشل في رفع ${file.name}`, 'error'); return { success: false, url: '', name: file.name }; }
+    });
     
-    return uploadedUrls;
+    const results = await Promise.all(uploadPromises);
+    const succeeded = results.filter(r => r.success);
+    if (succeeded.length > 1) addToast(`تم رفع ${succeeded.length} من ${fileArray.length} ${type === 'image' ? 'صور' : 'فيديوهات'} ✅`, 'success');
+    return succeeded.map(r => r.url);
   };
 
   // Delete like (developer only)

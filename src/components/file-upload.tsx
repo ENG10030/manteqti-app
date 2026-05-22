@@ -35,41 +35,29 @@ export function FileUpload({
     setUploadProgress(0);
 
     try {
-      const newUrls: string[] = [];
-      const totalFiles = Math.min(files.length, maxFiles - value.length);
+      const validFiles = Array.from(files).filter(f => f.size <= 50 * 1024 * 1024);
+      const totalFiles = Math.min(validFiles.length, maxFiles - value.length);
+      const filesToUpload = validFiles.slice(0, totalFiles);
 
-      for (let i = 0; i < totalFiles; i++) {
-        const file = files[i];
-        
-        // التحقق من حجم الملف (50MB max)
-        if (file.size > 50 * 1024 * 1024) {
-          console.warn(`File ${file.name} is too large`);
-          continue;
-        }
-
+      // رفع جميع الملفات بالتوازي
+      const uploadPromises = filesToUpload.map(async (file) => {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('type', type);
-
         try {
-          const response = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData,
-          });
-
+          const response = await fetch('/api/upload', { method: 'POST', body: formData });
           if (response.ok) {
             const data = await response.json();
-            if (data.url) {
-              newUrls.push(data.url);
-            }
+            return data.url || null;
           }
-        } catch (err) {
-          console.error('Upload error:', err);
-        }
+          return null;
+        } catch { return null; }
+      });
 
-        setUploadProgress(Math.round(((i + 1) / totalFiles) * 100));
-      }
+      const results = await Promise.all(uploadPromises);
+      const newUrls = results.filter((url): url is string => url !== null);
 
+      setUploadProgress(100);
       onChange([...value, ...newUrls]);
     } catch (error) {
       console.error('Upload error:', error);

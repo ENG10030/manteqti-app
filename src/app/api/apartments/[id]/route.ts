@@ -205,7 +205,15 @@ export async function PATCH(
     } catch {}
 
     // Notify all connected clients
-    notifyApartmentsChanged('approved', id);
+    if (action === 'approve') {
+      notifyApartmentsChanged('approved', id);
+    } else if (action === 'reject') {
+      notifyApartmentsChanged('rejected', id);
+    } else if (action === 'feature') {
+      notifyApartmentsChanged('featured', id);
+    } else {
+      notifyApartmentsChanged('updated', id);
+    }
 
     // Send email notification to apartment owner
     if (apartment.createdBy) {
