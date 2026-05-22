@@ -149,6 +149,14 @@ export async function POST(request: Request) {
       );
     }
 
+    // Parse apartmentSize safely - handle number, string, null, undefined
+    let parsedSize: number | null = null;
+    if (apartmentSize != null && apartmentSize !== '' && apartmentSize !== undefined) {
+      const num = Number(apartmentSize);
+      if (!isNaN(num) && num > 0) parsedSize = Math.floor(num);
+    }
+    console.log('[CREATE APARTMENT] apartmentSize received:', apartmentSize, '→ parsed:', parsedSize);
+
     // المطور ينشر مباشرة، المستخدم العادي يرسل للمراجعة
     const status = user.role === "DEVELOPER" ? "available" : "pending";
 
@@ -161,7 +169,7 @@ export async function POST(request: Request) {
         bedrooms: parseInt(bedrooms) || 1,
         bathrooms: parseInt(bathrooms) || 1,
         floor: floor ? parseInt(floor) : null,
-        apartmentSize: apartmentSize != null && apartmentSize !== '' ? parseInt(String(apartmentSize)) : null,
+        apartmentSize: parsedSize,
         ownerPhone,
         mapLink: mapLink || null,
         type: type || "rent",

@@ -87,6 +87,14 @@ export async function PUT(
       delete body.status;
     }
 
+    // Parse apartmentSize safely for update
+    let parsedSize: number | null = null;
+    if (body.apartmentSize != null && body.apartmentSize !== '' && body.apartmentSize !== undefined) {
+      const num = Number(body.apartmentSize);
+      if (!isNaN(num) && num > 0) parsedSize = Math.floor(num);
+    }
+    console.log('[UPDATE APARTMENT]', id, 'apartmentSize received:', body.apartmentSize, '→ parsed:', parsedSize);
+
     const updatedApartment = await db.apartment.update({
       where: { id },
       data: {
@@ -97,7 +105,7 @@ export async function PUT(
         bedrooms: body.bedrooms ? parseInt(body.bedrooms) : undefined,
         bathrooms: body.bathrooms ? parseInt(body.bathrooms) : undefined,
         floor: body.floor !== undefined && body.floor !== null ? parseInt(body.floor) : null,
-        apartmentSize: body.apartmentSize !== undefined && body.apartmentSize !== null ? parseInt(body.apartmentSize) : null,
+        apartmentSize: parsedSize,
         type: body.type,
         images: body.images,
         ownerPhone: body.ownerPhone,
