@@ -80,30 +80,6 @@ export async function PUT(
       return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
     }
 
-    // Handle approve/reject actions (backward compatibility)
-    if (body.action === 'approve' && user.role === 'DEVELOPER') {
-      const updatedApartment = await db.apartment.update({
-        where: { id },
-        data: { status: 'available', approvedBy: user.id, approvedAt: new Date() },
-      });
-      notifyApartmentsChanged('approved', id);
-      try {
-        await db.operationLog.create({ data: { action: 'APPROVE_APARTMENT', entityType: 'Apartment', entityId: id, details: JSON.stringify({ title: apartment.title }), userId: user.id } });
-      } catch {}
-      return NextResponse.json({ message: 'تمت الموافقة على العقار ✅', apartment: updatedApartment });
-    }
-    if (body.action === 'reject' && user.role === 'DEVELOPER') {
-      const updatedApartment = await db.apartment.update({
-        where: { id },
-        data: { status: 'rejected' },
-      });
-      notifyApartmentsChanged('rejected', id);
-      try {
-        await db.operationLog.create({ data: { action: 'REJECT_APARTMENT', entityType: 'Apartment', entityId: id, details: JSON.stringify({ title: apartment.title }), userId: user.id } });
-      } catch {}
-      return NextResponse.json({ message: 'تم رفض العقار ✅', apartment: updatedApartment });
-    }
-
     // Prevent non-developers from setting privileged fields
     if (user.role !== 'DEVELOPER') {
       delete body.isFeatured;
@@ -176,8 +152,6 @@ export async function PATCH(
 
     if (action === "approve") {
       updateData.status = "available";
-      updateData.approvedBy = user.id;
-      updateData.approvedAt = new Date();
     } else if (action === "reject") {
       updateData.status = "rejected";
     } else if (action === "feature") {
@@ -191,29 +165,8 @@ export async function PATCH(
       data: updateData,
     });
 
-    // Log operation
-    try {
-      await db.operationLog.create({
-        data: {
-          action: action === 'approve' ? 'APPROVE_APARTMENT' : action === 'reject' ? 'REJECT_APARTMENT' : 'UPDATE_APARTMENT',
-          entityType: 'Apartment',
-          entityId: id,
-          details: JSON.stringify({ title: apartment.title, action, status: updateData.status }),
-          userId: user.id
-        }
-      });
-    } catch {}
-
     // Notify all connected clients
-    if (action === 'approve') {
-      notifyApartmentsChanged('approved', id);
-    } else if (action === 'reject') {
-      notifyApartmentsChanged('rejected', id);
-    } else if (action === 'feature') {
-      notifyApartmentsChanged('featured', id);
-    } else {
-      notifyApartmentsChanged('updated', id);
-    }
+    notifyApartmentsChanged('approved', id);
 
     // Send email notification to apartment owner
     if (apartment.createdBy) {

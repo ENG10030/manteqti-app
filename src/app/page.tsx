@@ -19,7 +19,7 @@ import { FileUpload } from '@/components/file-upload';
 import { io } from 'socket.io-client';
 
 // Developer credentials
-const DEVELOPER_EMAIL = 'ahmadmamdouh10030@gmail.com';
+const DEVELOPER_EMAIL = process.env.NEXT_PUBLIC_DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
 
 // Contact fee now comes from settings (dynamic)
 
@@ -186,10 +186,10 @@ export default function App() {
   const [inquirySubmitting, setInquirySubmitting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<string>('');
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [selectedPayments, setSelectedPayments] = useState<string[]>([]);
   const [userPaidApartments, setUserPaidApartments] = useState<string[]>([]);
   const [userPayments, setUserPayments] = useState<Payment[]>([]);
   const [showMyPayments, setShowMyPayments] = useState(false);
-  const [selectedPayments, setSelectedPayments] = useState<string[]>([]);
   const [pendingUsers, setPendingUsers] = useState<Array<{ id: string; name: string; identifier: string; email: string; phone: string | null; isApproved: boolean; createdAt: string }>>([]);
   const [devMessageTo, setDevMessageTo] = useState<{ userId: string; userName: string } | null>(null);
   const [devMessageText, setDevMessageText] = useState('');
@@ -268,7 +268,7 @@ export default function App() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
-  const hasPaidForApartment = useCallback((apartmentId: string) => isDeveloper || settings.contactFee === 0 || userPaidApartments.includes(apartmentId), [userPaidApartments, isDeveloper, settings.contactFee]);
+  const hasPaidForApartment = useCallback((apartmentId: string) => isDeveloper || userPaidApartments.includes(apartmentId), [userPaidApartments, isDeveloper]);
 
   // ========== Real-time Socket.io Connection ==========
   const socketRef = useRef<any>(null);
@@ -550,23 +550,34 @@ export default function App() {
     try {
       const res = await fetch('/api/settings');
       const data = await res.json();
-      if (res.ok) setSettings({ 
-        contactFee: data.contactFee || data.settings?.contactFee || 50, 
-        regularFee: data.regularFee || data.settings?.regularFee || 30,
-        featuredFee: data.featuredFee || data.settings?.featuredFee || 100, 
-        premiumFee: data.premiumFee || data.settings?.premiumFee || 200, 
-        vipFee: data.vipFee || data.settings?.vipFee || 300,
-        saleDisplayFee: data.saleDisplayFee || data.settings?.saleDisplayFee || 100,
-        rentDisplayFee: data.rentDisplayFee || data.settings?.rentDisplayFee || 75,
-        otherServicesFee: data.otherServicesFee || data.settings?.otherServicesFee || 50,
-        highlightFee: data.highlightFee || data.settings?.highlightFee || 150,
-        priorityListingFee: data.priorityListingFee || data.settings?.priorityListingFee || 200,
-        verifiedListingFee: data.verifiedListingFee || data.settings?.verifiedListingFee || 250,
-        currency: data.currency || data.settings?.currency || 'ج.م'
-      });
+      if (res.ok) {
+        const s = data.settings || data;
+        setSettings({ 
+          contactFee: s.contactFee ?? 50, 
+          regularFee: s.regularFee ?? 30,
+          featuredFee: s.featuredFee ?? 100, 
+          premiumFee: s.premiumFee ?? 200, 
+          vipFee: s.vipFee ?? 300,
+          saleDisplayFee: s.saleDisplayFee ?? 100,
+          rentDisplayFee: s.rentDisplayFee ?? 75,
+          otherServicesFee: s.otherServicesFee ?? 50,
+          highlightFee: s.highlightFee ?? 150,
+          priorityListingFee: s.priorityListingFee ?? 200,
+          verifiedListingFee: s.verifiedListingFee ?? 250,
+          currency: s.currency ?? 'ج.م'
+        });
+      }
     } catch {}
   };
   useEffect(() => { fetchSettingsRef.current = fetchSettings; });
+
+  // Auto-refresh settings every 30 seconds so users see developer changes immediately
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchSettingsRef.current?.();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Update settings
   const updateSettings = async (newSettings: Partial<typeof settings>) => {
@@ -579,7 +590,8 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok) {
-        setSettings(prev => ({ ...prev, ...newSettings }));
+        // Re-fetch settings from DB to confirm saved values
+        await fetchSettings();
         addToast('تم تحديث الإعدادات بنجاح ✅', 'success');
       } else {
         addToast(data.error || 'فشل تحديث الإعدادات', 'error');
@@ -933,8 +945,6 @@ export default function App() {
   // Load all localStorage data on mount (single effect)
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('manteqti_favorites');
-      if (saved) setFavorites(JSON.parse(saved));
       const remembered = localStorage.getItem('manteqti_remembered_identifier');
       const rememberMeFlag = localStorage.getItem('manteqti_remember_me');
       if (remembered && rememberMeFlag === 'true') { setAuthIdentifier(remembered); setRememberMe(true); }
@@ -1176,12 +1186,17 @@ export default function App() {
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify({ 
-          ...aptForm, 
+          title: aptForm.title,
+          description: aptForm.description, 
           price: parseInt(aptForm.price), 
+          area: aptForm.area,
           bedrooms: parseInt(aptForm.bedrooms), 
           bathrooms: parseInt(aptForm.bathrooms), 
           floor: aptForm.floor ? parseInt(aptForm.floor) : null,
           apartmentSize: aptForm.apartmentSize ? parseInt(aptForm.apartmentSize) : null,
+          ownerPhone: aptForm.ownerPhone,
+          mapLink: aptForm.mapLink || null,
+          type: aptForm.type,
           images: Array.isArray(imageUrls) && imageUrls.length > 0 ? JSON.stringify(imageUrls) : null, 
           videos: Array.isArray(videoUrls) && videoUrls.length > 0 ? JSON.stringify(videoUrls) : null, 
           createdBy: currentUser?.id, 
@@ -1211,14 +1226,14 @@ export default function App() {
   const handleApproveApartment = async (id: string, confirmed: boolean = false) => {
     if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'الموافقة على الشقة', message: 'هل أنت متأكد من الموافقة على نشر هذه الشقة؟', confirmText: 'موافقة', cancelText: 'إلغاء', onConfirm: () => handleApproveApartment(id, true), type: 'info' }); return; }
     setConfirmDialog(prev => ({ ...prev, loading: true }));
-    try { const res = await fetch(`/api/apartments/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'approve' }) }); if (res.ok) { fetchApartments(); fetchDevData(); addToast('تمت الموافقة على الشقة ✅', 'success'); } else addToast('فشل الموافقة', 'error'); }
+    try { await fetch(`/api/apartments/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'approve' }) }); fetchApartments(); addToast('تمت الموافقة على الشقة', 'success'); }
     finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
   };
 
   const handleRejectApartment = async (id: string, confirmed: boolean = false) => {
     if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'رفض الشقة', message: 'هل أنت متأكد من رفض هذه الشقة؟', confirmText: 'رفض', cancelText: 'إلغاء', onConfirm: () => handleRejectApartment(id, true), type: 'danger' }); return; }
     setConfirmDialog(prev => ({ ...prev, loading: true }));
-    try { const res = await fetch(`/api/apartments/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reject' }) }); if (res.ok) { fetchApartments(); fetchDevData(); addToast('تم رفض الشقة ✅', 'success'); } else addToast('فشل الرفض', 'error'); }
+    try { await fetch(`/api/apartments/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reject' }) }); fetchApartments(); addToast('تم رفض الشقة', 'success'); }
     finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
   };
 
@@ -1253,7 +1268,22 @@ export default function App() {
   };
 
   const handlePayment = async (confirmed: boolean = false) => {
-    if (!paymentApartment || !paymentMethod) return;
+    if (!paymentApartment) return;
+    // If fee is 0, skip payment method requirement and confirmation
+    if (settings.contactFee === 0) {
+      if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'طلب مجاني', message: 'بيانات التواصل مجانية! هل تريد المتابعة؟', confirmText: 'متابعة', cancelText: 'إلغاء', onConfirm: () => handlePayment(true), type: 'info' }); return; }
+      setConfirmDialog(prev => ({ ...prev, loading: true }));
+      setPaymentSubmitting(true);
+      try {
+        const inqRes = await fetch('/api/inquiries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apartmentId: paymentApartment.id, userId: currentUser?.id, name: currentUser?.name || 'زائر', email: currentUser?.identifier || 'guest@example.com', phone: 'N/A', message: 'طلب بيانات تواصل (مجاني)' }) });
+        const inquiry = await inqRes.json();
+        await fetch('/api/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inquiryId: inquiry.id, method: 'مجاني', status: 'Paid', amount: 0, userId: currentUser?.id }) });
+        setPaymentApartment(null); setPaymentMethod('');
+        addToast('تم الحصول على بيانات التواصل مجاناً! ✨', 'success');
+      } finally { setPaymentSubmitting(false); setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+      return;
+    }
+    if (!paymentMethod) return;
     if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'تأكيد الدفع', message: `هل تريد الدفع بمبلغ ${settings.contactFee} ${settings.currency}؟`, confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm: () => handlePayment(true), type: 'info' }); return; }
     setConfirmDialog(prev => ({ ...prev, loading: true }));
     setPaymentSubmitting(true);
@@ -1303,42 +1333,68 @@ export default function App() {
     }
   };
 
-  // Handle delete all payments (developer only)
+  // حذف مدفوعات محددة
+  const handleDeletePayments = async (paymentIds: string[], confirmed: boolean = false) => {
+    if (!confirmed) {
+      setConfirmDialog({
+        isOpen: true, title: '🗑️ حذف المدفوعات',
+        message: `هل أنت متأكد من حذف ${paymentIds.length} مدفوعة؟\n\nلا يمكن التراجع عن هذا الإجراء!`,
+        confirmText: 'حذف', cancelText: 'إلغاء',
+        onConfirm: () => handleDeletePayments(paymentIds, true), type: 'danger'
+      });
+      return;
+    }
+    setConfirmDialog(prev => ({ ...prev, loading: true }));
+    try {
+      const res = await fetch('/api/payments', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: paymentIds })
+      });
+      if (res.ok) {
+        fetchDevData();
+        const data = await res.json();
+        addToast(`تم حذف ${data.deleted} مدفوعة بنجاح ✅`, 'success');
+      } else {
+        addToast('فشل حذف المدفوعات', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ', 'error');
+    } finally {
+      setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+    }
+  };
+
+  // حذف جميع المدفوعات
   const handleDeleteAllPayments = async (confirmed: boolean = false) => {
     if (!confirmed) {
-      setConfirmDialog({ isOpen: true, title: '🗑️ حذف جميع المدفوعات', message: 'هل أنت متأكد من حذف جميع سجلات المدفوعات؟\n\nلا يمكن التراجع عن هذا الإجراء!', confirmText: 'حذف الكل', cancelText: 'إلغاء', onConfirm: () => handleDeleteAllPayments(true), type: 'danger' });
+      setConfirmDialog({
+        isOpen: true, title: '🗑️ حذف جميع المدفوعات',
+        message: `هل أنت متأكد من حذف جميع المدفوعات (${payments.length} مدفوعة)؟\n\n⚠️ سيتم حذف سجل المدفوعات بالكامل!\nلا يمكن التراجع عن هذا الإجراء!`,
+        confirmText: 'حذف الكل', cancelText: 'إلغاء',
+        onConfirm: () => handleDeleteAllPayments(true), type: 'danger'
+      });
       return;
     }
     setConfirmDialog(prev => ({ ...prev, loading: true }));
     try {
-      const res = await fetch('/api/payments', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
-      if (res.ok) { fetchDevData(); addToast('تم حذف جميع المدفوعات ✅', 'success'); }
-      else addToast('فشل الحذف', 'error');
-    } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
-  };
-
-  // Handle delete selected payments (developer only)
-  const handleDeleteSelectedPayments = async (confirmed: boolean = false) => {
-    if (selectedPayments.length === 0) { addToast('لم يتم اختيار أي مدفوعة', 'info'); return; }
-    if (!confirmed) {
-      setConfirmDialog({ isOpen: true, title: '🗑️ حذف المدفوعات المحددة', message: `هل أنت متأكد من حذف ${selectedPayments.length} مدفوعة؟`, confirmText: 'حذف', cancelText: 'إلغاء', onConfirm: () => handleDeleteSelectedPayments(true), type: 'danger' });
-      return;
+      const res = await fetch('/api/payments', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      if (res.ok) {
+        fetchDevData();
+        const data = await res.json();
+        addToast(`تم حذف ${data.deleted} مدفوعة بنجاح ✅`, 'success');
+      } else {
+        addToast('فشل حذف المدفوعات', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ', 'error');
+    } finally {
+      setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
     }
-    setConfirmDialog(prev => ({ ...prev, loading: true }));
-    try {
-      const res = await fetch('/api/payments', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: selectedPayments }) });
-      if (res.ok) { setSelectedPayments([]); fetchDevData(); addToast('تم حذف المدفوعات المحددة ✅', 'success'); }
-      else addToast('فشل الحذف', 'error');
-    } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
-  };
-
-  // Handle resend payment notification
-  const handleResendPayment = async (paymentId: string) => {
-    try {
-      const res = await fetch(`/api/payments/${paymentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'Pending', inquiryStatus: 'Pending' }) });
-      if (res.ok) { fetchDevData(); addToast('تم إعادة إرسال طلب الدفع ✅', 'success'); }
-      else addToast('فشل إعادة الإرسال', 'error');
-    } catch { addToast('حدث خطأ', 'error'); }
   };
 
   // Handle AI assistant for developer
@@ -1384,27 +1440,36 @@ export default function App() {
     }
   };
 
-  // Handle file upload - رفع متعدد بالتوازي
+  // Handle file upload
   const handleFileUpload = async (files: FileList | null, type: 'image' | 'video'): Promise<string[]> => {
     if (!files || files.length === 0) return [];
     
-    const fileArray = Array.from(files);
-    const uploadPromises = fileArray.map(async (file) => {
+    const uploadedUrls: string[] = [];
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
       const formData = new FormData();
       formData.append('file', file);
       formData.append('type', type);
+      
       try {
-        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
+        
         const data = await res.json();
-        if (res.ok && data.url) return { success: true, url: data.url, name: file.name };
-        else { addToast(data.error || `فشل في رفع ${file.name}`, 'error'); return { success: false, url: '', name: file.name }; }
-      } catch { addToast(`فشل في رفع ${file.name}`, 'error'); return { success: false, url: '', name: file.name }; }
-    });
+        if (res.ok && data.url) {
+          uploadedUrls.push(data.url);
+        } else {
+          addToast(data.error || `فشل في رفع ${file.name}`, 'error');
+        }
+      } catch {
+        addToast(`فشل في رفع ${file.name}`, 'error');
+      }
+    }
     
-    const results = await Promise.all(uploadPromises);
-    const succeeded = results.filter(r => r.success);
-    if (succeeded.length > 1) addToast(`تم رفع ${succeeded.length} من ${fileArray.length} ${type === 'image' ? 'صور' : 'فيديوهات'} ✅`, 'success');
-    return succeeded.map(r => r.url);
+    return uploadedUrls;
   };
 
   // Delete like (developer only)
@@ -1502,8 +1567,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
   const toggleFavorite = async (apartmentId: string) => {
     if (!currentUser) {
-      addToast('يجب تسجيل الدخول لإضافة المفضلة ❤️', 'error');
       setShowAuth(true);
+      addToast('يجب تسجيل الدخول لإضافة المفضلة', 'info');
       return;
     }
     try {
@@ -1741,13 +1806,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               <div>
                 <h1 className="text-2xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent">منطقتي | Manteqti</h1>
                 <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لوحة الشقق الذكية</p>
-                {/* Live indicator */}
-                <div className="flex items-center gap-1.5">
-                  <span className={`w-2 h-2 rounded-full ${isRealtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`} />
-                  <span className={`text-[10px] ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                    {isRealtimeConnected ? `مباشر${onlineCount > 1 ? ` (${onlineCount})` : ''}` : 'غير متصل'}
-                  </span>
-                </div>
               </div>
             </div>
 
@@ -1870,7 +1928,10 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                           <MapPin className="h-4 w-4 text-violet-500" />
                           <span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{apartment.area || 'غير متوفر'}</span>
                         </div>
-                        {apartment.apartmentSize && <div className="flex items-center gap-2"><Layers className="h-4 w-4 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{apartment.apartmentSize} م²</span></div>}
+                        <div className="flex items-center gap-2">
+                          <Layers className="h-4 w-4 text-violet-500" />
+                          <span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{apartment.apartmentSize ? `${apartment.apartmentSize} م²` : 'غير محدد'}</span>
+                        </div>
                         <div className="flex items-center gap-2">
                           <Bed className="h-4 w-4 text-violet-500" />
                           <span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{apartment.bedrooms || '-'} غرف</span>
@@ -2247,17 +2308,17 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <button type="button" onClick={() => setAptForm({ ...aptForm, listingType: 'regular' })} className={`p-3 rounded-xl border-2 text-center transition-all ${aptForm.listingType === 'regular' ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : darkMode ? 'border-slate-600 bg-slate-700' : 'border-slate-200 bg-white'}`}>
                       <Home className={`h-5 w-5 mx-auto mb-1 ${aptForm.listingType === 'regular' ? 'text-emerald-500' : darkMode ? 'text-slate-400' : 'text-slate-400'}`} />
                       <p className={`text-xs font-bold ${aptForm.listingType === 'regular' ? 'text-emerald-600 dark:text-emerald-400' : darkMode ? 'text-slate-300' : 'text-slate-600'}`}>عادي</p>
-                      <p className={`text-xs mt-0.5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{settings.regularFee || 30} {settings.currency}</p>
+                      <p className={`text-xs mt-0.5 ${(settings.regularFee || 30) === 0 ? 'text-emerald-500 font-bold' : (darkMode ? 'text-slate-500' : 'text-slate-400')}`}>{(settings.regularFee || 30) === 0 ? 'مجاني ✨' : `${settings.regularFee || 30} ${settings.currency}`}</p>
                     </button>
                     <button type="button" onClick={() => setAptForm({ ...aptForm, listingType: 'featured' })} className={`p-3 rounded-xl border-2 text-center transition-all ${aptForm.listingType === 'featured' ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20' : darkMode ? 'border-slate-600 bg-slate-700' : 'border-slate-200 bg-white'}`}>
                       <Star className={`h-5 w-5 mx-auto mb-1 ${aptForm.listingType === 'featured' ? 'text-amber-500' : darkMode ? 'text-slate-400' : 'text-slate-400'}`} />
                       <p className={`text-xs font-bold ${aptForm.listingType === 'featured' ? 'text-amber-600 dark:text-amber-400' : darkMode ? 'text-slate-300' : 'text-slate-600'}`}>مميز</p>
-                      <p className={`text-xs mt-0.5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{settings.featuredFee || 100} {settings.currency}</p>
+                      <p className={`text-xs mt-0.5 ${(settings.featuredFee || 100) === 0 ? 'text-emerald-500 font-bold' : (darkMode ? 'text-slate-500' : 'text-slate-400')}`}>{(settings.featuredFee || 100) === 0 ? 'مجاني ✨' : `${settings.featuredFee || 100} ${settings.currency}`}</p>
                     </button>
                     <button type="button" onClick={() => setAptForm({ ...aptForm, listingType: 'vip' })} className={`p-3 rounded-xl border-2 text-center transition-all ${aptForm.listingType === 'vip' ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20' : darkMode ? 'border-slate-600 bg-slate-700' : 'border-slate-200 bg-white'}`}>
                       <Diamond className={`h-5 w-5 mx-auto mb-1 ${aptForm.listingType === 'vip' ? 'text-purple-500' : darkMode ? 'text-slate-400' : 'text-slate-400'}`} />
                       <p className={`text-xs font-bold ${aptForm.listingType === 'vip' ? 'text-purple-600 dark:text-purple-400' : darkMode ? 'text-slate-300' : 'text-slate-600'}`}>VIP+</p>
-                      <p className={`text-xs mt-0.5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{settings.vipFee || 300} {settings.currency}</p>
+                      <p className={`text-xs mt-0.5 ${(settings.vipFee || 300) === 0 ? 'text-emerald-500 font-bold' : (darkMode ? 'text-slate-500' : 'text-slate-400')}`}>{(settings.vipFee || 300) === 0 ? 'مجاني ✨' : `${settings.vipFee || 300} ${settings.currency}`}</p>
                     </button>
                   </div>
                 </div>
@@ -2299,10 +2360,10 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               <h2 className={`text-2xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{selectedApartment.title}</h2>
               <div className="flex items-center gap-4 mb-4">
                 <div className="flex items-center gap-1"><MapPin className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.area}</span></div>
+                <div className="flex items-center gap-1"><Layers className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.apartmentSize ? `${selectedApartment.apartmentSize} م²` : 'غير محدد'}</span></div>
                 <div className="flex items-center gap-1"><Bed className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.bedrooms} غرف</span></div>
                 <div className="flex items-center gap-1"><Bath className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.bathrooms} حمام</span></div>
-                {selectedApartment.floor && <div className="flex items-center gap-1"><Layers className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>الدور {selectedApartment.floor}</span></div>}
-                {selectedApartment.apartmentSize && <div className="flex items-center gap-1"><Home className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.apartmentSize} م²</span></div>}
+                {selectedApartment.floor && <div className="flex items-center gap-1"><Home className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>الدور {selectedApartment.floor}</span></div>}
               </div>
               <p className="text-3xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent mb-4">{selectedApartment.price.toLocaleString()} ج.م{selectedApartment.type === 'rent' && <span className="text-sm text-slate-500"> /شهر</span>}</p>
               <p className={`mb-6 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{selectedApartment.description}</p>
@@ -2319,10 +2380,10 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <Lock className="h-6 w-6 text-amber-500" />
                     <div>
                       <p className={`font-medium ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>بيانات التواصل محجوبة</p>
-                      <p className={`text-sm ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>{settings.contactFee === 0 ? 'بيانات التواصل متاحة مجاناً ✨' : `ادفع ${settings.contactFee} ${settings.currency} للحصول على بيانات التواصل`}</p>
+                      <p className={`text-sm ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>{settings.contactFee === 0 ? 'بيانات التواصل مجانية ✨' : `ادفع ${settings.contactFee} ${settings.currency} للحصول على بيانات التواصل`}</p>
                     </div>
                   </div>
-                  <button onClick={() => setPaymentApartment(selectedApartment)} className="mt-3 w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium"><CreditCard className="h-4 w-4 inline ml-2" />طلب بيانات التواصل</button>
+                  <button onClick={() => setPaymentApartment(selectedApartment)} className={`mt-3 w-full py-2 rounded-xl font-medium ${settings.contactFee === 0 ? 'bg-gradient-to-r from-emerald-500 to-teal-600' : 'bg-gradient-to-r from-amber-500 to-orange-600'} text-white`}><CreditCard className="h-4 w-4 inline ml-2" />{settings.contactFee === 0 ? 'الحصول على بيانات التواصل مجاناً ✨' : 'طلب بيانات التواصل'}</button>
                 </div>
               )}
 
@@ -2653,21 +2714,31 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-amber-900/30' : 'bg-amber-50'}`}><p className={`text-xl font-bold ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>{payments.filter(p => p.status === 'Pending').length}</p><p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>قيد الانتظار</p></div>
                     <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-red-900/30' : 'bg-red-50'}`}><p className={`text-xl font-bold ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{payments.filter(p => p.status === 'Failed').length}</p><p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>مرفوضة</p></div>
                   </div>
+                  {/* أزرار الحذف */}
                   {payments.length > 0 && (
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
                       <div className="flex items-center gap-2">
-                        <button onClick={() => setSelectedPayments(selectedPayments.length === payments.length ? [] : payments.map(p => p.id))} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${selectedPayments.length === payments.length ? (darkMode ? 'bg-violet-600 text-white' : 'bg-violet-100 text-violet-700') : (darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-100 text-slate-600')}`}>تحديد الكل</button>
-                        {selectedPayments.length > 0 && <button onClick={() => handleDeleteSelectedPayments()} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600">🗑️ حذف المحدد ({selectedPayments.length})</button>}
+                        <button onClick={() => { if (selectedPayments.length === payments.length) setSelectedPayments([]); else setSelectedPayments(payments.map(p => p.id)); }} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${selectedPayments.length === payments.length ? 'bg-violet-500 text-white' : (darkMode ? 'bg-slate-600 text-slate-300 hover:bg-slate-500' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')}`}>
+                          {selectedPayments.length === payments.length ? '✅ إلغاء التحديد' : '☐ تحديد الكل'}
+                        </button>
+                        {selectedPayments.length > 0 && (
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${darkMode ? 'bg-violet-900/30 text-violet-400' : 'bg-violet-100 text-violet-700'}`}>{selectedPayments.length} محدد</span>
+                        )}
                       </div>
-                      <button onClick={() => handleDeleteAllPayments()} className="px-3 py-1.5 rounded-lg text-xs font-medium text-red-500 border border-red-300 hover:bg-red-50">🗑️ حذف الكل</button>
+                      <div className="flex gap-2">
+                        {selectedPayments.length > 0 && (
+                          <button onClick={() => handleDeletePayments(selectedPayments)} className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs font-medium hover:bg-red-600 transition-colors flex items-center gap-1"><Trash2 className="h-3 w-3" />حذف المحدد ({selectedPayments.length})</button>
+                        )}
+                        <button onClick={() => handleDeleteAllPayments()} className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-medium hover:bg-red-700 transition-colors flex items-center gap-1"><Trash2 className="h-3 w-3" />حذف الكل ({payments.length})</button>
+                      </div>
                     </div>
                   )}
                   {payments.length === 0 ? <div className="text-center py-12"><CreditCard className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد مدفوعات</p></div> : payments.map(payment => (
-                    <div key={payment.id} className={`p-4 rounded-xl ${selectedPayments.includes(payment.id) ? 'ring-2 ring-violet-500' : ''} ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                    <div key={payment.id} className={`p-4 rounded-xl transition-all ${selectedPayments.includes(payment.id) ? (darkMode ? 'bg-red-900/20 border-2 border-red-500/50' : 'bg-red-50 border-2 border-red-300') : (darkMode ? 'bg-slate-700' : 'bg-slate-50')}`}>
                       <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-start gap-2">
-                          <input type="checkbox" checked={selectedPayments.includes(payment.id)} onChange={(e) => { if (e.target.checked) setSelectedPayments(prev => [...prev, payment.id]); else setSelectedPayments(prev => prev.filter(id => id !== payment.id)); }} className="mt-1" />
-                          <div>
+                        <div className="flex items-start gap-3 flex-1 min-w-0">
+                          <input type="checkbox" checked={selectedPayments.includes(payment.id)} onChange={(e) => { if (e.target.checked) setSelectedPayments([...selectedPayments, payment.id]); else setSelectedPayments(selectedPayments.filter(id => id !== payment.id)); }} className="mt-1 shrink-0 cursor-pointer" />
+                          <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <p className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{payment.amount} ج.م</p>
                               <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${payment.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : payment.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{payment.status === 'Paid' ? '✅ مدفوع' : payment.status === 'Pending' ? '⏳ قيد الانتظار' : '❌ مرفوض'}</span>
@@ -2679,16 +2750,13 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                           </div>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
-                          <button onClick={() => handleResendPayment(payment.id)} className="p-2 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors" title="إعادة إرسال"><RefreshCw className="h-4 w-4" /></button>
                           {payment.status === 'Pending' && (
                             <div className="flex gap-1">
                               <button onClick={() => handleConfirmPayment(payment.id)} className="p-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-colors" title="تأكيد الدفع"><Check className="h-4 w-4" /></button>
                               <button onClick={() => handleRejectPayment(payment.id)} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors" title="رفض الدفع"><X className="h-4 w-4" /></button>
                             </div>
                           )}
-                          {payment.status === 'Paid' && (
-                            <button onClick={() => handleResendPayment(payment.id)} className="p-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors" title="إعادة كقيد انتظار"><Hourglass className="h-4 w-4" /></button>
-                          )}
+                          <button onClick={() => handleDeletePayments([payment.id])} className="p-2 rounded-lg hover:bg-red-500/10 text-red-400 hover:text-red-600 transition-colors" title="حذف"><Trash2 className="h-4 w-4" /></button>
                         </div>
                       </div>
                     </div>
@@ -3004,10 +3072,10 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <div className={`p-2.5 rounded-lg ${settings.regularFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>🏠 عادي: {settings.regularFee === 0 ? 'مجاني ✨' : `${settings.regularFee} ${settings.currency}`}</div>
                       <div className={`p-2.5 rounded-lg ${settings.featuredFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>⭐ مميز: {settings.featuredFee === 0 ? 'مجاني ✨' : `${settings.featuredFee} ${settings.currency}`}</div>
                       <div className={`p-2.5 rounded-lg ${settings.vipFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>👑 VIP: {settings.vipFee === 0 ? 'مجاني ✨' : `${settings.vipFee} ${settings.currency}`}</div>
-                      <div className={`p-2.5 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>📋 بيع: {settings.saleDisplayFee} {settings.currency}</div>
-                      <div className={`p-2.5 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>🔑 إيجار: {settings.rentDisplayFee} {settings.currency}</div>
-                      <div className={`p-2.5 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>✨ إبراز: {settings.highlightFee} {settings.currency}</div>
-                      <div className={`p-2.5 rounded-lg ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700'}`}>🔝 أولوية: {settings.priorityListingFee} {settings.currency}</div>
+                      <div className={`p-2.5 rounded-lg ${settings.saleDisplayFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>📋 بيع: {settings.saleDisplayFee === 0 ? 'مجاني ✨' : `${settings.saleDisplayFee} ${settings.currency}`}</div>
+                      <div className={`p-2.5 rounded-lg ${settings.rentDisplayFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>🔑 إيجار: {settings.rentDisplayFee === 0 ? 'مجاني ✨' : `${settings.rentDisplayFee} ${settings.currency}`}</div>
+                      <div className={`p-2.5 rounded-lg ${settings.highlightFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>✨ إبراز: {settings.highlightFee === 0 ? 'مجاني ✨' : `${settings.highlightFee} ${settings.currency}`}</div>
+                      <div className={`p-2.5 rounded-lg ${settings.priorityListingFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>🔝 أولوية: {settings.priorityListingFee === 0 ? 'مجاني ✨' : `${settings.priorityListingFee} ${settings.currency}`}</div>
                     </div>
                     <p className={`text-xs mt-2 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>💡 الأسعار تتحدث للمستخدمين تلقائياً بدون تحديث الصفحة</p>
                   </div>
@@ -3212,14 +3280,20 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>طلب بيانات التواصل</h2>
               <button onClick={() => setPaymentApartment(null)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
             </div>
-            <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>المبلغ المطلوب:</p><p className="text-2xl font-bold text-emerald-500">{settings.contactFee} {settings.currency}</p></div>
+            <div className={`p-4 rounded-xl mb-6 ${settings.contactFee === 0 ? (darkMode ? 'bg-emerald-900/30' : 'bg-emerald-50') : (darkMode ? 'bg-slate-700' : 'bg-slate-50')}`}><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>المبلغ المطلوب:</p><p className={`text-2xl font-bold ${settings.contactFee === 0 ? 'text-emerald-500' : 'text-emerald-500'}`}>{settings.contactFee === 0 ? 'مجاني ✨' : `${settings.contactFee} ${settings.currency}`}</p></div>
+            {settings.contactFee === 0 ? (
+              <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-emerald-900/20 border border-emerald-700' : 'bg-emerald-50 border border-emerald-200'}`}>
+                <p className={`text-center font-medium ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>🎉 هذه الخدمة مجانية! لا حاجة للدفع</p>
+              </div>
+            ) : (
             <div className="space-y-3 mb-6">
               <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>اختر طريقة الدفع:</p>
               {['فودافون كاش', 'أورنج كاش', 'اتصالات كاش', 'تحويل بنكي'].map(method => (
                 <button key={method} onClick={() => setPaymentMethod(method)} className={`w-full p-4 rounded-xl border-2 text-right transition-all ${paymentMethod === method ? 'border-emerald-500 bg-emerald-50' : darkMode ? 'border-slate-600 hover:border-slate-500' : 'border-slate-200 hover:border-slate-300'}`}>{method}</button>
               ))}
             </div>
-            <button onClick={() => handlePayment()} disabled={!paymentMethod || paymentSubmitting} className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium disabled:opacity-50">{paymentSubmitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'تأكيد الطلب'}</button>
+            )}
+            <button onClick={() => handlePayment()} disabled={settings.contactFee !== 0 && (!paymentMethod || paymentSubmitting)} className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium disabled:opacity-50">{paymentSubmitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : settings.contactFee === 0 ? 'الحصول مجاناً ✨' : 'تأكيد الطلب'}</button>
           </motion.div>
         </motion.div>
       )}</AnimatePresence>
