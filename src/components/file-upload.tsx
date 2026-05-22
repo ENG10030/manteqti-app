@@ -35,16 +35,17 @@ export function FileUpload({
     setUploadProgress(0);
 
     try {
+      const filesToProcess = Array.from(files).slice(0, maxFiles - value.length);
       const newUrls: string[] = [];
-      const totalFiles = Math.min(files.length, maxFiles - value.length);
+      let completed = 0;
 
-      for (let i = 0; i < totalFiles; i++) {
-        const file = files[i];
-        
+      // Upload files in parallel using Promise.all
+      await Promise.all(filesToProcess.map(async (file) => {
         // التحقق من حجم الملف (50MB max)
         if (file.size > 50 * 1024 * 1024) {
-          console.warn(`File ${file.name} is too large`);
-          continue;
+          completed++;
+          setUploadProgress(Math.round((completed / filesToProcess.length) * 100));
+          return;
         }
 
         const formData = new FormData();
@@ -67,8 +68,9 @@ export function FileUpload({
           console.error('Upload error:', err);
         }
 
-        setUploadProgress(Math.round(((i + 1) / totalFiles) * 100));
-      }
+        completed++;
+        setUploadProgress(Math.round((completed / filesToProcess.length) * 100));
+      }));
 
       onChange([...value, ...newUrls]);
     } catch (error) {

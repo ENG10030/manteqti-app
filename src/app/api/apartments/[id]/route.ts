@@ -165,8 +165,9 @@ export async function PATCH(
       data: updateData,
     });
 
-    // Notify all connected clients
-    notifyApartmentsChanged('approved', id);
+    // Notify all connected clients with correct event type
+    const notifyEvent = action === 'reject' ? 'rejected' : action === 'feature' ? 'featured' : 'approved';
+    notifyApartmentsChanged(notifyEvent, id);
 
     // Send email notification to apartment owner
     if (apartment.createdBy) {

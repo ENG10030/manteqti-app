@@ -138,6 +138,8 @@ export async function POST(request: Request) {
       type,
       images,
       videos,
+      isFeatured,
+      isVip,
     } = body;
 
     if (!title || !price || !area || !ownerPhone) {
@@ -159,7 +161,7 @@ export async function POST(request: Request) {
         bedrooms: parseInt(bedrooms) || 1,
         bathrooms: parseInt(bathrooms) || 1,
         floor: floor ? parseInt(floor) : null,
-        apartmentSize: apartmentSize ? parseInt(apartmentSize) : null,
+        apartmentSize: apartmentSize != null && apartmentSize !== '' ? parseInt(String(apartmentSize)) : null,
         ownerPhone,
         mapLink: mapLink || null,
         type: type || "rent",
@@ -167,8 +169,8 @@ export async function POST(request: Request) {
         images: images || null,
         videos: videos || null,
         createdBy: user.id,
-        isFeatured: false,
-        isVip: false,
+        isFeatured: isFeatured === true || isFeatured === 'true',
+        isVip: isVip === true || isVip === 'true',
       },
     });
 
