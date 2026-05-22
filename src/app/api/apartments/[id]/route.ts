@@ -108,10 +108,10 @@ export async function PUT(
       data: {
         title: body.title,
         description: body.description,
-        price: body.price ? parseFloat(body.price) : undefined,
+        price: body.price != null ? parseFloat(body.price) : undefined,
         area: body.area,
-        bedrooms: body.bedrooms ? parseInt(body.bedrooms) : undefined,
-        bathrooms: body.bathrooms ? parseInt(body.bathrooms) : undefined,
+        bedrooms: body.bedrooms != null ? parseInt(body.bedrooms) : undefined,
+        bathrooms: body.bathrooms != null ? parseInt(body.bathrooms) : undefined,
         floor: body.floor !== undefined && body.floor !== null ? parseInt(body.floor) : null,
         apartmentSize: parsedSize,
         type: body.type,
@@ -155,7 +155,7 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await request.json();
-    const { action, isFeatured } = body;
+    const { action, isFeatured, isVip, listingType } = body;
 
     const apartment = await db.apartment.findUnique({
       where: { id },
@@ -169,12 +169,20 @@ export async function PATCH(
 
     if (action === "approve") {
       updateData.status = "available";
+      // Support listing type selection during approval
+      if (listingType === 'featured') updateData.isFeatured = true;
+      else if (listingType === 'vip') { updateData.isVip = true; updateData.isFeatured = true; }
+      else { updateData.isFeatured = false; updateData.isVip = false; }
+      // Direct boolean overrides (backward compatibility)
+      if (isFeatured !== undefined) updateData.isFeatured = isFeatured;
+      if (isVip !== undefined) updateData.isVip = isVip;
     } else if (action === "reject") {
       updateData.status = "rejected";
     } else if (action === "feature") {
       updateData.isFeatured = isFeatured !== undefined ? isFeatured : true;
     } else {
       if (isFeatured !== undefined) updateData.isFeatured = isFeatured;
+      if (isVip !== undefined) updateData.isVip = isVip;
     }
 
     const updatedApartment = await db.apartment.update({

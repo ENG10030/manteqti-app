@@ -138,8 +138,7 @@ export async function POST(request: Request) {
       type,
       images,
       videos,
-      isFeatured,
-      isVip,
+      listingType,
     } = body;
 
     if (!title || !price || !area || !ownerPhone) {
@@ -160,11 +159,15 @@ export async function POST(request: Request) {
     // المطور ينشر مباشرة، المستخدم العادي يرسل للمراجعة
     const status = user.role === "DEVELOPER" ? "available" : "pending";
 
+    // Only developers can set featured/VIP status
+    const isFeatured = user.role === 'DEVELOPER' && (listingType === 'featured' || listingType === 'vip');
+    const isVip = user.role === 'DEVELOPER' && listingType === 'vip';
+
     const apartment = await db.apartment.create({
       data: {
         title,
         description: description || "",
-        price: parseInt(price),
+        price: parseFloat(price) || 0,
         area,
         bedrooms: parseInt(bedrooms) || 1,
         bathrooms: parseInt(bathrooms) || 1,
@@ -177,8 +180,8 @@ export async function POST(request: Request) {
         images: images || null,
         videos: videos || null,
         createdBy: user.id,
-        isFeatured: isFeatured === true || isFeatured === 'true',
-        isVip: isVip === true || isVip === 'true',
+        isFeatured,
+        isVip,
       },
     });
 
