@@ -1177,7 +1177,13 @@ export default function App() {
     }
     if (!confirmed) {
       if (!aptForm.title || !aptForm.price || !aptForm.area || !aptForm.description || !aptForm.ownerPhone || !aptForm.apartmentSize) { addToast('يرجى ملء جميع الحقول المطلوبة بما فيها المساحة', 'error'); return; }
-      setConfirmDialog({ isOpen: true, title: isDeveloper ? 'إضافة شقة جديدة' : 'إرسال شقة للمراجعة', message: isDeveloper ? 'هل أنت متأكد من إضافة هذه الشقة؟' : 'سيتم إرسال الشقة للمراجعة', confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm: () => handleAddApartment(true), type: 'info' }); return;
+      const listingLabels: Record<string, string> = { regular: 'عادي', featured: 'مميز ⭐', vip: 'VIP+ 👑' };
+      const listingLabel = listingLabels[aptForm.listingType] || 'عادي';
+      const listingFee = aptForm.listingType === 'vip' ? settings.vipFee : aptForm.listingType === 'featured' ? settings.featuredFee : 0;
+      const confirmMsg = isDeveloper
+        ? (aptForm.listingType !== 'regular' ? `هل أنت متأكد من إضافة هذه الشقة كـ"${listingLabel}"؟\n\n💰 رسوم النشر: ${listingFee} ${settings.currency}` : 'هل أنت متأكد من إضافة هذه الشقة؟')
+        : 'سيتم إرسال الشقة للمراجعة';
+      setConfirmDialog({ isOpen: true, title: isDeveloper ? 'إضافة شقة جديدة' : 'إرسال شقة للمراجعة', message: confirmMsg, confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm: () => handleAddApartment(true), type: 'info' }); return;
     }
     setConfirmDialog(prev => ({ ...prev, loading: true }));
     setAptSubmitting(true);
@@ -1400,6 +1406,37 @@ export default function App() {
       }
     } catch {
       addToast('حدث خطأ', 'error');
+    } finally {
+      setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+    }
+  };
+
+  // إعادة إرسال رابط الدفع للمستخدم
+  const handleResendPayment = async (paymentId: string, confirmed: boolean = false) => {
+    if (!confirmed) {
+      setConfirmDialog({
+        isOpen: true, title: '🔄 إعادة إرسال',
+        message: 'هل تريد إعادة إرسال طلب الدفع لهذا المستخدم؟',
+        confirmText: 'إرسال', cancelText: 'إلغاء',
+        onConfirm: () => handleResendPayment(paymentId, true), type: 'info'
+      });
+      return;
+    }
+    setConfirmDialog(prev => ({ ...prev, loading: true }));
+    try {
+      const res = await fetch(`/api/payments/${paymentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resend' })
+      });
+      if (res.ok) {
+        addToast('تم إعادة إرسال طلب الدفع بنجاح 🔄', 'success');
+        fetchDevData();
+      } else {
+        addToast('فشل إعادة الإرسال', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الاتصال', 'error');
     } finally {
       setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
     }
@@ -2794,7 +2831,11 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                             <div className="flex gap-1">
                               <button onClick={() => handleConfirmPayment(payment.id)} className="p-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-colors" title="تأكيد الدفع"><Check className="h-4 w-4" /></button>
                               <button onClick={() => handleRejectPayment(payment.id)} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors" title="رفض الدفع"><X className="h-4 w-4" /></button>
+                              <button onClick={() => handleResendPayment(payment.id)} className="p-2 rounded-lg bg-violet-500 text-white hover:bg-violet-600 transition-colors" title="إعادة إرسال"><RefreshCw className="h-4 w-4" /></button>
                             </div>
+                          )}
+                          {(payment.status === 'Paid' || payment.status === 'Failed') && (
+                            <button onClick={() => handleResendPayment(payment.id)} className="p-2 rounded-lg bg-violet-500/10 text-violet-500 hover:bg-violet-500/20 transition-colors" title="إعادة إرسال"><RefreshCw className="h-4 w-4" /></button>
                           )}
                           <button onClick={() => handleDeletePayments([payment.id])} className="p-2 rounded-lg hover:bg-red-500/10 text-red-400 hover:text-red-600 transition-colors" title="حذف"><Trash2 className="h-4 w-4" /></button>
                         </div>

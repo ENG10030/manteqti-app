@@ -137,6 +137,40 @@ export async function PATCH(
     const { id } = await params;
     const data = await request.json();
 
+    // Handle resend action - reset payment to Pending so user can pay again
+    if (data.action === 'resend') {
+      const payment = await db.payment.findUnique({ where: { id } });
+      if (!payment) {
+        return NextResponse.json({ error: 'الدفعة غير موجودة' }, { status: 404 });
+      }
+
+      const updatedPayment = await db.payment.update({
+        where: { id },
+        data: {
+          status: 'Pending',
+          inquiryStatus: 'new',
+          transactionRef: null,
+          paymentLink: null,
+        }
+      });
+
+      // Also reset the inquiry status
+      if (payment.inquiryId) {
+        await db.inquiry.update({
+          where: { id: payment.inquiryId },
+          data: { lifecycleStatus: 'new' }
+        });
+      }
+
+      console.log('[RESEND PAYMENT]', id, 'reset to Pending');
+      return NextResponse.json({
+        message: 'تم إعادة إرسال طلب الدفع',
+        id: updatedPayment.id,
+        status: updatedPayment.status
+      });
+    }
+
+    // Default: status update
     const payment = await db.payment.update({
       where: { id },
       data: {
