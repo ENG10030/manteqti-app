@@ -1176,7 +1176,7 @@ export default function App() {
       return;
     }
     if (!confirmed) {
-      if (!aptForm.title || !aptForm.price || !aptForm.area || !aptForm.description || !aptForm.ownerPhone) { addToast('يرجى ملء جميع الحقول المطلوبة', 'error'); return; }
+      if (!aptForm.title || !aptForm.price || !aptForm.area || !aptForm.description || !aptForm.ownerPhone || !aptForm.apartmentSize) { addToast('يرجى ملء جميع الحقول المطلوبة بما فيها المساحة', 'error'); return; }
       setConfirmDialog({ isOpen: true, title: isDeveloper ? 'إضافة شقة جديدة' : 'إرسال شقة للمراجعة', message: isDeveloper ? 'هل أنت متأكد من إضافة هذه الشقة؟' : 'سيتم إرسال الشقة للمراجعة', confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm: () => handleAddApartment(true), type: 'info' }); return;
     }
     setConfirmDialog(prev => ({ ...prev, loading: true }));
@@ -1250,7 +1250,45 @@ export default function App() {
     e.preventDefault();
     if (!editApartment) return;
     setEditSubmitting(true);
-    try { await fetch(`/api/apartments/${editApartment.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editApartment) }); fetchApartments(); setEditApartment(null); addToast('تم تحديث الشقة', 'success'); }
+    try {
+      // Build clean payload - only send fields the backend expects
+      // Convert images/videos arrays back to JSON strings for the DB
+      const editPayload = {
+        title: editApartment.title,
+        description: editApartment.description || '',
+        price: editApartment.price,
+        area: editApartment.area,
+        bedrooms: editApartment.bedrooms,
+        bathrooms: editApartment.bathrooms,
+        floor: editApartment.floor ?? null,
+        apartmentSize: editApartment.apartmentSize ?? null,
+        ownerPhone: editApartment.ownerPhone,
+        mapLink: editApartment.mapLink || null,
+        type: editApartment.type,
+        status: editApartment.status,
+        isFeatured: editApartment.isFeatured ?? false,
+        isVip: editApartment.isVip ?? false,
+        images: Array.isArray(editApartment.images) ? JSON.stringify(editApartment.images) : (editApartment.images || null),
+        videos: Array.isArray(editApartment.videos) ? JSON.stringify(editApartment.videos) : (editApartment.videos || null),
+      };
+      console.log('[EDIT APARTMENT] Sending payload:', { id: editApartment.id, apartmentSize: editPayload.apartmentSize, imagesType: typeof editPayload.images });
+      const res = await fetch(`/api/apartments/${editApartment.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editPayload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        fetchApartments();
+        setEditApartment(null);
+        addToast('تم تحديث الشقة بنجاح!', 'success');
+      } else {
+        addToast(data.error || 'حدث خطأ أثناء التحديث', 'error');
+      }
+    } catch (err) {
+      console.error('Edit apartment error:', err);
+      addToast('حدث خطأ في الاتصال', 'error');
+    }
     finally { setEditSubmitting(false); }
   };
 

@@ -95,6 +95,14 @@ export async function PUT(
     }
     console.log('[UPDATE APARTMENT]', id, 'apartmentSize received:', body.apartmentSize, '→ parsed:', parsedSize);
 
+    // Normalize images/videos: handle both string (JSON) and array formats
+    const normalizedImages = body.images
+      ? (Array.isArray(body.images) ? JSON.stringify(body.images) : String(body.images))
+      : null;
+    const normalizedVideos = body.videos
+      ? (Array.isArray(body.videos) ? JSON.stringify(body.videos) : String(body.videos))
+      : null;
+
     const updatedApartment = await db.apartment.update({
       where: { id },
       data: {
@@ -107,7 +115,8 @@ export async function PUT(
         floor: body.floor !== undefined && body.floor !== null ? parseInt(body.floor) : null,
         apartmentSize: parsedSize,
         type: body.type,
-        images: body.images,
+        images: normalizedImages,
+        videos: normalizedVideos,
         ownerPhone: body.ownerPhone,
         mapLink: body.mapLink,
         status: body.status,
