@@ -1,8 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { randomBytes } from 'crypto';
+import crypto from 'crypto';
+import { sendOTPEmail } from '@/lib/email';
 
-// إرسال طلب استعادة كلمة المرور
+/**
+ * توليد رمز OTP مكون من 6 أحرف/أرقام
+ */
+function generateResetCode(): string {
+  // توليد كود من 6 حروف وأرقام سهل القراءة
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // استبعاد الحروف المشابهة: I, O, 0, 1
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+/**
+ * إرسال طلب استعادة كلمة المرور
+ * POST /api/auth/forgot-password
+ */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -26,90 +43,87 @@ export async function POST(request: NextRequest) {
 
     // لأسباب أمنية، لا نكشف إذا كان البريد موجود أم لا
     if (!user) {
+      console.log(`📧 Password reset requested for non-existent email: ${normalizedEmail}`);
       return NextResponse.json({
         success: true,
         message: 'إذا كان البريد مسجل، ستصلك رسالة لاستعادة كلمة المرور'
       });
     }
 
-    // إنشاء رمز استعادة
-    const token = randomBytes(32).toString('hex');
+    // توليد رمز OTP للاستعادة
+    const otpCode = generateResetCode();
+    const token = crypto.randomBytes(32).toString('hex'); // رمز داخلي
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // ساعة واحدة
 
-    // حفظ الرمز في سجل المستخدم مباشرة
+    // حفظ الرمز في سجل المستخدم
     await db.user.update({
       where: { id: user.id },
       data: {
         passwordResetToken: token,
-        passwordResetExpires: expiresAt
+        passwordResetExpires: expiresAt,
+        otp: otpCode,
+        otpExpires: expiresAt,
       }
     });
 
-    // إرسال الإيميل
-    const resetUrl = `${process.env.NEXT_PUBLIC_SITE_URL || 'https://manteqti-app.vercel.app'}/reset-password?token=${token}`;
-    
-    // محاولة إرسال الإيميل عبر Resend
+    // ===== إرسال الإيميل =====
     let emailSent = false;
+    let emailError = '';
+
     try {
-      if (process.env.RESEND_API_KEY) {
-        const response = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            from: 'Manteqti <noreply@manteqti.app>',
-            to: normalizedEmail,
-            subject: 'استعادة كلمة المرور - منطقتي',
-            html: `
-              <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                <div style="text-align: center; margin-bottom: 30px;">
-                  <h1 style="color: #7c3aed;">منطقتي | Manteqti</h1>
-                </div>
-                <div style="background: #f9fafb; border-radius: 12px; padding: 30px;">
-                  <h2 style="color: #1f2937; margin-bottom: 20px;">استعادة كلمة المرور</h2>
-                  <p style="color: #4b5563; margin-bottom: 20px;">
-                    مرحباً ${user.name}،
-                  </p>
-                  <p style="color: #4b5563; margin-bottom: 30px;">
-                    لقد تلقينا طلباً لاستعادة كلمة المرور الخاصة بحسابك. اضغط على الزر أدناه لتعيين كلمة مرور جديدة:
-                  </p>
-                  <a href="${resetUrl}" style="display: inline-block; background: linear-gradient(135deg, #7c3aed 0%, #9333ea 100%); color: white; padding: 15px 40px; border-radius: 10px; text-decoration: none; font-weight: bold;">
-                    استعادة كلمة المرور
-                  </a>
-                  <p style="color: #6b7280; margin-top: 30px; font-size: 14px;">
-                    هذا الرابط صالح لمدة ساعة واحدة فقط.
-                  </p>
-                  <p style="color: #9ca3af; margin-top: 20px; font-size: 12px;">
-                    إذا لم تطلب استعادة كلمة المرور، يمكنك تجاهل هذه الرسالة.
-                  </p>
-                </div>
-                <p style="text-align: center; color: #9ca3af; margin-top: 30px; font-size: 12px;">
-                  © 2024 منطقتي - جميع الحقوق محفوظة
-                </p>
-              </div>
-            `
-          })
-        });
-        
-        if (response.ok) {
-          emailSent = true;
-        }
-      }
-    } catch (emailError) {
-      console.error('Error sending email:', emailError);
+      const result = await sendOTPEmail({
+        to: normalizedEmail,
+        otp: otpCode,
+        name: user.name,
+      });
+      emailSent = result.success;
+      emailError = result.error || '';
+      console.log(`📧 Password reset email to ${normalizedEmail}: ${result.success ? 'SENT ✅' : 'FAILED ❌ - ' + result.error}`);
+    } catch (err: any) {
+      emailError = err.message;
+      console.error('❌ Error sending reset email:', err);
     }
+
+    // تسجيل العملية
+    try {
+      await db.operationLog.create({
+        data: {
+          action: 'PASSWORD_RESET_REQUEST',
+          entityType: 'User',
+          entityId: user.id,
+          details: JSON.stringify({
+            email: normalizedEmail,
+            emailSent,
+            emailError: emailError || undefined,
+          }),
+          userId: user.id,
+        },
+      });
+    } catch {}
 
     return NextResponse.json({
       success: true,
-      message: 'إذا كان البريد مسجل، ستصلك رسالة لاستعادة كلمة المرور',
-      // في بيئة التطوير، نرجع الرابط للتجربة
-      ...(process.env.NODE_ENV === 'development' && { resetUrl, token })
+      message: emailSent
+        ? 'تم إرسال رمز الاستعادة إلى بريدك الإلكتروني ✅'
+        : 'إذا كان البريد مسجل، ستصلك رسالة لاستعادة كلمة المرور',
+      // معلومات التصحيح فقط في وضع التطوير
+      ...(process.env.NODE_ENV === 'development' && {
+        otp: otpCode,
+        debug: { emailSent, emailError }
+      })
     });
 
   } catch (error) {
-    console.error('Error in forgot password:', error);
+    console.error('❌ Error in forgot password:', error);
     return NextResponse.json({ error: 'حدث خطأ. يرجى المحاولة مرة أخرى.' }, { status: 500 });
   }
 }
+
+/**
+ * التحقق من رمز الاستعادة (اختياري - يمكنك إضافة endpoint منفصل)
+ * هذا الكود يمكن استخدامه في الـ frontend مباشرة
+ */
+// ملاحظة: يمكنك إضافة endpoint VERIFY هنا إذا أردت
+// POST /api/auth/forgot-password/verify
+// body: { email, code }
+// يتحقق من صحة الرمز ويرجع success: true/false

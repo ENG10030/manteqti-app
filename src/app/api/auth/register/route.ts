@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import { sendWelcomeEmail, sendVerificationEmail } from "@/lib/email";
 
 // قائمة نطاقات البريد المؤقتة المحظورة
 const BLOCKED_DOMAINS = [
-  // Temporary/disposable email services
   'mailinator.com', 'guerrillamail.com', 'guerrillamailblock.com', 'sharklasers.com',
   'guerrillamail.net', 'grr.la', 'dispostable.com', 'trashmail.com', 'trashmail.io',
   'tempmail.com', 'tempmail.io', 'temp-mail.org', 'throwaway.email', 'fakeinbox.com',
@@ -15,46 +15,38 @@ const BLOCKED_DOMAINS = [
   'incognitomail.org', 'mailnull.com', 'tempinbox.com', 'binkmail.com',
   'safetymail.info', 'spamavert.com', 'mintemail.com', 'mailtothis.com',
   'dispostable.com', 'inboxkitten.com',
-  // 10minutemail and similar
   '10minutemail.com', '10minutemail.net', 'tempmailaddress.com',
-  // Common fake domains used for testing
   'example.com', 'example.org', 'test.com', 'fake.com', 'invalid.com',
   'notreal.com', 'nomail.com', 'noemail.com', 'nowhere.com',
 ];
 
-// التحقق من أن نطاق البريد الإلكتروني ليس مؤقتاً أو وهمياً
 function isDisposableEmail(email: string): boolean {
   const domain = email.split('@')[1]?.toLowerCase();
   if (!domain) return true;
-  
-  // Check blocked list
   if (BLOCKED_DOMAINS.includes(domain)) return true;
-  
-  // Block domains with "temp", "trash", "spam", "fake", "disposable" in name
   const suspiciousKeywords = ['temp', 'trash', 'spam', 'fake', 'disposable', 'throw', 'burner', 'phish'];
   for (const keyword of suspiciousKeywords) {
     if (domain.includes(keyword)) return true;
   }
-  
   return false;
 }
 
-// التحقق من صحة البريد الإلكتروني بشكل صارم
 function isValidEmail(email: string): boolean {
-  // Basic format check
   const emailRegex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
   if (!emailRegex.test(email)) return false;
-  
-  // Check TLD is at least 2 characters
   const domain = email.split('@')[1];
   if (!domain) return false;
   const tld = domain.split('.').pop();
   if (!tld || tld.length < 2) return false;
-  
-  // Block disposable domains
   if (isDisposableEmail(email)) return false;
-  
   return true;
+}
+
+/**
+ * توليد رمز OTP مكون من 6 أرقام
+ */
+function generateOTP(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 export async function POST(request: Request) {
@@ -71,7 +63,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // التحقق الصارم من صيغة البريد الإلكتروني
     if (!isValidEmail(userEmail)) {
       return NextResponse.json(
         { error: "صيغة البريد الإلكتروني غير صحيحة أو النطاق غير مسموح به. يرجى استخدام بريد إلكتروني حقيقي (Gmail, Yahoo, Hotmail, إلخ)" },
@@ -79,7 +70,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // التحقق من قوة كلمة المرور
     if (password.length < 6) {
       return NextResponse.json(
         { error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" },
@@ -87,7 +77,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // التحقق من طول الاسم
     if (name.trim().length < 2) {
       return NextResponse.json(
         { error: "الاسم يجب أن يكون حرفين على الأقل" },
@@ -109,6 +98,10 @@ export async function POST(request: Request) {
     const hashedPassword = await bcrypt.hash(password, 10);
     const isDeveloper = userEmail === (process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com");
 
+    // توليد رمز OTP للتأكيد (للمستخدمين العاديين فقط)
+    const otp = isDeveloper ? null : generateOTP();
+    const otpExpires = isDeveloper ? null : new Date(Date.now() + 10 * 60 * 1000); // 10 دقائق
+
     const user = await db.user.create({
       data: {
         name,
@@ -119,10 +112,12 @@ export async function POST(request: Request) {
         role: isDeveloper ? "DEVELOPER" : "USER",
         isApproved: isDeveloper,
         emailVerified: isDeveloper,
+        otp: otp,
+        otpExpires: otpExpires,
       },
     });
 
-    // Log registration in OperationLog
+    // تسجيل العملية في OperationLog
     try {
       await db.operationLog.create({
         data: {
@@ -140,8 +135,37 @@ export async function POST(request: Request) {
       });
     } catch {}
 
+    // ===== إرسال الإيميلات =====
+    let emailResults = { welcome: false, verification: false };
+
+    if (!isDeveloper) {
+      // إرسال إيميل تأكيد مع رمز OTP (للمستخدمين العاديين)
+      try {
+        const result = await sendVerificationEmail({
+          to: user.email!,
+          otp: otp!,
+          name: user.name,
+        });
+        emailResults.verification = result.success;
+        console.log(`📧 Verification OTP email result for ${user.email}: ${result.success ? 'SENT ✅' : 'FAILED ❌ - ' + result.error}`);
+      } catch (emailError) {
+        console.error('Failed to send verification email:', emailError);
+      }
+
+      // إرسال إيميل ترحيبي
+      try {
+        const result = await sendWelcomeEmail({ to: user.email!, name: user.name });
+        emailResults.welcome = result.success;
+        console.log(`📧 Welcome email result for ${user.email}: ${result.success ? 'SENT ✅' : 'FAILED ❌ - ' + result.error}`);
+      } catch (emailError) {
+        console.error('Failed to send welcome email:', emailError);
+      }
+    }
+
     return NextResponse.json({
-      message: isDeveloper ? "تم إنشاء الحساب بنجاح" : "تم إنشاء الحساب بنجاح. بانتظار موافقة الإدارة",
+      message: isDeveloper 
+        ? "تم إنشاء الحساب بنجاح" 
+        : "تم إنشاء الحساب بنجاح. تم إرسال رمز التحقق إلى بريدك الإلكتروني.",
       user: {
         id: user.id,
         email: user.email,
@@ -149,7 +173,15 @@ export async function POST(request: Request) {
         identifier: user.identifier,
         role: user.role,
         isApproved: user.isApproved,
+        emailVerified: user.emailVerified,
       },
+      // معلومات الإيميلات (للتصحيح فقط في وضع التطوير)
+      ...(process.env.NODE_ENV === 'development' && {
+        debug: {
+          otp: otp,
+          emailResults,
+        }
+      }),
     });
   } catch (error) {
     console.error("Register error:", error);

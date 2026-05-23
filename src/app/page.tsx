@@ -85,14 +85,10 @@ function processApartment(apt: any): Apartment {
 const egyptianAreas = ['المعادي', 'مدينة نصر', 'الدقي', 'المهندسين', 'حلوان', 'عين شمس', 'مصر الجديدة', 'التجمع الخامس', 'الشيخ زايد', 'العباسية', 'المقطم', 'شبرا', 'الزمالك', 'التجمع الأول', 'القاهرة الجديدة', 'أكتوبر', 'العبور', 'الشروق', 'الرقابة', 'فيصل', 'جاردن سيتي', 'المعصرة', 'عابدين', 'الزهراء', 'حدائق القبة', 'مدينة السلام', '15 مايو', 'حلوان الجديدة', 'بدر', 'النزهة', 'المريوطية'];
 
 // Confirm Dialog Component
-function ConfirmDialog({ isOpen, title, message, confirmText = 'تأكيد', cancelText = 'إلغاء', onConfirm, onCancel, type = 'warning', loading = false, darkMode, approveListingType, setApproveListingType, settings }: { isOpen: boolean; title: string; message: string; confirmText?: string; cancelText?: string; onConfirm: () => void; onCancel: () => void; type?: 'danger' | 'warning' | 'info'; loading?: boolean; darkMode: boolean; approveListingType?: 'regular' | 'featured' | 'vip'; setApproveListingType?: (v: 'regular' | 'featured' | 'vip') => void; settings?: any; customContent?: string; } & Record<string, any>) {
+function ConfirmDialog({ isOpen, title, message, confirmText = 'تأكيد', cancelText = 'إلغاء', onConfirm, onCancel, type = 'warning', loading = false, darkMode }: { isOpen: boolean; title: string; message: string; confirmText?: string; cancelText?: string; onConfirm: () => void; onCancel: () => void; type?: 'danger' | 'warning' | 'info'; loading?: boolean; darkMode: boolean; }) {
   if (!isOpen) return null;
   const icons = { danger: <Trash2 className="h-6 w-6 text-red-500" />, warning: <AlertTriangle className="h-6 w-6 text-amber-500" />, info: <AlertCircle className="h-6 w-6 text-blue-500" /> };
   const buttons = { danger: 'bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700', warning: 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700', info: 'bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800' };
-  const curSettings = settings || { regularFee: 30, featuredFee: 100, vipFee: 300, currency: 'ج.م' };
-  const curType = approveListingType || 'regular';
-  const setType = setApproveListingType || (() => {});
-
   return (
     <AnimatePresence>
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onCancel}>
@@ -101,32 +97,7 @@ function ConfirmDialog({ isOpen, title, message, confirmText = 'تأكيد', can
           <div className="text-center">
             <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>{icons[type]}</div>
             <h3 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{title}</h3>
-            {message && <p className={`text-sm mb-6 whitespace-pre-line ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{message}</p>}
-
-            {/* Listing Type Selection for Approve */}
-            {setApproveListingType && (
-              <div className="mb-6">
-                <p className={`text-sm font-medium mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>اختر مستوى النشر:</p>
-                <div className="grid grid-cols-3 gap-2">
-                  <button type="button" disabled={loading} onClick={() => setType('regular')} className={`p-3 rounded-xl border-2 text-center transition-all ${curType === 'regular' ? 'border-emerald-500 bg-emerald-50' : darkMode ? 'border-slate-600 bg-slate-700' : 'border-slate-200 bg-white'}`}>
-                    <Home className={`h-5 w-5 mx-auto mb-1 ${curType === 'regular' ? 'text-emerald-500' : darkMode ? 'text-slate-400' : 'text-slate-400'}`} />
-                    <p className={`text-xs font-bold ${curType === 'regular' ? 'text-emerald-600' : darkMode ? 'text-slate-300' : 'text-slate-600'}`}>عادي</p>
-                    <p className={`text-xs mt-0.5 ${(curSettings.regularFee || 30) === 0 ? 'text-emerald-500 font-bold' : (darkMode ? 'text-slate-500' : 'text-slate-400')}`}>{(curSettings.regularFee || 30) === 0 ? 'مجاني ✨' : `${curSettings.regularFee || 30} ${curSettings.currency}`}</p>
-                  </button>
-                  <button type="button" disabled={loading} onClick={() => setType('featured')} className={`p-3 rounded-xl border-2 text-center transition-all ${curType === 'featured' ? 'border-amber-500 bg-amber-50' : darkMode ? 'border-slate-600 bg-slate-700' : 'border-slate-200 bg-white'}`}>
-                    <Star className={`h-5 w-5 mx-auto mb-1 ${curType === 'featured' ? 'text-amber-500' : darkMode ? 'text-slate-400' : 'text-slate-400'}`} />
-                    <p className={`text-xs font-bold ${curType === 'featured' ? 'text-amber-600' : darkMode ? 'text-slate-300' : 'text-slate-600'}`}>مميز</p>
-                    <p className={`text-xs mt-0.5 ${(curSettings.featuredFee || 100) === 0 ? 'text-emerald-500 font-bold' : (darkMode ? 'text-slate-500' : 'text-slate-400')}`}>{(curSettings.featuredFee || 100) === 0 ? 'مجاني ✨' : `${curSettings.featuredFee || 100} ${curSettings.currency}`}</p>
-                  </button>
-                  <button type="button" disabled={loading} onClick={() => setType('vip')} className={`p-3 rounded-xl border-2 text-center transition-all ${curType === 'vip' ? 'border-purple-500 bg-purple-50' : darkMode ? 'border-slate-600 bg-slate-700' : 'border-slate-200 bg-white'}`}>
-                    <Diamond className={`h-5 w-5 mx-auto mb-1 ${curType === 'vip' ? 'text-purple-500' : darkMode ? 'text-slate-400' : 'text-slate-400'}`} />
-                    <p className={`text-xs font-bold ${curType === 'vip' ? 'text-purple-600' : darkMode ? 'text-slate-300' : 'text-slate-600'}`}>VIP+</p>
-                    <p className={`text-xs mt-0.5 ${(curSettings.vipFee || 300) === 0 ? 'text-emerald-500 font-bold' : (darkMode ? 'text-slate-500' : 'text-slate-400')}`}>{(curSettings.vipFee || 300) === 0 ? 'مجاني ✨' : `${curSettings.vipFee || 300} ${curSettings.currency}`}</p>
-                  </button>
-                </div>
-              </div>
-            )}
-
+            <p className={`text-sm mb-6 whitespace-pre-line ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{message}</p>
             <div className="flex gap-3">
               <button onClick={onCancel} disabled={loading} className={`flex-1 py-3 rounded-xl font-medium transition-all ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>{cancelText}</button>
               <button onClick={onConfirm} disabled={loading} className={`flex-1 py-3 rounded-xl font-medium text-white transition-all ${buttons[type]} disabled:opacity-50`}>{loading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : confirmText}</button>
@@ -1205,42 +1176,33 @@ export default function App() {
       return;
     }
     if (!confirmed) {
-      if (!aptForm.title || !aptForm.price || !aptForm.area || !aptForm.description || !aptForm.ownerPhone || !aptForm.apartmentSize) { addToast('يرجى ملء جميع الحقول المطلوبة بما فيها المساحة', 'error'); return; }
-      const listingLabels: Record<string, string> = { regular: 'عادي', featured: 'مميز ⭐', vip: 'VIP+ 👑' };
-      const listingLabel = listingLabels[aptForm.listingType] || 'عادي';
-      const listingFee = aptForm.listingType === 'vip' ? settings.vipFee : aptForm.listingType === 'featured' ? settings.featuredFee : 0;
-      const confirmMsg = isDeveloper
-        ? (aptForm.listingType !== 'regular' ? `هل أنت متأكد من إضافة هذه الشقة كـ"${listingLabel}"؟\n\n💰 رسوم النشر: ${listingFee} ${settings.currency}` : 'هل أنت متأكد من إضافة هذه الشقة؟')
-        : 'سيتم إرسال الشقة للمراجعة';
-      setConfirmDialog({ isOpen: true, title: isDeveloper ? 'إضافة شقة جديدة' : 'إرسال شقة للمراجعة', message: confirmMsg, confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm: () => handleAddApartment(true), type: 'info' }); return;
+      if (!aptForm.title || !aptForm.price || !aptForm.area || !aptForm.description || !aptForm.ownerPhone) { addToast('يرجى ملء جميع الحقول المطلوبة', 'error'); return; }
+      setConfirmDialog({ isOpen: true, title: isDeveloper ? 'إضافة شقة جديدة' : 'إرسال شقة للمراجعة', message: isDeveloper ? 'هل أنت متأكد من إضافة هذه الشقة؟' : 'سيتم إرسال الشقة للمراجعة', confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm: () => handleAddApartment(true), type: 'info' }); return;
     }
     setConfirmDialog(prev => ({ ...prev, loading: true }));
     setAptSubmitting(true);
     try {
-      const formData = { 
-          title: aptForm.title,
-          description: aptForm.description, 
+      const res = await fetch('/api/apartments', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ 
+          ...aptForm, 
           price: parseInt(aptForm.price), 
-          area: aptForm.area,
           bedrooms: parseInt(aptForm.bedrooms), 
           bathrooms: parseInt(aptForm.bathrooms), 
           floor: aptForm.floor ? parseInt(aptForm.floor) : null,
           apartmentSize: aptForm.apartmentSize ? parseInt(aptForm.apartmentSize) : null,
-          ownerPhone: aptForm.ownerPhone,
-          mapLink: aptForm.mapLink || null,
-          type: aptForm.type,
           images: Array.isArray(imageUrls) && imageUrls.length > 0 ? JSON.stringify(imageUrls) : null, 
           videos: Array.isArray(videoUrls) && videoUrls.length > 0 ? JSON.stringify(videoUrls) : null, 
           createdBy: currentUser?.id, 
-          isFeatured: aptForm.listingType === 'featured' || aptForm.listingType === 'vip',
-          isVip: aptForm.listingType === 'vip',
+          // فقط المطور يقدر يحدد مستوى النشر - المستخدم العادي لا يرسل هذه القيم
+          ...(isDeveloper ? {
+            listingType: aptForm.listingType,
+            isFeatured: aptForm.listingType === 'featured' || aptForm.listingType === 'vip',
+            isVip: aptForm.listingType === 'vip',
+          } : {}),
           status: isDeveloper ? 'available' : 'pending' 
-        };
-      console.log('[SUBMIT APARTMENT] Sending:', { apartmentSize: formData.apartmentSize, aptFormApartmentSize: aptForm.apartmentSize });
-      const res = await fetch('/api/apartments', { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(formData) 
+        }) 
       });
       const data = await res.json();
       if (res.ok) { 
@@ -1260,48 +1222,17 @@ export default function App() {
     finally { setAptSubmitting(false); setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
   };
 
-  const [approveListingType, setApproveListingType] = useState<'regular' | 'featured' | 'vip'>('regular');
-  const [approveForId, setApproveForId] = useState<string | null>(null);
-
   const handleApproveApartment = async (id: string, confirmed: boolean = false) => {
-    if (!confirmed) {
-      setApproveForId(id);
-      setApproveListingType('regular');
-      setConfirmDialog({
-        isOpen: true,
-        title: 'الموافقة على الشقة',
-        message: '',
-        confirmText: 'موافقة',
-        cancelText: 'إلغاء',
-        onConfirm: () => handleApproveApartment(id, true),
-        type: 'info',
-        customContent: 'approveListing'
-      } as any);
-      return;
-    }
+    if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'الموافقة على الشقة', message: 'هل أنت متأكد من الموافقة على نشر هذه الشقة؟', confirmText: 'موافقة', cancelText: 'إلغاء', onConfirm: () => handleApproveApartment(id, true), type: 'info' }); return; }
     setConfirmDialog(prev => ({ ...prev, loading: true }));
-    try {
-      const listingType = approveListingType;
-      const body: any = { action: 'approve', listingType };
-      if (listingType === 'featured') body.isFeatured = true;
-      if (listingType === 'vip') body.isVip = true;
-      const res = await fetch(`/api/apartments/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      if (res.ok) {
-        fetchApartments();
-        const typeLabel = listingType === 'vip' ? 'VIP+' : listingType === 'featured' ? 'مميز' : 'عادي';
-        addToast(`تمت الموافقة على الشقة (${typeLabel})`, 'success');
-      } else {
-        const data = await res.json().catch(() => ({}));
-        addToast(data.error || 'حدث خطأ أثناء الموافقة', 'error');
-      }
-    } catch { addToast('حدث خطأ في الاتصال', 'error'); }
-    finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); setApproveForId(null); }
+    try { await fetch(`/api/apartments/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'approve' }) }); fetchApartments(); addToast('تمت الموافقة على الشقة', 'success'); }
+    finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
   };
 
   const handleRejectApartment = async (id: string, confirmed: boolean = false) => {
     if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'رفض الشقة', message: 'هل أنت متأكد من رفض هذه الشقة؟', confirmText: 'رفض', cancelText: 'إلغاء', onConfirm: () => handleRejectApartment(id, true), type: 'danger' }); return; }
     setConfirmDialog(prev => ({ ...prev, loading: true }));
-    try { const res = await fetch(`/api/apartments/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reject' }) }); if (res.ok) { fetchApartments(); addToast('تم رفض الشقة', 'success'); } else addToast('حدث خطأ أثناء الرفض', 'error'); }
+    try { await fetch(`/api/apartments/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reject' }) }); fetchApartments(); addToast('تم رفض الشقة', 'success'); }
     finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
   };
 
@@ -1316,45 +1247,7 @@ export default function App() {
     e.preventDefault();
     if (!editApartment) return;
     setEditSubmitting(true);
-    try {
-      // Build clean payload - only send fields the backend expects
-      // Convert images/videos arrays back to JSON strings for the DB
-      const editPayload = {
-        title: editApartment.title,
-        description: editApartment.description || '',
-        price: editApartment.price,
-        area: editApartment.area,
-        bedrooms: editApartment.bedrooms,
-        bathrooms: editApartment.bathrooms,
-        floor: editApartment.floor ?? null,
-        apartmentSize: editApartment.apartmentSize ?? null,
-        ownerPhone: editApartment.ownerPhone,
-        mapLink: editApartment.mapLink || null,
-        type: editApartment.type,
-        status: editApartment.status,
-        isFeatured: editApartment.isFeatured ?? false,
-        isVip: editApartment.isVip ?? false,
-        images: Array.isArray(editApartment.images) ? JSON.stringify(editApartment.images) : (editApartment.images || null),
-        videos: Array.isArray(editApartment.videos) ? JSON.stringify(editApartment.videos) : (editApartment.videos || null),
-      };
-      console.log('[EDIT APARTMENT] Sending payload:', { id: editApartment.id, apartmentSize: editPayload.apartmentSize, imagesType: typeof editPayload.images });
-      const res = await fetch(`/api/apartments/${editApartment.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editPayload)
-      });
-      const data = await res.json();
-      if (res.ok) {
-        fetchApartments();
-        setEditApartment(null);
-        addToast('تم تحديث الشقة بنجاح!', 'success');
-      } else {
-        addToast(data.error || 'حدث خطأ أثناء التحديث', 'error');
-      }
-    } catch (err) {
-      console.error('Edit apartment error:', err);
-      addToast('حدث خطأ في الاتصال', 'error');
-    }
+    try { await fetch(`/api/apartments/${editApartment.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editApartment) }); fetchApartments(); setEditApartment(null); addToast('تم تحديث الشقة', 'success'); }
     finally { setEditSubmitting(false); }
   };
 
@@ -1471,37 +1364,6 @@ export default function App() {
     }
   };
 
-  // إعادة إرسال رابط الدفع للمستخدم
-  const handleResendPayment = async (paymentId: string, confirmed: boolean = false) => {
-    if (!confirmed) {
-      setConfirmDialog({
-        isOpen: true, title: '🔄 إعادة إرسال',
-        message: 'هل تريد إعادة إرسال طلب الدفع لهذا المستخدم؟',
-        confirmText: 'إرسال', cancelText: 'إلغاء',
-        onConfirm: () => handleResendPayment(paymentId, true), type: 'info'
-      });
-      return;
-    }
-    setConfirmDialog(prev => ({ ...prev, loading: true }));
-    try {
-      const res = await fetch(`/api/payments/${paymentId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'resend' })
-      });
-      if (res.ok) {
-        addToast('تم إعادة إرسال طلب الدفع بنجاح 🔄', 'success');
-        fetchDevData();
-      } else {
-        addToast('فشل إعادة الإرسال', 'error');
-      }
-    } catch {
-      addToast('حدث خطأ في الاتصال', 'error');
-    } finally {
-      setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
-    }
-  };
-
   // حذف جميع المدفوعات
   const handleDeleteAllPayments = async (confirmed: boolean = false) => {
     if (!confirmed) {
@@ -1551,7 +1413,7 @@ export default function App() {
         case 'stats':
           prompt = `أنت محلل بيانات عقاري خبير. قم بتحليل هذه البيانات:
 📊 إجمالي الشقق: ${apartments.length} | متاحة: ${apartments.filter(a => a.status === 'available').length} | في انتظار الموافقة: ${pendingApartments.length}
-📈 الاستفسارات: ${inquiries.length} | معدل التحويل: ${conversionRate}% | الإيرادات: ${totalRevenue.toLocaleString()} ${settings.currency}
+📈 الاستفسارات: ${inquiries.length} | معدل التحويل: ${conversionRate}% | الإيرادات: ${totalRevenue.toLocaleString()} ج.م
 أعطني تحليل شامل مع توصيات.`;
           break;
         case 'payments':
@@ -1678,7 +1540,7 @@ export default function App() {
         // Fallback description
         const fallbackDesc = `${aptForm.title} - ${aptForm.type === 'rent' ? 'للإيجار' : 'للبيع'} في ${aptForm.area}.
 ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام${aptForm.floor ? `، الدور ${aptForm.floor}` : ''}${aptForm.apartmentSize ? `، مساحة ${aptForm.apartmentSize} م²` : ''}.
-${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${settings.currency}` : `السعر ${aptForm.price} ${settings.currency}`}.`;
+${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م` : `السعر ${aptForm.price} ج.م`}.`;
         setAptForm({ ...aptForm, description: fallbackDesc });
         addToast('تم إنشاء وصف افتراضي', 'success');
       }
@@ -1686,7 +1548,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${sett
       // Fallback on error
       const fallbackDesc = `${aptForm.title} - ${aptForm.type === 'rent' ? 'للإيجار' : 'للبيع'} في ${aptForm.area}.
 ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام${aptForm.floor ? `، الدور ${aptForm.floor}` : ''}${aptForm.apartmentSize ? `، مساحة ${aptForm.apartmentSize} م²` : ''}.
-${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${settings.currency}` : `السعر ${aptForm.price} ${settings.currency}`}.`;
+${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م` : `السعر ${aptForm.price} ج.م`}.`;
       setAptForm({ ...aptForm, description: fallbackDesc });
       addToast('تم إنشاء وصف افتراضي', 'info');
     } finally {
@@ -2054,7 +1916,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${sett
                     <h3 className={`text-lg font-bold mb-2 line-clamp-1 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apartment.title}</h3>
                     {/* السعر في الأعلى */}
                     <div className="mb-2">
-                      <p className="text-2xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent">{apartment.price.toLocaleString()} {settings.currency}{apartment.type === 'rent' && <span className={`text-sm font-normal ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}> /شهر</span>}</p>
+                      <p className="text-2xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent">{apartment.price.toLocaleString()} ج.م{apartment.type === 'rent' && <span className={`text-sm font-normal ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}> /شهر</span>}</p>
                     </div>
                     {/* وصف الشقة */}
                     <p className={`text-sm mb-3 line-clamp-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apartment.description}</p>
@@ -2066,10 +1928,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${sett
                           <span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{apartment.area || 'غير متوفر'}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Layers className="h-4 w-4 text-violet-500" />
-                          <span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{apartment.apartmentSize ? `${apartment.apartmentSize} م²` : 'غير محدد'}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
                           <Bed className="h-4 w-4 text-violet-500" />
                           <span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{apartment.bedrooms || '-'} غرف</span>
                         </div>
@@ -2078,6 +1936,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${sett
                           <span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{apartment.bathrooms || '-'} حمام</span>
                         </div>
                         {apartment.floor && <div className="flex items-center gap-2"><Layers className="h-4 w-4 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>الدور {apartment.floor}</span></div>}
+                        {apartment.apartmentSize && <div className="flex items-center gap-2"><Home className="h-4 w-4 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{apartment.apartmentSize} م²</span></div>}
                         <div className="flex items-center gap-2">
                           <Home className="h-4 w-4 text-violet-500" />
                           <span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{apartment.type === 'rent' ? 'إيجار' : 'بيع'}</span>
@@ -2085,7 +1944,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${sett
                       </div>
                     </div>
                     <div className="flex gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                      <button onClick={() => { if (!currentUser) { addToast('يجب تسجيل الدخول لعرض التفاصيل', 'error'); setShowAuth(true); return; } setSelectedApartment(apartment); fetchComments(apartment.id); setCurrentImageIndex(0); fetch(`/api/apartments/${apartment.id}/details`, { method: 'GET' }).catch(() => {}); }} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-violet-700 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:scale-[1.02] transition-all duration-300 group relative overflow-hidden">
+                      <button onClick={() => { setSelectedApartment(apartment); fetchComments(apartment.id); setCurrentImageIndex(0); fetch(`/api/apartments/${apartment.id}/details`, { method: 'GET' }).catch(() => {}); }} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-violet-700 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:scale-[1.02] transition-all duration-300 group relative overflow-hidden">
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
                         <Eye className="h-4 w-4 group-hover:scale-110 transition-transform" />
                         <span>عرض التفاصيل</span>
@@ -2111,7 +1970,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${sett
       </footer>
 
       {/* Confirm Dialog */}
-      <ConfirmDialog {...confirmDialog} darkMode={darkMode} approveListingType={approveListingType} setApproveListingType={setApproveListingType} settings={settings} onCancel={() => { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); setApproveForId(null); }} />
+      <ConfirmDialog {...confirmDialog} darkMode={darkMode} onCancel={() => setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' })} />
 
       {/* Toasts */}
       <div className="fixed top-4 left-4 z-[100] space-y-2">
@@ -2182,7 +2041,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${sett
                       <div className="flex-1">
                         <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">قيد المراجعة</span>
                         <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
-                        <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.area} • {apt.price.toLocaleString()} {settings.currency}</p>
+                        <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.area} • {apt.price.toLocaleString()} ج.م</p>
                       </div>
                       <button onClick={async () => { if (confirm('هل تريد حذف هذا العقار؟')) { await fetch(`/api/apartments/${apt.id}`, { method: 'DELETE' }); fetchMyPendingApartments(); fetchApartments(); addToast('تم حذف العقار', 'success'); } }} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600"><Trash2 className="h-4 w-4" /></button>
                     </div>
@@ -2213,7 +2072,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${sett
             <div className="flex-1 overflow-y-auto">
               {userPayments.length === 0 ? <div className="text-center py-12"><CreditCard className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد مدفوعات بعد</p></div> : <div className="space-y-3">{userPayments.map(pay => (
                 <div key={pay.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                  <div className="flex items-center justify-between"><div><div className="flex items-center gap-2"><p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{pay.amount} {settings.currency}</p><span className={`px-2 py-0.5 rounded-full text-xs ${pay.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : pay.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{pay.status === 'Paid' ? '✅ مؤكد' : pay.status === 'Pending' ? '⏳ قيد الانتظار' : '❌ مرفوض'}</span></div><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{pay.method} • {new Date(pay.createdAt).toLocaleDateString('ar-EG')}</p>{pay.inquiry?.apartment && <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>🏠 {pay.inquiry.apartment.title}</p>}</div></div>
+                  <div className="flex items-center justify-between"><div><div className="flex items-center gap-2"><p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{pay.amount} ج.م</p><span className={`px-2 py-0.5 rounded-full text-xs ${pay.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : pay.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{pay.status === 'Paid' ? '✅ مؤكد' : pay.status === 'Pending' ? '⏳ قيد الانتظار' : '❌ مرفوض'}</span></div><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{pay.method} • {new Date(pay.createdAt).toLocaleDateString('ar-EG')}</p>{pay.inquiry?.apartment && <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>🏠 {pay.inquiry.apartment.title}</p>}</div></div>
                   {pay.status === 'Pending' && <p className={`text-xs mt-2 ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>⏳ بانتظار تأكيد المطور</p>}
                   {pay.status === 'Paid' && <p className={`text-xs mt-2 ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>✅ تم تأكيد الدفع - يمكنك الآن عرض بيانات التواصل</p>}
                 </div>
@@ -2286,7 +2145,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${sett
                           <div key={apt.id} className={`p-3 rounded-lg flex items-center justify-between ${darkMode ? 'bg-slate-600' : 'bg-white'}`}>
                             <div>
                               <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</p>
-                              <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.price} {settings.currency} • {apt.area} • {statusConfig[apt.status]?.label || apt.status}</p>
+                              <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.price} ج.م • {apt.area} • {statusConfig[apt.status]?.label || apt.status}</p>
                             </div>
                             <div className="flex gap-1">
                               {apt.status === 'pending' && <button onClick={() => handleApproveApartment(apt.id)} className="p-1 rounded bg-emerald-500 text-white" title="موافقة"><Check className="h-3.5 w-3.5" /></button>}
@@ -2307,7 +2166,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${sett
                           <div key={pay.id} className={`p-3 rounded-lg flex items-center justify-between ${darkMode ? 'bg-slate-600' : 'bg-white'}`}>
                             <div>
                               <div className="flex items-center gap-2">
-                                <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{pay.amount} {settings.currency}</p>
+                                <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{pay.amount} ج.م</p>
                                 <span className={`px-2 py-0.5 rounded-full text-xs ${pay.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : pay.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{pay.status === 'Paid' ? 'مدفوع' : pay.status === 'Pending' ? 'قيد الانتظار' : 'مرفوض'}</span>
                               </div>
                               <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{pay.method} • {pay.inquiry?.apartment ? `🏠 ${pay.inquiry.apartment.title}` : 'عقار محذوف'}</p>
@@ -2438,9 +2297,9 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${sett
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>غرف النوم</label><select value={aptForm.bedrooms} onChange={(e) => setAptForm({ ...aptForm, bedrooms: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>{[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحمامات</label><select value={aptForm.bathrooms} onChange={(e) => setAptForm({ ...aptForm, bathrooms: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>{[1, 2, 3, 4].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الدور</label><select value={aptForm.floor} onChange={(e) => setAptForm({ ...aptForm, floor: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="">بدون تحديد</option>{['أرضي', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15+'].map(n => <option key={n} value={n === 'أرضي' ? '0' : n === '15+' ? '15' : n}>{n}</option>)}</select></div>
-                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📏 مساحة الشقة (م²) <span className="text-red-500">*</span></label><input type="number" min="1" placeholder="مثال: 120" value={aptForm.apartmentSize} onChange={(e) => setAptForm({ ...aptForm, apartmentSize: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
+                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>مساحة الشقة (م²)</label><input type="number" placeholder="مثال: 120" value={aptForm.apartmentSize} onChange={(e) => setAptForm({ ...aptForm, apartmentSize: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>النوع (إيجار / بيع)</label><select value={aptForm.type} onChange={(e) => setAptForm({ ...aptForm, type: e.target.value as 'rent' | 'sale' })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="rent">إيجار</option><option value="sale">بيع</option></select></div>
-                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>مستوى النشر</label>
+                {isDeveloper && (<div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>مستوى النشر</label>
                   <div className="grid grid-cols-3 gap-2">
                     <button type="button" onClick={() => setAptForm({ ...aptForm, listingType: 'regular' })} className={`p-3 rounded-xl border-2 text-center transition-all ${aptForm.listingType === 'regular' ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : darkMode ? 'border-slate-600 bg-slate-700' : 'border-slate-200 bg-white'}`}>
                       <Home className={`h-5 w-5 mx-auto mb-1 ${aptForm.listingType === 'regular' ? 'text-emerald-500' : darkMode ? 'text-slate-400' : 'text-slate-400'}`} />
@@ -2458,7 +2317,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${sett
                       <p className={`text-xs mt-0.5 ${(settings.vipFee || 300) === 0 ? 'text-emerald-500 font-bold' : (darkMode ? 'text-slate-500' : 'text-slate-400')}`}>{(settings.vipFee || 300) === 0 ? 'مجاني ✨' : `${settings.vipFee || 300} ${settings.currency}`}</p>
                     </button>
                   </div>
-                </div>
+                </div>)}
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رقم الهاتف *</label><input type="tel" value={aptForm.ownerPhone} onChange={(e) => setAptForm({ ...aptForm, ownerPhone: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
                 <div className="col-span-2"><div className="flex items-center justify-between mb-2"><label className={`block text-sm font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الوصف *</label><button type="button" onClick={generateAIDescription} disabled={aiDescLoading} className="flex items-center gap-1 px-3 py-1 rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 text-white text-xs font-medium disabled:opacity-50 hover:from-violet-600 hover:to-purple-700 transition-all">{aiDescLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}إنشاء بالذكاء الاصطناعي</button></div><textarea value={aptForm.description} onChange={(e) => setAptForm({ ...aptForm, description: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} rows={3} required /></div>
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رابط الخريطة (اختياري)</label><input type="url" value={aptForm.mapLink} onChange={(e) => setAptForm({ ...aptForm, mapLink: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
@@ -2497,12 +2356,12 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${sett
               <h2 className={`text-2xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{selectedApartment.title}</h2>
               <div className="flex items-center gap-4 mb-4">
                 <div className="flex items-center gap-1"><MapPin className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.area}</span></div>
-                <div className="flex items-center gap-1"><Layers className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.apartmentSize ? `${selectedApartment.apartmentSize} م²` : 'غير محدد'}</span></div>
                 <div className="flex items-center gap-1"><Bed className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.bedrooms} غرف</span></div>
                 <div className="flex items-center gap-1"><Bath className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.bathrooms} حمام</span></div>
-                {selectedApartment.floor && <div className="flex items-center gap-1"><Home className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>الدور {selectedApartment.floor}</span></div>}
+                {selectedApartment.floor && <div className="flex items-center gap-1"><Layers className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>الدور {selectedApartment.floor}</span></div>}
+                {selectedApartment.apartmentSize && <div className="flex items-center gap-1"><Home className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.apartmentSize} م²</span></div>}
               </div>
-              <p className="text-3xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent mb-4">{selectedApartment.price.toLocaleString()} {settings.currency}{selectedApartment.type === 'rent' && <span className="text-sm text-slate-500"> /شهر</span>}</p>
+              <p className="text-3xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent mb-4">{selectedApartment.price.toLocaleString()} ج.م{selectedApartment.type === 'rent' && <span className="text-sm text-slate-500"> /شهر</span>}</p>
               <p className={`mb-6 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{selectedApartment.description}</p>
               
               {hasPaidForApartment(selectedApartment.id) ? (
@@ -2572,7 +2431,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${sett
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>غرف النوم</label><select value={editApartment.bedrooms} onChange={(e) => setEditApartment({ ...editApartment, bedrooms: parseInt(e.target.value) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>{[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحمامات</label><select value={editApartment.bathrooms} onChange={(e) => setEditApartment({ ...editApartment, bathrooms: parseInt(e.target.value) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>{[1, 2, 3, 4].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الدور</label><select value={editApartment.floor || ''} onChange={(e) => setEditApartment({ ...editApartment, floor: e.target.value ? parseInt(e.target.value) : undefined })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="">بدون تحديد</option>{['أرضي', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15+'].map(n => <option key={n} value={n === 'أرضي' ? '0' : n === '15+' ? '15' : n}>{n}</option>)}</select></div>
-                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📏 مساحة الشقة (م²) <span className="text-red-500">*</span></label><input type="number" min="1" placeholder="مثال: 120" value={editApartment.apartmentSize || ''} onChange={(e) => setEditApartment({ ...editApartment, apartmentSize: e.target.value ? parseInt(e.target.value) : undefined })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
+                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>مساحة الشقة (م²)</label><input type="number" placeholder="مثال: 120" value={editApartment.apartmentSize || ''} onChange={(e) => setEditApartment({ ...editApartment, apartmentSize: e.target.value ? parseInt(e.target.value) : undefined })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الهاتف</label><input type="tel" value={editApartment.ownerPhone} onChange={(e) => setEditApartment({ ...editApartment, ownerPhone: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحالة</label><select value={editApartment.status} onChange={(e) => setEditApartment({ ...editApartment, status: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="available">متاح</option><option value="reserved">محجوز</option><option value="unavailable">غير متاح</option><option value="sold">تم البيع</option><option value="rented">تم التأجير</option></select></div>
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الوصف</label><textarea value={editApartment.description} onChange={(e) => setEditApartment({ ...editApartment, description: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} rows={3} /></div>
@@ -2688,7 +2547,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${sett
                         <img src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-32 h-24 object-cover rounded-lg" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
                         <div className="flex-1">
                           <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
-                          <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.area} • {apt.price.toLocaleString()} {settings.currency} • {apt.type === 'rent' ? 'إيجار' : 'بيع'}</p>
+                          <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.area} • {apt.price.toLocaleString()} ج.م • {apt.type === 'rent' ? 'إيجار' : 'بيع'}</p>
                           <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>أُرسلت: {new Date(apt.createdAt).toLocaleDateString('ar-EG')}</p>
                         </div>
                         <div className="flex gap-2"><button onClick={() => handleApproveApartment(apt.id)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600">موافقة</button><button onClick={() => handleRejectApartment(apt.id)} className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600">رفض</button></div>
@@ -2877,12 +2736,12 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${sett
                           <input type="checkbox" checked={selectedPayments.includes(payment.id)} onChange={(e) => { if (e.target.checked) setSelectedPayments([...selectedPayments, payment.id]); else setSelectedPayments(selectedPayments.filter(id => id !== payment.id)); }} className="mt-1 shrink-0 cursor-pointer" />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <p className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{payment.amount} {settings.currency}</p>
+                              <p className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{payment.amount} ج.م</p>
                               <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${payment.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : payment.status === 'Pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{payment.status === 'Paid' ? '✅ مدفوع' : payment.status === 'Pending' ? '⏳ قيد الانتظار' : '❌ مرفوض'}</span>
                               <span className={`px-2 py-0.5 rounded-full text-xs ${darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>{payment.method}</span>
                             </div>
                             <p className={`text-sm mt-1 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>👤 {payment.inquiry?.name || 'غير معروف'}{payment.inquiry?.phone ? ` • 📞 ${payment.inquiry.phone}` : ''}</p>
-                            {payment.inquiry?.apartment && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>🏠 {payment.inquiry.apartment.title} - {payment.inquiry.apartment.price} {settings.currency}</p>}
+                            {payment.inquiry?.apartment && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>🏠 {payment.inquiry.apartment.title} - {payment.inquiry.apartment.price} ج.م</p>}
                             <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(payment.createdAt).toLocaleString('ar-EG')}</p>
                           </div>
                         </div>
@@ -2891,11 +2750,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${sett
                             <div className="flex gap-1">
                               <button onClick={() => handleConfirmPayment(payment.id)} className="p-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-colors" title="تأكيد الدفع"><Check className="h-4 w-4" /></button>
                               <button onClick={() => handleRejectPayment(payment.id)} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors" title="رفض الدفع"><X className="h-4 w-4" /></button>
-                              <button onClick={() => handleResendPayment(payment.id)} className="p-2 rounded-lg bg-violet-500 text-white hover:bg-violet-600 transition-colors" title="إعادة إرسال"><RefreshCw className="h-4 w-4" /></button>
                             </div>
-                          )}
-                          {(payment.status === 'Paid' || payment.status === 'Failed') && (
-                            <button onClick={() => handleResendPayment(payment.id)} className="p-2 rounded-lg bg-violet-500/10 text-violet-500 hover:bg-violet-500/20 transition-colors" title="إعادة إرسال"><RefreshCw className="h-4 w-4" /></button>
                           )}
                           <button onClick={() => handleDeletePayments([payment.id])} className="p-2 rounded-lg hover:bg-red-500/10 text-red-400 hover:text-red-600 transition-colors" title="حذف"><Trash2 className="h-4 w-4" /></button>
                         </div>
@@ -3291,7 +3146,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ${sett
                             {request.newPrice != null && request.newPrice !== undefined && (
                               <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm ${darkMode ? 'bg-emerald-900/20 text-emerald-400' : 'bg-emerald-50 text-emerald-700'}`}>
                                 <DollarSign className="h-3.5 w-3.5" />
-                                السعر الجديد: {request.newPrice?.toLocaleString()} {settings.currency}
+                                السعر الجديد: {request.newPrice?.toLocaleString()} ج.م
                               </div>
                             )}
                             {request.newStatus && (
