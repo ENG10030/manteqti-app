@@ -19,8 +19,8 @@ import { Resend } from 'resend';
 // Initialize Resend client
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Default sender email
-const DEFAULT_FROM = process.env.EMAIL_FROM || 'noreply@manteqti.com';
+// Default sender email (يدعم أسماء متغيرات مختلفة)
+const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL || process.env.EMAIL_FROM || 'onboarding@resend.dev';
 
 // App URL for links
 const APP_URL = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://manteqti-app.vercel.app';
@@ -337,4 +337,28 @@ export async function testEmailConfig(): Promise<{
   }
 
   return { success: true, details };
+}
+
+/**
+ * Send new message notification email
+ * Used when a user sends a message to another user
+ */
+export async function sendNewMessageEmail(params: {
+  to: string;
+  name: string;
+  senderName: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { to, name, senderName } = params;
+
+  const html = emailTemplate(`
+    <h2>رسالة جديدة 💬</h2>
+    <p>مرحباً ${name}،</p>
+    <p>لديك رسالة جديدة من <strong>${senderName}</strong> في <strong>منطقتي</strong>.</p>
+    <div style="text-align: center; margin: 24px 0;">
+      <a href="${APP_URL}" class="btn">💬 عرض الرسالة</a>
+    </div>
+    <p>افتح التطبيق لمتابعة المحادثة.</p>
+  `, 'رسالة جديدة');
+
+  return sendEmail({ to, subject: `رسالة جديدة من ${senderName} - منطقتي`, html });
 }
