@@ -827,11 +827,12 @@ export default function App() {
     }
     if (initialLoadRef.current) return;
     fetchSettings();
-    if (isDeveloper && currentUser) { fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
+    if (isDeveloper && currentUser) { fetchApartmentsRef.current?.(0, false); fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
     if (currentUser && !isDeveloper) { fetchUserPayments(); fetchMyPendingApartments(); fetchUserLikes(); }
   }, [isDeveloper, currentUser]);
 
-  // Smart auto-refresh every 30 seconds with visibility API (skip when tab hidden)
+  // Smart auto-refresh every 15 seconds with visibility API (skip when tab hidden)
+  // v55 fix: reduced from 30s to 15s for faster apartment list updates
   useEffect(() => {
     const interval = setInterval(async () => {
       if (initialLoadRef.current) return;
@@ -843,7 +844,7 @@ export default function App() {
         fetchApartmentsRef.current?.(0, false),
         ...(currentUserRef.current ? [fetchMessagesRef.current?.()] : []),
       ]);
-    }, 30000);
+    }, 15000);
     return () => clearInterval(interval);
   }, []); // Empty deps — uses refs, never re-creates
 
@@ -1195,12 +1196,8 @@ export default function App() {
           images: Array.isArray(imageUrls) && imageUrls.length > 0 ? JSON.stringify(imageUrls) : null, 
           videos: Array.isArray(videoUrls) && videoUrls.length > 0 ? JSON.stringify(videoUrls) : null, 
           createdBy: currentUser?.id, 
-          // فقط المطور يقدر يحدد مستوى النشر - المستخدم العادي لا يرسل هذه القيم
-          ...(isDeveloper ? {
-            listingType: aptForm.listingType,
-            isFeatured: aptForm.listingType === 'featured' || aptForm.listingType === 'vip',
-            isVip: aptForm.listingType === 'vip',
-          } : {}),
+          isFeatured: aptForm.listingType === 'featured' || aptForm.listingType === 'vip',
+          isVip: aptForm.listingType === 'vip',
           status: isDeveloper ? 'available' : 'pending' 
         }) 
       });
@@ -2299,7 +2296,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الدور</label><select value={aptForm.floor} onChange={(e) => setAptForm({ ...aptForm, floor: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="">بدون تحديد</option>{['أرضي', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15+'].map(n => <option key={n} value={n === 'أرضي' ? '0' : n === '15+' ? '15' : n}>{n}</option>)}</select></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>مساحة الشقة (م²)</label><input type="number" placeholder="مثال: 120" value={aptForm.apartmentSize} onChange={(e) => setAptForm({ ...aptForm, apartmentSize: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>النوع (إيجار / بيع)</label><select value={aptForm.type} onChange={(e) => setAptForm({ ...aptForm, type: e.target.value as 'rent' | 'sale' })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="rent">إيجار</option><option value="sale">بيع</option></select></div>
-                {isDeveloper && (<div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>مستوى النشر</label>
+                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>مستوى النشر</label>
                   <div className="grid grid-cols-3 gap-2">
                     <button type="button" onClick={() => setAptForm({ ...aptForm, listingType: 'regular' })} className={`p-3 rounded-xl border-2 text-center transition-all ${aptForm.listingType === 'regular' ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : darkMode ? 'border-slate-600 bg-slate-700' : 'border-slate-200 bg-white'}`}>
                       <Home className={`h-5 w-5 mx-auto mb-1 ${aptForm.listingType === 'regular' ? 'text-emerald-500' : darkMode ? 'text-slate-400' : 'text-slate-400'}`} />
@@ -2317,7 +2314,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <p className={`text-xs mt-0.5 ${(settings.vipFee || 300) === 0 ? 'text-emerald-500 font-bold' : (darkMode ? 'text-slate-500' : 'text-slate-400')}`}>{(settings.vipFee || 300) === 0 ? 'مجاني ✨' : `${settings.vipFee || 300} ${settings.currency}`}</p>
                     </button>
                   </div>
-                </div>)}
+                </div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رقم الهاتف *</label><input type="tel" value={aptForm.ownerPhone} onChange={(e) => setAptForm({ ...aptForm, ownerPhone: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
                 <div className="col-span-2"><div className="flex items-center justify-between mb-2"><label className={`block text-sm font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الوصف *</label><button type="button" onClick={generateAIDescription} disabled={aiDescLoading} className="flex items-center gap-1 px-3 py-1 rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 text-white text-xs font-medium disabled:opacity-50 hover:from-violet-600 hover:to-purple-700 transition-all">{aiDescLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}إنشاء بالذكاء الاصطناعي</button></div><textarea value={aptForm.description} onChange={(e) => setAptForm({ ...aptForm, description: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} rows={3} required /></div>
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رابط الخريطة (اختياري)</label><input type="url" value={aptForm.mapLink} onChange={(e) => setAptForm({ ...aptForm, mapLink: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>

@@ -89,9 +89,9 @@ export async function PUT(
         bathrooms: body.bathrooms,
         ownerPhone: body.ownerPhone,
         mapLink: body.mapLink,
-        images: body.images,
-        videos: body.videos,
-        amenities: body.amenities,
+        images: Array.isArray(body.images) ? JSON.stringify(body.images) : body.images,
+        videos: Array.isArray(body.videos) ? JSON.stringify(body.videos) : body.videos,
+        amenities: Array.isArray(body.amenities) ? JSON.stringify(body.amenities) : body.amenities,
         isFeatured: body.isFeatured,
         isVip: body.isVip,
       };
