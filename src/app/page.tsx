@@ -1159,7 +1159,7 @@ export default function App() {
         else { localStorage.removeItem('manteqti_remembered_identifier'); localStorage.removeItem('manteqti_remember_me'); }
         setAuthPassword('');
         addToast(`مرحباً ${data.user.name}! 🎉`, 'success');
-      } else if (data.emailNotVerified) {
+      } else if (data.emailVerificationRequired) {
         // Email NOT verified - MUST verify first, cannot bypass with developer approval
         setShowAuth(false);
         setShowOtpVerification(true);

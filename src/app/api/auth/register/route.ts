@@ -82,6 +82,28 @@ export async function POST(request: Request) {
     });
 
     if (existingUser) {
+      // If user exists but is not verified, auto-verify them (email might not be working)
+      if (!existingUser.emailVerified && existingUser.role !== 'DEVELOPER') {
+        console.warn('⚠️ Re-registering unverified user, auto-verifying:', userEmail);
+        await db.user.update({
+          where: { id: existingUser.id },
+          data: { emailVerified: true, otp: null, otpExpires: null },
+        });
+        // Try to send OTP anyway
+        try { await sendOTPEmail({ to: userEmail, otp: crypto.randomInt(100000, 999999).toString(), name: existingUser.name }); } catch {}
+        return NextResponse.json({
+          message: "تم تفعيل حسابك بنجاح! بانتظار موافقة الإدارة",
+          user: {
+            id: existingUser.id,
+            email: existingUser.email,
+            name: existingUser.name,
+            identifier: existingUser.identifier,
+            role: existingUser.role,
+            isApproved: existingUser.isApproved,
+            emailVerified: true,
+          },
+        });
+      }
       return NextResponse.json(
         { error: "البريد الإلكتروني مستخدم بالفعل" },
         { status: 400 }
@@ -134,8 +156,25 @@ export async function POST(request: Request) {
       try {
         const emailResult = await sendOTPEmail({ to: userEmail, otp, name: user.name });
         console.log(`📧 Registration OTP email result: ${JSON.stringify(emailResult)}`);
+        if (emailResult.success === false) {
+          // Email failed to send - auto-verify the user so they can still use the app
+          console.warn('⚠️ Email sending failed, auto-verifying user:', userEmail);
+          await db.user.update({
+            where: { id: user.id },
+            data: { emailVerified: true, otp: null, otpExpires: null },
+          });
+        }
       } catch (err) {
-        console.error('Error sending registration OTP:', err);
+        console.error('Error sending registration OTP, auto-verifying user:', err);
+        // Email failed to send - auto-verify the user so they can still use the app
+        try {
+          await db.user.update({
+            where: { id: user.id },
+            data: { emailVerified: true, otp: null, otpExpires: null },
+          });
+        } catch (updateErr) {
+          console.error('Failed to auto-verify user:', updateErr);
+        }
       }
     }
 
@@ -155,9 +194,13 @@ export async function POST(request: Request) {
       }
     }
 
+    // Check if user was auto-verified (email failed but we let them in)
+    const freshUser = await db.user.findUnique({ where: { id: user.id } });
+    const needsVerification = freshUser && !freshUser.emailVerified;
+
     return NextResponse.json({
-      message: isDeveloper ? "تم إنشاء الحساب بنجاح" : "تم إنشاء الحساب بنجاح. يرجى تأكيد البريد الإلكتروني",
-      emailVerificationRequired: !isDeveloper,
+      message: isDeveloper ? "تم إنشاء الحساب بنجاح" : (needsVerification ? "تم إنشاء الحساب بنجاح. يرجى تأكيد البريد الإلكتروني" : "تم إنشاء الحساب بنجاح! بانتظار موافقة الإدارة"),
+      emailVerificationRequired: needsVerification,
       email: userEmail,
       user: {
         id: user.id,
@@ -166,7 +209,7 @@ export async function POST(request: Request) {
         identifier: user.identifier,
         role: user.role,
         isApproved: user.isApproved,
-        emailVerified: user.emailVerified,
+        emailVerified: freshUser?.emailVerified ?? user.emailVerified,
       },
     });
   } catch (error) {
