@@ -146,7 +146,7 @@ export async function POST(request: Request) {
         await sendNewUserNotificationEmail({
           to: DEVELOPER_EMAIL,
           userName: user.name,
-          userEmail: user.email,
+          userEmail: user.email || userEmail,
           userPhone: phone || null,
         });
         console.log(`📧 Developer notification email sent for new user: ${user.name}`);
