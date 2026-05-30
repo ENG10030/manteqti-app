@@ -372,11 +372,19 @@ export default function App() {
       setAllApartments(processedData);
       setError(null);
     } catch (err: any) {
-      // Only retry once for initial load to avoid multiple refresh flashes
-      if (isInitial && retryCount < 1) setTimeout(() => fetchApartments(retryCount + 1, true), 2000);
-      else if (!isInitial) { /* silent fail for background refreshes */ }
-      else { setApartments([]); setAllApartments([]); setError('فشل تحميل البيانات'); }
-    } finally { if (isInitial && retryCount === 0) { setLoading(false); setInitialLoad(false); initialLoadRef.current = false; } }
+      if (isInitial && retryCount < 3) {
+        setTimeout(() => fetchApartments(retryCount + 1, true), 1500 * (retryCount + 1));
+      } else {
+        setApartments([]);
+        setAllApartments([]);
+      }
+    } finally {
+      if (isInitial && retryCount === 0) {
+        setLoading(false);
+        setInitialLoad(false);
+        initialLoadRef.current = false;
+      }
+    }
   };
   // Keep ref in sync so socket/polling can call latest version
   useEffect(() => { fetchApartmentsRef.current = fetchApartments; });
