@@ -1,85 +1,99 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { sendOTPEmail } from '@/lib/email';
-import crypto from 'crypto';
+import { sendVerificationEmail } from '@/lib/email';
 
-// Rate limiting for OTP requests (in-memory)
-const otpRequestCounts = new Map<string, { count: number; lastRequest: number }>();
-const MAX_OTP_REQUESTS = 3; // max 3 requests per 5 minutes
-const OTP_REQUEST_WINDOW = 5 * 60 * 1000;
+/**
+ * توليد رمز OTP مكون من 6 أرقام
+ */
+function generateOTP(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
+/**
+ * إعادة إرسال رمز OTP
+ * POST /api/auth/request-otp
+ * Body: { identifier: string }
+ */
 export async function POST(request: NextRequest) {
   try {
-    const { identifier } = await request.json();
+    const body = await request.json();
+    const { identifier } = body;
 
     if (!identifier) {
-      return NextResponse.json({ 
-        error: 'البريد الإلكتروني مطلوب' 
-      }, { status: 400 });
+      return NextResponse.json({ error: 'البريد الإلكتروني مطلوب' }, { status: 400 });
     }
 
     const normalizedIdentifier = identifier.toLowerCase().trim();
 
-    // Rate limit OTP requests
-    const requestCount = otpRequestCounts.get(normalizedIdentifier);
-    if (requestCount) {
-      const now = Date.now();
-      if (now - requestCount.lastRequest < OTP_REQUEST_WINDOW) {
-        if (requestCount.count >= MAX_OTP_REQUESTS) {
-          return NextResponse.json({ 
-            error: 'طلبات كثيرة. يرجى المحاولة بعد 5 دقائق' 
-          }, { status: 429 });
-        }
-      } else {
-        // Window expired, reset counter
-        otpRequestCounts.set(normalizedIdentifier, { count: 1, lastRequest: now });
-      }
-    } else {
-      otpRequestCounts.set(normalizedIdentifier, { count: 1, lastRequest: Date.now() });
-    }
-
-    // Find user by identifier or email
-    const user = await db.user.findFirst({
-      where: {
-        OR: [
-          { identifier: normalizedIdentifier },
-          { email: normalizedIdentifier }
-        ]
-      }
+    // البحث عن المستخدم
+    const user = await db.user.findUnique({
+      where: { identifier: normalizedIdentifier },
     });
 
-    // Always return the same success message to prevent email enumeration
-    // Even if user doesn't exist, we return "success" to not leak info
     if (!user) {
-      return NextResponse.json({ 
-        success: true,
-        message: 'إذا كان البريد مسجلاً، سيتم إرسال رمز التحقق' 
-      });
+      return NextResponse.json({ error: 'المستخدم غير موجود' }, { status: 404 });
     }
 
-    // Generate new OTP
-    const otp = crypto.randomInt(100000, 999999).toString();
-    const otpExpires = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
+    // التحقق من أن البريد لم يتم تأكيده بالفعل
+    if (user.emailVerified) {
+      return NextResponse.json({ error: 'البريد الإلكتروني مؤكد بالفعل ✅' }, { status: 400 });
+    }
 
-    // Update user with new OTP
+    // التحقق من Rate Limiting (لا يسمح بأكثر من طلب كل 60 ثانية)
+    if (user.otpExpires) {
+      const timeSinceLastRequest = Date.now() - user.otpExpires.getTime() + (10 * 60 * 1000); // otpExpires - 10min = time of creation
+      const timeSinceCreation = (10 * 60 * 1000) - (user.otpExpires.getTime() - Date.now());
+      if (timeSinceCreation > 0 && (10 * 60 * 1000 - timeSinceCreation) < 60000) {
+        // أقل من دقيقة من آخر طلب
+        const waitSeconds = Math.ceil((60000 - (10 * 60 * 1000 - timeSinceCreation)) / 1000);
+        return NextResponse.json({
+          error: `يرجى الانتظار ${waitSeconds} ثانية قبل طلب رمز جديد ⏳`
+        }, { status: 429 });
+      }
+    }
+
+    // توليد رمز OTP جديد
+    const otp = generateOTP();
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 دقائق
+
+    // تحديث المستخدم بالرمز الجديد
     await db.user.update({
       where: { id: user.id },
       data: {
-        otp,
-        otpExpires
-      }
+        otp: otp,
+        otpExpires: otpExpires,
+      },
     });
 
-    // Send OTP via email
-    const emailTo = user.email || normalizedIdentifier;
-    await sendOTPEmail({ to: emailTo, otp, name: user.name });
+    // ===== إرسال الإيميل =====
+    let emailSent = false;
 
-    return NextResponse.json({ 
-      success: true,
-      message: 'تم إرسال رمز التحقق',
+    try {
+      const result = await sendVerificationEmail({
+        to: user.email!,
+        otp: otp,
+        name: user.name,
+      });
+      emailSent = result.success;
+      console.log(`📧 Resend OTP to ${user.email}: ${result.success ? 'SENT ✅' : 'FAILED ❌ - ' + result.error}`);
+    } catch (err: any) {
+      console.error('❌ Error resending OTP email:', err);
+    }
+
+    if (!emailSent) {
+      return NextResponse.json({
+        error: 'فشل إرسال الرمز. تأكد من أن البريد صحيح وحاول مرة أخرى.',
+        ...(process.env.NODE_ENV === 'development' && { debug: { otp } }),
+      }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      message: 'تم إرسال رمز تأكيد جديد ✅',
+      ...(process.env.NODE_ENV === 'development' && { debug: { otp } }),
     });
+
   } catch (error) {
-    console.error('Error requesting OTP:', error);
-    return NextResponse.json({ error: 'فشل في إرسال رمز التحقق' }, { status: 500 });
+    console.error('❌ Error requesting OTP:', error);
+    return NextResponse.json({ error: 'حدث خطأ. يرجى المحاولة مرة أخرى.' }, { status: 500 });
   }
 }

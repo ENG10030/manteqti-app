@@ -1,64 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { cookies } from 'next/headers';
-import { verify } from 'jsonwebtoken';
-import { requireApprovedUser } from '@/lib/auth-middleware';
+import { verifyAuth, requireDeveloper } from '@/lib/auth';
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-
-// جلب طلبات التعديل
+/**
+ * GET /api/edit-requests
+ * Require developer auth. Return all edit requests.
+ */
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
+    const decoded = await requireDeveloper(request);
+    if (decoded instanceof Response) return decoded;
 
-    if (decoded.role !== 'DEVELOPER') {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status');
-    const userId = searchParams.get('userId');
-    const apartmentId = searchParams.get('apartmentId');
-
-    const where: Record<string, unknown> = {};
-
-    if (status) where.status = status;
-    if (userId) where.userId = userId;
-    if (apartmentId) where.apartmentId = apartmentId;
-
-    const editRequests = await db.propertyEditRequest.findMany({
-      where,
-      include: {
-        apartment: {
-          select: {
-            id: true,
-            title: true,
-            price: true,
-            status: true,
-            images: true,
-            videos: true,
-            type: true,
-          }
-        },
-        user: {
-          select: {
-            id: true,
-            name: true,
-            identifier: true,
-          }
-        }
-      },
+    const editRequests = await db.editRequest.findMany({
       orderBy: { createdAt: 'desc' },
+      include: {
+        apartment: { select: { id: true, title: true, price: true, status: true, images: true, videos: true, type: true } },
+        user: { select: { id: true, name: true, identifier: true } },
+      },
     });
 
     return NextResponse.json(editRequests);
@@ -68,89 +26,162 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// إنشاء طلب تعديل جديد
+/**
+ * POST /api/edit-requests
+ * Require auth. Create edit request.
+ * Body: { apartmentId, userId, editType, newImages?, newVideos?, newPrice?, newStatus?, description? }
+ */
 export async function POST(request: NextRequest) {
   try {
-    const { auth, errorResponse } = await requireApprovedUser(request);
-    if (errorResponse || !auth) return errorResponse!;
+    const decoded = await verifyAuth(request);
+    if (!decoded) {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
 
-    const tokenUserId = auth.userId;
     const body = await request.json();
+    const { apartmentId, editType, newImages, newVideos, newPrice, newStatus, description } = body;
 
-    // التحقق من وجود العقار
+    if (!apartmentId || !editType) {
+      return NextResponse.json({ error: 'معرف العقار ونوع التعديل مطلوبان' }, { status: 400 });
+    }
+
+    // Verify apartment exists
     const apartment = await db.apartment.findUnique({
-      where: { id: body.apartmentId },
+      where: { id: apartmentId },
     });
 
     if (!apartment) {
       return NextResponse.json({ error: 'العقار غير موجود' }, { status: 404 });
     }
 
-    // التحقق من أن العقار موافق عليه (منشور)
-    if (apartment.status !== 'available') {
-      return NextResponse.json({ error: 'لا يمكن طلب تعديل على عقار غير منشور' }, { status: 400 });
-    }
-
-    // التحقق من عدم وجود طلب تعديل معلق سابق
-    const existingRequest = await db.propertyEditRequest.findFirst({
-      where: {
-        apartmentId: body.apartmentId,
-        userId: tokenUserId,
-        status: 'pending',
-      },
-    });
-
-    if (existingRequest) {
-      return NextResponse.json({ error: 'يوجد طلب تعديل معلق بالفعل على هذا العقار' }, { status: 400 });
-    }
-
-    // تحديد نوع التعديل
-    let editType = 'multiple';
-    const hasImages = body.newImages && body.newImages.length > 0;
-    const hasVideos = body.newVideos && body.newVideos.length > 0;
-    const hasPrice = body.newPrice !== undefined && body.newPrice !== null;
-    const hasStatus = body.newStatus !== undefined && body.newStatus !== null;
-
-    if (hasImages && !hasVideos && !hasPrice && !hasStatus) editType = 'images';
-    else if (hasVideos && !hasImages && !hasPrice && !hasStatus) editType = 'videos';
-    else if (hasPrice && !hasImages && !hasVideos && !hasStatus) editType = 'price';
-    else if (hasStatus && !hasImages && !hasVideos && !hasPrice) editType = 'status';
-
-    const editRequest = await db.propertyEditRequest.create({
+    const editRequest = await db.editRequest.create({
       data: {
-        apartmentId: body.apartmentId,
-        userId: tokenUserId,
+        apartmentId,
+        userId: decoded.id,
         editType,
-        newImages: body.newImages ? JSON.stringify(body.newImages) : null,
-        newVideos: body.newVideos ? JSON.stringify(body.newVideos) : null,
-        newPrice: body.newPrice ? parseInt(body.newPrice) : null,
-        newStatus: body.newStatus || null,
-        description: body.description || null,
+        newImages: Array.isArray(newImages) ? JSON.stringify(newImages) : newImages || null,
+        newVideos: Array.isArray(newVideos) ? JSON.stringify(newVideos) : newVideos || null,
+        newPrice: newPrice ? parseFloat(newPrice) : null,
+        newStatus: newStatus || null,
+        description: description || null,
         status: 'pending',
       },
       include: {
-        apartment: {
-          select: {
-            id: true,
-            title: true,
-          }
-        },
-        user: {
-          select: {
-            id: true,
-            name: true,
-          }
-        }
-      }
+        apartment: { select: { id: true, title: true } },
+        user: { select: { id: true, name: true, identifier: true } },
+      },
     });
 
-    return NextResponse.json({
-      success: true,
-      editRequest,
-      message: 'تم إرسال طلب التعديل بنجاح. سيتم مراجعته من قبل المطور.'
-    });
+    // Log edit request creation
+    try {
+      await db.operationLog.create({
+        data: {
+          action: 'EDIT_REQUEST_CREATED',
+          entityType: 'EditRequest',
+          entityId: editRequest.id,
+          details: JSON.stringify({
+            apartmentId,
+            editType,
+            requestedBy: decoded.identifier,
+          }),
+          userId: decoded.id,
+        },
+      });
+    } catch {}
+
+    return NextResponse.json(editRequest, { status: 201 });
   } catch (error) {
     console.error('Error creating edit request:', error);
-    return NextResponse.json({ error: 'حدث خطأ أثناء إرسال طلب التعديل' }, { status: 500 });
+    return NextResponse.json({ error: 'حدث خطأ أثناء إنشاء طلب التعديل' }, { status: 500 });
+  }
+}
+
+/**
+ * PUT /api/edit-requests
+ * Require developer auth. Approve or reject edit request.
+ * Body: { id, action: 'approve' | 'reject', reviewNotes? }
+ */
+export async function PUT(request: NextRequest) {
+  try {
+    const decoded = await requireDeveloper(request);
+    if (decoded instanceof Response) return decoded;
+
+    const body = await request.json();
+    const { id, action, reviewNotes } = body;
+
+    if (!id || !action || !['approve', 'reject'].includes(action)) {
+      return NextResponse.json({ error: 'بيانات غير صحيحة' }, { status: 400 });
+    }
+
+    const existingRequest = await db.editRequest.findUnique({
+      where: { id },
+      include: { apartment: true },
+    });
+
+    if (!existingRequest) {
+      return NextResponse.json({ error: 'طلب التعديل غير موجود' }, { status: 404 });
+    }
+
+    const newStatus = action === 'approve' ? 'approved' : 'rejected';
+
+    // Update the edit request
+    const editRequest = await db.editRequest.update({
+      where: { id },
+      data: {
+        status: newStatus,
+        reviewedBy: decoded.identifier,
+        reviewedAt: new Date(),
+        reviewNotes: reviewNotes || null,
+      },
+    });
+
+    // If approved, apply the changes to the apartment
+    if (action === 'approve' && existingRequest.apartment) {
+      const updateData: Record<string, unknown> = {};
+
+      if (existingRequest.newImages) {
+        updateData.images = existingRequest.newImages;
+      }
+      if (existingRequest.newVideos) {
+        updateData.videos = existingRequest.newVideos;
+      }
+      if (existingRequest.newPrice) {
+        updateData.price = existingRequest.newPrice;
+      }
+      if (existingRequest.newStatus) {
+        updateData.status = existingRequest.newStatus;
+      }
+
+      if (Object.keys(updateData).length > 0) {
+        await db.apartment.update({
+          where: { id: existingRequest.apartmentId },
+          data: updateData,
+        });
+      }
+    }
+
+    // Log the review action
+    try {
+      await db.operationLog.create({
+        data: {
+          action: `EDIT_REQUEST_${action.toUpperCase()}`,
+          entityType: 'EditRequest',
+          entityId: id,
+          details: JSON.stringify({
+            apartmentId: existingRequest.apartmentId,
+            editType: existingRequest.editType,
+            action,
+            reviewedBy: decoded.identifier,
+            reviewNotes,
+          }),
+          userId: decoded.id,
+        },
+      });
+    } catch {}
+
+    return NextResponse.json(editRequest);
+  } catch (error) {
+    console.error('Error updating edit request:', error);
+    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }

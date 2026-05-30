@@ -133,26 +133,26 @@ export async function POST(request: Request) {
     if (!isDeveloper && otp) {
       try {
         const emailResult = await sendOTPEmail({ to: userEmail, otp, name: user.name });
-        console.log(`📧 Registration OTP email result: ${JSON.stringify(emailResult)}`);
+        console.log(`📧 Registration OTP email result for ${userEmail}: ${JSON.stringify(emailResult)}`);
+        if (!emailResult.success) {
+          console.error(`❌ FAILED to send OTP to ${userEmail}: ${emailResult.error}`);
+        }
       } catch (err) {
         console.error('Error sending registration OTP:', err);
       }
     }
 
-    // Send notification email to developer about new registration
+    // Notify developer of new registration (fire-and-forget)
     if (!isDeveloper) {
-      const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
-      try {
-        await sendNewUserNotificationEmail({
-          to: DEVELOPER_EMAIL,
-          userName: user.name,
-          userEmail: user.email || userEmail,
-          userPhone: phone || null,
-        });
-        console.log(`📧 Developer notification email sent for new user: ${user.name}`);
-      } catch (err) {
-        console.error('Error sending developer notification:', err);
-      }
+      const devEmail = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
+      sendNewUserNotificationEmail({
+        to: devEmail,
+        userName: user.name,
+        userEmail: userEmail,
+        userPhone: phone || null,
+      }).catch(err => {
+        console.error('Failed to send developer notification:', err);
+      });
     }
 
     return NextResponse.json({

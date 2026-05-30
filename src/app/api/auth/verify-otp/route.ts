@@ -1,134 +1,87 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { sign } from 'jsonwebtoken';
+import { sendVerificationEmail } from '@/lib/email';
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+/**
+ * توليد رمز OTP مكون من 6 أرقام
+ */
+function generateOTP(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
-// OTP attempt rate limiting (in-memory)
-const otpAttempts = new Map<string, { count: number; lockedUntil: number }>();
-const MAX_OTP_ATTEMPTS = 5;
-const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
-
+/**
+ * التحقق من رمز OTP لتأكيد البريد الإلكتروني
+ * POST /api/auth/verify-otp
+ * Body: { identifier: string, otp: string }
+ */
 export async function POST(request: NextRequest) {
   try {
-    const { identifier, otp, code } = await request.json();
+    const body = await request.json();
+    const { identifier, otp } = body;
 
-    // Accept either 'otp' or 'code' field
-    const otpCode = otp || code;
-
-    if (!identifier || !otpCode) {
+    if (!identifier || !otp) {
       return NextResponse.json({ error: 'البريد الإلكتروني والرمز مطلوبان' }, { status: 400 });
     }
 
     const normalizedIdentifier = identifier.toLowerCase().trim();
 
-    // Check rate limiting for OTP attempts
-    const attempt = otpAttempts.get(normalizedIdentifier);
-    if (attempt) {
-      if (attempt.lockedUntil && Date.now() < attempt.lockedUntil) {
-        const remainingMinutes = Math.ceil((attempt.lockedUntil - Date.now()) / 60000);
-        return NextResponse.json({ 
-          error: `تم تجاوز عدد المحاولات المسموح. يرجى المحاولة بعد ${remainingMinutes} دقيقة`,
-          tooManyAttempts: true 
-        }, { status: 429 });
-      }
-      if (attempt.count >= MAX_OTP_ATTEMPTS) {
-        // Lock for 15 minutes
-        otpAttempts.set(normalizedIdentifier, { count: attempt.count, lockedUntil: Date.now() + LOCKOUT_DURATION });
-        return NextResponse.json({ 
-          error: 'تم تجاوز عدد المحاولات المسموح. يرجى المحاولة بعد 15 دقيقة',
-          tooManyAttempts: true 
-        }, { status: 429 });
-      }
-    }
-
-    // Find user by identifier
-    const user = await db.user.findFirst({
-      where: {
-        OR: [
-          { identifier: normalizedIdentifier },
-          { email: normalizedIdentifier }
-        ]
-      }
+    // البحث عن المستخدم
+    const user = await db.user.findUnique({
+      where: { identifier: normalizedIdentifier },
     });
 
     if (!user) {
-      return NextResponse.json({ error: 'البريد الإلكتروني أو الرمز غير صحيح' }, { status: 400 });
+      return NextResponse.json({ error: 'المستخدم غير موجود' }, { status: 404 });
     }
 
-    if (user.otp !== otpCode) {
-      // Increment attempt counter
-      const currentAttempt = otpAttempts.get(normalizedIdentifier) || { count: 0, lockedUntil: 0 };
-      currentAttempt.count += 1;
-      otpAttempts.set(normalizedIdentifier, currentAttempt);
-
-      const remaining = MAX_OTP_ATTEMPTS - currentAttempt.count;
-      if (remaining <= 0) {
-        otpAttempts.set(normalizedIdentifier, { count: currentAttempt.count, lockedUntil: Date.now() + LOCKOUT_DURATION });
-        return NextResponse.json({ 
-          error: 'تم تجاوز عدد المحاولات المسموح. يرجى المحاولة بعد 15 دقيقة',
-          tooManyAttempts: true 
-        }, { status: 429 });
-      }
-
-      return NextResponse.json({ 
-        error: `رمز التأكيد غير صحيح. متبقي ${remaining} محاول${remaining === 1 ? 'ة' : 'ات'}`,
-        remainingAttempts: remaining 
-      }, { status: 400 });
+    // التحقق من الرمز
+    if (user.otp !== otp) {
+      return NextResponse.json({ error: 'رمز التأكيد غير صحيح ❌' }, { status: 400 });
     }
 
-    if (!user.otpExpires || user.otpExpires < new Date()) {
-      return NextResponse.json({ error: 'انتهت صلاحية الرمز' }, { status: 400 });
+    // التحقق من انتهاء الصلاحية
+    if (user.otpExpires && new Date() > user.otpExpires) {
+      return NextResponse.json({ error: 'انتهت صلاحية الرمز. يرجى طلب رمز جديد ⏰' }, { status: 400 });
     }
 
-    // Clear attempt counter on success
-    otpAttempts.delete(normalizedIdentifier);
-
-    // Mark email as verified and clear OTP
+    // تأكيد البريد الإلكتروني
     const updatedUser = await db.user.update({
       where: { id: user.id },
       data: {
+        emailVerified: true,
         otp: null,
         otpExpires: null,
-        emailVerified: true,
-      }
+      },
     });
 
-    // Generate JWT token and set auth-token cookie (same as login)
-    const token = sign(
-      { userId: updatedUser.id, identifier: updatedUser.identifier, role: updatedUser.role },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    // تسجيل العملية
+    try {
+      await db.operationLog.create({
+        data: {
+          action: 'EMAIL_VERIFIED',
+          entityType: 'User',
+          entityId: user.id,
+          details: JSON.stringify({ email: user.email }),
+          userId: user.id,
+        },
+      });
+    } catch {}
 
-    const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
-    const isDeveloper = updatedUser.role === 'DEVELOPER' || updatedUser.identifier === DEVELOPER_EMAIL;
-
-    const response = NextResponse.json({
-      message: isDeveloper ? 'تم تأكيد البريد الإلكتروني بنجاح' : 'تم تأكيد البريد الإلكتروني! بانتظار موافقة الإدارة',
-      needsApproval: !isDeveloper && !updatedUser.isApproved,
+    return NextResponse.json({
+      message: 'تم تأكيد البريد الإلكتروني بنجاح! ✅',
       user: {
         id: updatedUser.id,
-        identifier: updatedUser.identifier,
-        name: updatedUser.name,
         email: updatedUser.email,
+        name: updatedUser.name,
+        identifier: updatedUser.identifier,
         role: updatedUser.role,
-        emailVerified: true,
         isApproved: updatedUser.isApproved,
-      }
+        emailVerified: updatedUser.emailVerified,
+      },
     });
 
-    response.cookies.set('auth-token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7,
-      path: '/',
-    });
-
-    return response;
   } catch (error) {
-    console.error('Error verifying OTP:', error);
-    return NextResponse.json({ error: 'فشل في التحقق من الرمز' }, { status: 500 });
+    console.error('❌ Error verifying OTP:', error);
+    return NextResponse.json({ error: 'حدث خطأ أثناء التحقق' }, { status: 500 });
   }
 }
