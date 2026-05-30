@@ -1,196 +1,45 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getCurrentUser } from "@/lib/auth"
-import { db } from "@/lib/db"
-import { hash } from "bcryptjs"
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { requireDeveloper } from '@/lib/auth';
 
-// جلب جميع المستخدمين (للمطور)
+/**
+ * GET /api/users
+ * Require developer auth. Return all users.
+ * If ?pending=true, return only unapproved users.
+ */
 export async function GET(request: NextRequest) {
   try {
-    const user = await getCurrentUser(request)
+    const decoded = await requireDeveloper(request);
+    if (decoded instanceof Response) return decoded;
 
-    if (!user || user.role !== "DEVELOPER") {
-      return NextResponse.json(
-        { error: "غير مصرح لك بهذا الإجراء" },
-        { status: 403 }
-      )
-    }
+    const { searchParams } = new URL(request.url);
+    const pendingOnly = searchParams.get('pending') === 'true';
 
-    const { searchParams } = new URL(request.url)
-    const blocked = searchParams.get("blocked")
-    const pending = searchParams.get("pending")
-    const statsParam = searchParams.get("stats")
-
-    // Return aggregated user statistics
-    if (statsParam === "true") {
-      const [
-        totalUsers,
-        approvedUsers,
-        pendingApprovalUsers,
-        blockedUsers,
-        emailVerifiedUsers,
-        emailUnverifiedUsers,
-        todayUsers,
-        weekUsers,
-        monthUsers,
-      ] = await Promise.all([
-        db.user.count({ where: { role: "USER" } }),
-        db.user.count({ where: { role: "USER", isApproved: true } }),
-        db.user.count({ where: { role: "USER", isApproved: false } }),
-        db.user.count({ where: { role: "USER", isBlocked: true } }),
-        db.user.count({ where: { role: "USER", emailVerified: true } }),
-        db.user.count({ where: { role: "USER", emailVerified: false } }),
-        db.user.count({ where: { role: "USER", createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } } }),
-        db.user.count({ where: { role: "USER", createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } }),
-        db.user.count({ where: { role: "USER", createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } } }),
-      ])
-
-      // Get recent registrations (last 10)
-      const recentUsers = await db.user.findMany({
-        where: { role: "USER" },
-        orderBy: { createdAt: "desc" },
-        take: 10,
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          phone: true,
-          identifier: true,
-          isApproved: true,
-          isBlocked: true,
-          emailVerified: true,
-          createdAt: true,
-        }
-      })
-
-      return NextResponse.json({
-        stats: {
-          totalUsers,
-          approvedUsers,
-          pendingApprovalUsers,
-          blockedUsers,
-          emailVerifiedUsers,
-          emailUnverifiedUsers,
-          todayUsers,
-          weekUsers,
-          monthUsers,
-        },
-        recentUsers,
-      })
-    }
-
-    const whereClause: Record<string, unknown> = {}
-
-    if (blocked === "true") {
-      whereClause.isBlocked = true
-    } else if (blocked === "false") {
-      whereClause.isBlocked = false
-    }
-
-    if (pending === "true") {
-      whereClause.isApproved = false
-      whereClause.role = "USER"
-    }
+    const where: Record<string, unknown> = pendingOnly
+      ? { isApproved: false }
+      : {};
 
     const users = await db.user.findMany({
-      where: whereClause,
-      orderBy: {
-        createdAt: "desc"
-      },
+      where,
+      orderBy: { createdAt: 'desc' },
       select: {
         id: true,
         name: true,
         email: true,
-        phone: true,
         identifier: true,
+        phone: true,
         role: true,
-        isBlocked: true,
         isApproved: true,
-        blockedAt: true,
+        emailVerified: true,
+        isBlocked: true,
         blockReason: true,
         createdAt: true,
-      }
-    })
+      },
+    });
 
-    return NextResponse.json({ users })
-
+    return NextResponse.json({ users });
   } catch (error) {
-    console.error("Get users error:", error)
-    return NextResponse.json(
-      { error: "حدث خطأ أثناء جلب المستخدمين" },
-      { status: 500 }
-    )
-  }
-}
-
-// إنشاء مستخدم جديد (تسجيل)
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { name, email, password, phone, identifier } = body
-
-    if (!email || !password) {
-      return NextResponse.json(
-        { error: "البريد الإلكتروني وكلمة المرور مطلوبان" },
-        { status: 400 }
-      )
-    }
-
-    // التحقق من عدم وجود المستخدم (باستخدام email - حقل فريد)
-    const existingUser = await db.user.findUnique({
-      where: { identifier: email.toLowerCase().trim() }
-    })
-
-    if (existingUser) {
-      return NextResponse.json(
-        { error: "البريد الإلكتروني مستخدم بالفعل" },
-        { status: 400 }
-      )
-    }
-
-    // التحقق من عدم وجود المعرف (باستخدام findFirst - ليس فريد)
-    if (identifier) {
-      const existingIdentifier = await db.user.findFirst({
-        where: { identifier: identifier.toLowerCase().trim() }
-      })
-
-      if (existingIdentifier) {
-        return NextResponse.json(
-          { error: "المعرف مستخدم بالفعل" },
-          { status: 400 }
-        )
-      }
-    }
-
-    // تشفير كلمة المرور
-    const hashedPassword = await hash(password, 12)
-
-    // إنشاء المستخدم
-    const user = await db.user.create({
-      data: {
-        identifier: identifier?.toLowerCase().trim() || email.toLowerCase().trim(),
-        name: name || email.split('@')[0],
-        email: email.toLowerCase().trim(),
-        password: hashedPassword,
-        phone: phone || null,
-        role: "USER"
-      }
-    })
-
-    return NextResponse.json({
-      success: true,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      }
-    })
-
-  } catch (error) {
-    console.error("Create user error:", error)
-    return NextResponse.json(
-      { error: "حدث خطأ أثناء إنشاء الحساب" },
-      { status: 500 }
-    )
+    console.error('Error fetching users:', error);
+    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }

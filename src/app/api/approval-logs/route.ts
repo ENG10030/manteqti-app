@@ -1,88 +1,68 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { requireDeveloper } from '@/lib/auth';
 
-// GET: Fetch approval logs (developer only)
-// DELETE: Delete a specific approval log entry (developer only)
+/**
+ * GET /api/approval-logs
+ * Require developer auth. Return approval logs.
+ * Query params: ?limit=100
+ */
 export async function GET(request: NextRequest) {
   try {
-    const currentUser = await getCurrentUser(request);
-
-    if (!currentUser || currentUser.role !== "DEVELOPER") {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
-    }
+    const decoded = await requireDeveloper(request);
+    if (decoded instanceof Response) return decoded;
 
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
-    const action = searchParams.get("action");
-    const limit = parseInt(searchParams.get("limit") || "100");
+    const limit = parseInt(searchParams.get('limit') || '100');
 
-    const where: any = {};
-    if (userId) where.userId = userId;
-    if (action) where.action = action;
+    const approvalLogs = await db.approvalLog.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(limit, 200),
+    });
 
-    let logs: any[] = [];
-    try {
-      logs = await db.approvalLog.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        take: limit,
-      });
-    } catch (tableError) {
-      console.log("ApprovalLog table might not exist yet");
-      return NextResponse.json([]);
-    }
-
-    return NextResponse.json(logs.map((log) => ({
-      id: log.id,
-      userId: log.userId,
-      action: log.action,
-      userName: log.userName,
-      userEmail: log.userEmail,
-      reason: log.reason,
-      performedBy: log.performedBy,
-      createdAt: log.createdAt instanceof Date ? log.createdAt.toISOString() : String(log.createdAt),
-    })));
+    return NextResponse.json(approvalLogs);
   } catch (error) {
-    console.error("Error fetching approval logs:", error);
-    return NextResponse.json([]);
+    console.error('Error fetching approval logs:', error);
+    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }
 
+/**
+ * DELETE /api/approval-logs
+ * Require developer auth. Delete approval log entry or clear all.
+ * Query params: ?id=logId or ?clearAll=true
+ */
 export async function DELETE(request: NextRequest) {
   try {
-    const currentUser = await getCurrentUser(request);
-
-    if (!currentUser || currentUser.role !== "DEVELOPER") {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
-    }
+    const decoded = await requireDeveloper(request);
+    if (decoded instanceof Response) return decoded;
 
     const { searchParams } = new URL(request.url);
-    const logId = searchParams.get("id");
-    const clearAll = searchParams.get("clearAll");
+    const id = searchParams.get('id');
+    const clearAll = searchParams.get('clearAll') === 'true';
 
-    if (clearAll === "true") {
-      // Clear all approval logs
-      try {
-        await db.approvalLog.deleteMany({});
-        return NextResponse.json({ message: "تم حذف جميع سجلات التأكيد" });
-      } catch {
-        return NextResponse.json({ error: "فشل حذف السجلات" }, { status: 500 });
-      }
+    if (clearAll) {
+      await db.approvalLog.deleteMany({});
+      return NextResponse.json({ success: true, message: 'تم حذف جميع سجلات التأكيد ✅' });
     }
 
-    if (!logId) {
-      return NextResponse.json({ error: "معرف السجل مطلوب" }, { status: 400 });
+    if (!id) {
+      return NextResponse.json({ error: 'معرف السجل مطلوب' }, { status: 400 });
     }
 
-    try {
-      await db.approvalLog.delete({ where: { id: logId } });
-      return NextResponse.json({ message: "تم حذف سجل التأكيد" });
-    } catch {
-      return NextResponse.json({ error: "فشل حذف السجل" }, { status: 500 });
+    const existingLog = await db.approvalLog.findUnique({
+      where: { id },
+    });
+
+    if (!existingLog) {
+      return NextResponse.json({ error: 'السجل غير موجود' }, { status: 404 });
     }
+
+    await db.approvalLog.delete({ where: { id } });
+
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error deleting approval log:", error);
-    return NextResponse.json({ error: "حدث خطأ" }, { status: 500 });
+    console.error('Error deleting approval log:', error);
+    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }

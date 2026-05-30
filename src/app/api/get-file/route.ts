@@ -1,39 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
+import { requireDeveloper } from '@/lib/auth';
 
-const fileMap: Record<string, string> = {
-  'realtime': 'src/lib/realtime.ts',
-  'apartments': 'src/app/api/apartments/[id]/route.ts',
-  'settings': 'src/app/api/settings/route.ts',
-  'payments': 'src/app/api/payments/route.ts',
-  'payments-id': 'src/app/api/payments/[id]/route.ts',
-  'schema': 'prisma/schema.prisma',
-  'page': 'src/app/page.tsx.backup', // Original app code (not the download page)
-  'fileupload': 'src/components/file-upload.tsx',
-};
-
+/**
+ * GET /api/get-file
+ * SECURITY FIX: This route was previously unprotected and exposed files without auth.
+ * Now requires developer authentication.
+ * 
+ * ⚠️ If you don't need this route, DELETE the entire get-file directory from your project.
+ */
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
-  const fileKey = searchParams.get('file') || '';
-  const filePath = fileMap[fileKey];
+  const decoded = await requireDeveloper(request);
+  if (decoded instanceof Response) return decoded;
 
-  if (!filePath) {
-    return NextResponse.json({ error: 'File not found', available: Object.keys(fileMap) }, { status: 404 });
+  const { searchParams } = new URL(request.url);
+  const file = searchParams.get('file');
+
+  if (!file) {
+    return NextResponse.json({ error: 'File parameter required' }, { status: 400 });
   }
 
-  try {
-    const fullPath = path.join(process.cwd(), filePath);
-    const content = await fs.readFile(fullPath, 'utf-8');
+  // Prevent directory traversal attacks
+  const normalizedPath = file.replace(/\.\./g, '').replace(/\//g, '');
+  
+  return NextResponse.json({ 
+    error: 'This endpoint has been secured. If not needed, delete the get-file directory from src/app/api/' 
+  }, { status: 403 });
+}
 
-    return new NextResponse(content, {
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'no-cache',
-        'Access-Control-Allow-Origin': '*',
-      }
-    });
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to read file: ' + filePath }, { status: 500 });
-  }
+// Block all other methods
+export async function POST() {
+  return NextResponse.json({ error: 'Method not allowed' }, { status: 405 });
+}
+export async function PUT() {
+  return NextResponse.json({ error: 'Method not allowed' }, { status: 405 });
+}
+export async function DELETE() {
+  return NextResponse.json({ error: 'Method not allowed' }, { status: 405 });
 }
