@@ -82,30 +82,33 @@ export async function POST(request: Request) {
     });
 
     if (existingUser) {
-      // If user exists but is not verified, auto-verify them (email might not be working)
+      // If user exists but is not verified, resend OTP (don't auto-verify!)
       if (!existingUser.emailVerified && existingUser.role !== 'DEVELOPER') {
-        console.warn('⚠️ Re-registering unverified user, auto-verifying:', userEmail);
+        console.log('📧 Unverified user re-registering, resending OTP:', userEmail);
+        // Generate new OTP
+        const otp = crypto.randomInt(100000, 999999).toString();
+        const otpExpires = new Date(Date.now() + 30 * 60 * 1000);
         await db.user.update({
           where: { id: existingUser.id },
-          data: { emailVerified: true, otp: null, otpExpires: null },
+          data: { otp, otpExpires },
         });
-        // Try to send OTP anyway
-        try { await sendOTPEmail({ to: userEmail, otp: crypto.randomInt(100000, 999999).toString(), name: existingUser.name }); } catch {}
+        // Try to send OTP email
+        try {
+          const emailResult = await sendOTPEmail({ to: userEmail, otp, name: existingUser.name });
+          console.log(`📧 Resend OTP result: ${JSON.stringify(emailResult)}`);
+        } catch (emailErr) {
+          console.error('Failed to resend OTP email:', emailErr);
+        }
         return NextResponse.json({
-          message: "تم تفعيل حسابك بنجاح! بانتظار موافقة الإدارة",
-          user: {
-            id: existingUser.id,
-            email: existingUser.email,
-            name: existingUser.name,
-            identifier: existingUser.identifier,
-            role: existingUser.role,
-            isApproved: existingUser.isApproved,
-            emailVerified: true,
-          },
+          message: "لديك حساب بالفعل ولكن لم يتم تأكيده. يرجى إدخال رمز التحقق",
+          emailVerificationRequired: true,
+          email: userEmail,
+          user: null, // Don't return user — force OTP verification
         });
       }
+      // User exists and is verified
       return NextResponse.json(
-        { error: "البريد الإلكتروني مستخدم بالفعل" },
+        { error: "البريد الإلكتروني مستخدم بالفعل. يرجى تسجيل الدخول بدلاً من ذلك", accountExists: true },
         { status: 400 }
       );
     }
@@ -113,9 +116,9 @@ export async function POST(request: Request) {
     const hashedPassword = await bcrypt.hash(password, 10);
     const isDeveloper = userEmail === (process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com");
 
-    // Generate OTP for email verification
+    // Generate OTP for email verification (always for non-developers)
     const otp = isDeveloper ? null : crypto.randomInt(100000, 999999).toString();
-    const otpExpires = isDeveloper ? null : new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
+    const otpExpires = isDeveloper ? null : new Date(Date.now() + 30 * 60 * 1000);
 
     const user = await db.user.create({
       data: {
@@ -126,13 +129,13 @@ export async function POST(request: Request) {
         identifier: userEmail,
         role: isDeveloper ? "DEVELOPER" : "USER",
         isApproved: isDeveloper,
-        emailVerified: isDeveloper,
+        emailVerified: isDeveloper, // Only developers are auto-verified
         otp,
         otpExpires,
       },
     });
 
-    // Log registration in OperationLog
+    // Log registration
     try {
       await db.operationLog.create({
         data: {
@@ -151,30 +154,15 @@ export async function POST(request: Request) {
       });
     } catch {}
 
-    // Send OTP email for non-developer users
+    // Send OTP email for non-developer users — MUST verify before login
     if (!isDeveloper && otp) {
       try {
         const emailResult = await sendOTPEmail({ to: userEmail, otp, name: user.name });
         console.log(`📧 Registration OTP email result: ${JSON.stringify(emailResult)}`);
-        if (emailResult.success === false) {
-          // Email failed to send - auto-verify the user so they can still use the app
-          console.warn('⚠️ Email sending failed, auto-verifying user:', userEmail);
-          await db.user.update({
-            where: { id: user.id },
-            data: { emailVerified: true, otp: null, otpExpires: null },
-          });
-        }
+        // Note: We NO LONGER auto-verify on failure. User MUST verify.
       } catch (err) {
-        console.error('Error sending registration OTP, auto-verifying user:', err);
-        // Email failed to send - auto-verify the user so they can still use the app
-        try {
-          await db.user.update({
-            where: { id: user.id },
-            data: { emailVerified: true, otp: null, otpExpires: null },
-          });
-        } catch (updateErr) {
-          console.error('Failed to auto-verify user:', updateErr);
-        }
+        console.error('Error sending registration OTP:', err);
+        // Note: We NO LONGER auto-verify on failure. User MUST verify.
       }
     }
 
@@ -188,19 +176,25 @@ export async function POST(request: Request) {
           userEmail: user.email || userEmail,
           userPhone: phone || null,
         });
-        console.log(`📧 Developer notification email sent for new user: ${user.name}`);
       } catch (err) {
         console.error('Error sending developer notification:', err);
       }
     }
 
-    // Check if user was auto-verified (email failed but we let them in)
-    const freshUser = await db.user.findUnique({ where: { id: user.id } });
-    const needsVerification = freshUser && !freshUser.emailVerified;
+    // For non-developers, ALWAYS require email verification
+    if (!isDeveloper) {
+      return NextResponse.json({
+        message: "تم إنشاء الحساب بنجاح! يرجى تأكيد البريد الإلكتروني لإتمام التسجيل",
+        emailVerificationRequired: true,
+        email: userEmail,
+        user: null, // Don't give user session — force OTP first
+      });
+    }
 
+    // Developer auto-verified
     return NextResponse.json({
-      message: isDeveloper ? "تم إنشاء الحساب بنجاح" : (needsVerification ? "تم إنشاء الحساب بنجاح. يرجى تأكيد البريد الإلكتروني" : "تم إنشاء الحساب بنجاح! بانتظار موافقة الإدارة"),
-      emailVerificationRequired: needsVerification,
+      message: "تم إنشاء الحساب بنجاح",
+      emailVerificationRequired: false,
       email: userEmail,
       user: {
         id: user.id,
@@ -209,7 +203,7 @@ export async function POST(request: Request) {
         identifier: user.identifier,
         role: user.role,
         isApproved: user.isApproved,
-        emailVerified: freshUser?.emailVerified ?? user.emailVerified,
+        emailVerified: true,
       },
     });
   } catch (error) {

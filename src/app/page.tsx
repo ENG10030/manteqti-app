@@ -1159,16 +1159,16 @@ export default function App() {
         else { localStorage.removeItem('manteqti_remembered_identifier'); localStorage.removeItem('manteqti_remember_me'); }
         setAuthPassword('');
         addToast(`مرحباً ${data.user.name}! 🎉`, 'success');
+      } else if (data.accountNotFound) {
+        addToast('❌ لا يوجد حساب بهذا البريد. يرجى إنشاء حساب أولاً!', 'error');
       } else if (data.emailVerificationRequired) {
-        // Email NOT verified - MUST verify first, cannot bypass with developer approval
+        // Email NOT verified - show OTP modal
         setShowAuth(false);
         setShowOtpVerification(true);
-        setOtpEmail(authIdentifier.trim().toLowerCase());
-        addToast('⚠️ يجب تأكيد البريد الإلكتروني أولاً قبل تسجيل الدخول!', 'error');
-      } else if (data.notApproved) {
+        setOtpEmail(data.email || authIdentifier.trim().toLowerCase());
+        addToast('⚠️ لم يتم تأكيد بريدك الإلكتروني. أدخل رمز التحقق لإتمام التسجيل', 'info');
+      } else if (data.pendingApproval) {
         addToast('⏳ حسابك بانتظار موافقة الإدارة. سيتم إشعارك فور الموافقة.', 'info');
-      } else if (data.userBlocked) {
-        addToast('🚫 حسابك محظور. تواصل مع الإدارة.', 'error');
       } else {
         addToast(data.error || 'خطأ في تسجيل الدخول', 'error');
       }
@@ -1184,21 +1184,18 @@ export default function App() {
       const data = await res.json();
       if (res.ok) {
         if (data.emailVerificationRequired) {
+          // ALWAYS require OTP verification — don't auto-login
           setShowAuth(false);
           setShowOtpVerification(true);
-          setOtpEmail(authIdentifier.trim().toLowerCase());
-          addToast('تم إنشاء الحساب! يرجى تأكيد البريد الإلكتروني', 'info');
-        } else {
-          // Check if user needs approval
-          if (data.user && !data.user.isApproved) {
-            setCurrentUser(data.user); setShowAuth(false);
-            if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
-            addToast('تم إنشاء الحساب بنجاح! حسابك قيد المراجعة وسيتم إشعارك فور الموافقة ⏳', 'info');
-          } else {
-            setCurrentUser(data.user); setShowAuth(false);
-            if (data.user && data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
-            addToast(`مرحباً ${data.user.name}!`, 'success');
-          }
+          setOtpEmail(data.email || authIdentifier.trim().toLowerCase());
+          addToast('📧 تم إنشاء الحساب! أدخل رمز التحقق المرسل لبريدك الإلكتروني', 'info');
+        } else if (data.accountExists) {
+          addToast('⚠️ هذا البريد مسجل بالفعل. يرجى تسجيل الدخول', 'error');
+        } else if (data.user) {
+          // Developer auto-login
+          setCurrentUser(data.user); setShowAuth(false);
+          if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
+          addToast(`مرحباً ${data.user.name}!`, 'success');
         }
       }
       else addToast(data.error || 'خطأ في التسجيل', 'error');
@@ -1218,10 +1215,16 @@ export default function App() {
       const data = await res.json();
       if (res.ok) {
         setShowOtpVerification(false);
-        setCurrentUser(data.user);
-        setShowAuth(false);
         setOtpCode('');
-        addToast('تم تأكيد البريد الإلكتروني بنجاح! 🎉', 'success');
+        if (data.user) {
+          setCurrentUser(data.user);
+          if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
+        }
+        if (data.needsApproval) {
+          addToast('✅ تم تأكيد البريد الإلكتروني! حسابك بانتظار موافقة الإدارة ⏳', 'info');
+        } else {
+          addToast('✅ تم تأكيد البريد الإلكتروني بنجاح! مرحباً بك! 🎉', 'success');
+        }
       } else {
         addToast(data.error || 'رمز التأكيد غير صحيح', 'error');
       }

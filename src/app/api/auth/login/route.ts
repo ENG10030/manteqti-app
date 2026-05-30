@@ -25,9 +25,13 @@ export async function POST(request: Request) {
     });
 
     if (!user) {
+      // Account doesn't exist — tell user to register
       return NextResponse.json(
-        { error: "البريد الإلكتروني أو كلمة المرور غير صحيحة" },
-        { status: 401 }
+        { 
+          error: "لا يوجد حساب مسجل بهذا البريد الإلكتروني. يرجى إنشاء حساب أولاً",
+          accountNotFound: true 
+        },
+        { status: 404 }
       );
     }
 
@@ -35,7 +39,7 @@ export async function POST(request: Request) {
 
     if (!isValidPassword) {
       return NextResponse.json(
-        { error: "البريد الإلكتروني أو كلمة المرور غير صحيحة" },
+        { error: "كلمة المرور غير صحيحة. يرجى المحاولة مرة أخرى أو إعادة تعيين كلمة المرور" },
         { status: 401 }
       );
     }
@@ -47,11 +51,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // Block login if email not verified (developers and pre-existing users exempt)
+    // Block login if email not verified (developers exempt)
     const isDeveloper = user.role === 'DEVELOPER' || user.identifier === DEVELOPER_EMAIL;
     if (!user.emailVerified && !isDeveloper) {
       return NextResponse.json({
-        error: "يجب تأكيد البريد الإلكتروني أولاً",
+        error: "لم يتم تأكيد البريد الإلكتروني بعد. يرجى إدخال رمز التحقق الذي تم إرساله إلى بريدك",
         emailVerificationRequired: true,
         email: user.email || user.identifier,
       }, { status: 403 });
