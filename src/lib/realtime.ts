@@ -55,7 +55,7 @@ export async function notifyRealtime(event: string, payload?: any) {
 /**
  * Notify that apartments data has changed
  */
-export function notifyApartmentsChanged(event: 'created' | 'updated' | 'deleted' | 'approved' | 'rejected' | 'featured', apartmentId?: string) {
+export function notifyApartmentsChanged(event: 'created' | 'updated' | 'deleted' | 'approved', apartmentId?: string) {
   notifyRealtime(`apartment-${event}`, { apartmentId });
 }
 

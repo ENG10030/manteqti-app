@@ -1,27 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { verifyAuth } from '@/lib/auth';
+import { cookies } from 'next/headers';
+import { verify } from 'jsonwebtoken';
+import { requireApprovedUser } from '@/lib/auth-middleware';
 
-/**
- * GET /api/comments
- * Return comments for an apartment.
- * Query param: ?apartmentId=xxx
- */
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
+// جلب التعليقات
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const apartmentId = searchParams.get('apartmentId');
+    const status = searchParams.get('status');
+    const userId = searchParams.get('userId');
 
-    if (!apartmentId) {
-      return NextResponse.json({ error: 'معرف العقار مطلوب' }, { status: 400 });
-    }
+    const where: Record<string, unknown> = {};
+    if (apartmentId) where.apartmentId = apartmentId;
+    if (status) where.status = status;
+    if (userId) where.userId = userId;
 
     const comments = await db.comment.findMany({
-      where: { apartmentId },
-      orderBy: { createdAt: 'desc' },
+      where,
       include: {
-        user: { select: { id: true, name: true } },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            identifier: true,
+          }
+        },
+        apartment: {
+          select: {
+            id: true,
+            title: true,
+          }
+        }
       },
+      orderBy: { createdAt: 'desc' },
     });
 
     return NextResponse.json(comments);
@@ -31,90 +46,47 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/**
- * POST /api/comments
- * Require auth. Create comment.
- * Body: { apartmentId: string, content: string }
- */
+// إضافة تعليق جديد
 export async function POST(request: NextRequest) {
   try {
-    const decoded = await verifyAuth(request);
-    if (!decoded) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
+    const { auth, errorResponse } = await requireApprovedUser(request);
+    if (errorResponse || !auth) return errorResponse!;
 
     const body = await request.json();
     const { apartmentId, content } = body;
 
-    if (!apartmentId || !content || !content.trim()) {
-      return NextResponse.json({ error: 'معرف العقار والمحتوى مطلوبان' }, { status: 400 });
+    if (!apartmentId || !content) {
+      return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 });
     }
 
-    // Verify apartment exists
-    const apartment = await db.apartment.findUnique({
-      where: { id: apartmentId },
-    });
-
-    if (!apartment) {
-      return NextResponse.json({ error: 'العقار غير موجود' }, { status: 404 });
-    }
+    const isDeveloper = auth.role === 'DEVELOPER';
+    const userId = auth.userId;
 
     const comment = await db.comment.create({
       data: {
         apartmentId,
-        userId: decoded.id,
-        content: content.trim(),
-        status: 'approved',
+        userId,
+        content,
+        status: isDeveloper ? 'approved' : 'pending',
       },
       include: {
-        user: { select: { id: true, name: true } },
-      },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            identifier: true,
+          }
+        }
+      }
     });
 
-    return NextResponse.json(comment, { status: 201 });
+    return NextResponse.json({ 
+      success: true, 
+      comment,
+      message: isDeveloper ? 'تم نشر التعليق مباشرة' : 'تم إرسال تعليقك وهو في انتظار موافقة المطور' 
+    });
   } catch (error) {
     console.error('Error creating comment:', error);
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
-  }
-}
-
-/**
- * DELETE /api/comments
- * Require auth (owner) or developer. Delete comment.
- * Query param: ?id=commentId
- */
-export async function DELETE(request: NextRequest) {
-  try {
-    const decoded = await verifyAuth(request);
-    if (!decoded) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-
-    if (!id) {
-      return NextResponse.json({ error: 'معرف التعليق مطلوب' }, { status: 400 });
-    }
-
-    const existingComment = await db.comment.findUnique({
-      where: { id },
-    });
-
-    if (!existingComment) {
-      return NextResponse.json({ error: 'التعليق غير موجود' }, { status: 404 });
-    }
-
-    // Only comment owner or developer can delete
-    if (existingComment.userId !== decoded.id && decoded.role !== 'DEVELOPER') {
-      return NextResponse.json({ error: 'غير مصرح - يمكنك حذف تعليقاتك فقط' }, { status: 403 });
-    }
-
-    await db.comment.delete({ where: { id } });
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error deleting comment:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }

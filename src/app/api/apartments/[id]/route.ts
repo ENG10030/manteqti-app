@@ -87,36 +87,19 @@ export async function PUT(
       delete body.status;
     }
 
-    // Parse apartmentSize safely for update
-    let parsedSize: number | null = null;
-    if (body.apartmentSize != null && body.apartmentSize !== '' && body.apartmentSize !== undefined) {
-      const num = Number(body.apartmentSize);
-      if (!isNaN(num) && num > 0) parsedSize = Math.floor(num);
-    }
-    console.log('[UPDATE APARTMENT]', id, 'apartmentSize received:', body.apartmentSize, '→ parsed:', parsedSize);
-
-    // Normalize images/videos: handle both string (JSON) and array formats
-    const normalizedImages = body.images
-      ? (Array.isArray(body.images) ? JSON.stringify(body.images) : String(body.images))
-      : null;
-    const normalizedVideos = body.videos
-      ? (Array.isArray(body.videos) ? JSON.stringify(body.videos) : String(body.videos))
-      : null;
-
     const updatedApartment = await db.apartment.update({
       where: { id },
       data: {
         title: body.title,
         description: body.description,
-        price: body.price != null ? parseFloat(body.price) : undefined,
+        price: body.price ? parseFloat(body.price) : undefined,
         area: body.area,
-        bedrooms: body.bedrooms != null ? parseInt(body.bedrooms) : undefined,
-        bathrooms: body.bathrooms != null ? parseInt(body.bathrooms) : undefined,
+        bedrooms: body.bedrooms ? parseInt(body.bedrooms) : undefined,
+        bathrooms: body.bathrooms ? parseInt(body.bathrooms) : undefined,
         floor: body.floor !== undefined && body.floor !== null ? parseInt(body.floor) : null,
-        apartmentSize: parsedSize,
+        apartmentSize: body.apartmentSize !== undefined && body.apartmentSize !== null ? parseInt(body.apartmentSize) : null,
         type: body.type,
-        images: normalizedImages,
-        videos: normalizedVideos,
+        images: body.images,
         ownerPhone: body.ownerPhone,
         mapLink: body.mapLink,
         status: body.status,
@@ -155,7 +138,7 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await request.json();
-    const { action, isFeatured, isVip, listingType } = body;
+    const { action, isFeatured } = body;
 
     const apartment = await db.apartment.findUnique({
       where: { id },
@@ -169,20 +152,12 @@ export async function PATCH(
 
     if (action === "approve") {
       updateData.status = "available";
-      // Support listing type selection during approval
-      if (listingType === 'featured') updateData.isFeatured = true;
-      else if (listingType === 'vip') { updateData.isVip = true; updateData.isFeatured = true; }
-      else { updateData.isFeatured = false; updateData.isVip = false; }
-      // Direct boolean overrides (backward compatibility)
-      if (isFeatured !== undefined) updateData.isFeatured = isFeatured;
-      if (isVip !== undefined) updateData.isVip = isVip;
     } else if (action === "reject") {
       updateData.status = "rejected";
     } else if (action === "feature") {
       updateData.isFeatured = isFeatured !== undefined ? isFeatured : true;
     } else {
       if (isFeatured !== undefined) updateData.isFeatured = isFeatured;
-      if (isVip !== undefined) updateData.isVip = isVip;
     }
 
     const updatedApartment = await db.apartment.update({
@@ -190,9 +165,8 @@ export async function PATCH(
       data: updateData,
     });
 
-    // Notify all connected clients with correct event type
-    const notifyEvent = action === 'reject' ? 'rejected' : action === 'feature' ? 'featured' : 'approved';
-    notifyApartmentsChanged(notifyEvent, id);
+    // Notify all connected clients
+    notifyApartmentsChanged('approved', id);
 
     // Send email notification to apartment owner
     if (apartment.createdBy) {

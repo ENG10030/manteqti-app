@@ -1,29 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireDeveloper } from '@/lib/auth';
+import { promises as fs } from 'fs';
+import path from 'path';
 
-/**
- * GET /api/get-zip
- * SECURITY FIX: This route was previously unprotected and exposed ZIP files without auth.
- * Now requires developer authentication.
- * 
- * ⚠️ If you don't need this route, DELETE the entire get-zip directory from your project.
- */
 export async function GET(request: NextRequest) {
-  const decoded = await requireDeveloper(request);
-  if (decoded instanceof Response) return decoded;
+  const isBase64 = request.nextUrl.searchParams.get('base64') === 'true';
+  
+  const zipPath = path.join(process.cwd(), 'public', 'manteqti-final-v43.zip');
 
-  return NextResponse.json({ 
-    error: 'This endpoint has been secured. If not needed, delete the get-zip directory from src/app/api/' 
-  }, { status: 403 });
-}
+  try {
+    const fileBuffer = await fs.readFile(zipPath);
 
-// Block all other methods
-export async function POST() {
-  return NextResponse.json({ error: 'Method not allowed' }, { status: 405 });
-}
-export async function PUT() {
-  return NextResponse.json({ error: 'Method not allowed' }, { status: 405 });
-}
-export async function DELETE() {
-  return NextResponse.json({ error: 'Method not allowed' }, { status: 405 });
+    if (isBase64) {
+      const base64 = fileBuffer.toString('base64');
+      return new NextResponse(base64, {
+        headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-cache' }
+      });
+    }
+
+    return new NextResponse(fileBuffer, {
+      headers: {
+        'Content-Type': 'application/zip',
+        'Content-Disposition': 'attachment; filename="manteqti-final-v43.zip"',
+        'Content-Length': fileBuffer.length.toString(),
+        'Cache-Control': 'no-cache'
+      }
+    });
+  } catch (error) {
+    return NextResponse.json({ error: 'ZIP file not found' }, { status: 500 });
+  }
 }

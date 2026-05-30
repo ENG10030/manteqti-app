@@ -1,8 +1,63 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { requireDeveloper } from '@/lib/auth';
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { verify } from "jsonwebtoken";
+import { notifyRealtime } from "@/lib/realtime";
 
-// Default settings values
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
+
+async function isDeveloper(request: Request): Promise<boolean> {
+  const cookieHeader = request.headers.get("cookie");
+  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
+  const token = cookies.get("auth-token");
+
+  if (!token) return false;
+
+  try {
+    const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
+    
+    if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
+
+    const user = await db.user.findUnique({
+      where: { id: decoded.userId },
+      select: { role: true, identifier: true },
+    });
+
+    return user?.role === "DEVELOPER" || user?.identifier === DEVELOPER_EMAIL;
+  } catch {
+    return false;
+  }
+}
+
+async function getCurrentUserId(request: Request): Promise<string | null> {
+  const cookieHeader = request.headers.get("cookie");
+  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
+  const token = cookies.get("auth-token");
+
+  if (!token) return null;
+
+  try {
+    const decoded = verify(token, JWT_SECRET) as { userId: string };
+    return decoded.userId;
+  } catch {
+    return null;
+  }
+}
+
+// Validate fee value - must be non-negative integer
+function validateFee(value: any): number {
+  const num = parseInt(value);
+  if (isNaN(num) || num < 0) return 0;
+  return num;
+}
+
+// Validate currency - max 10 chars, no HTML
+function validateCurrency(value: any): string {
+  if (typeof value !== 'string') return 'ج.م';
+  const sanitized = value.replace(/<[^>]*>/g, '').trim().slice(0, 10);
+  return sanitized || 'ج.م';
+}
+
 const DEFAULT_SETTINGS = {
   contactFee: 50,
   regularFee: 30,
@@ -15,95 +70,93 @@ const DEFAULT_SETTINGS = {
   highlightFee: 150,
   priorityListingFee: 200,
   verifiedListingFee: 250,
-  currency: 'ج.م',
+  currency: "ج.م",
 };
 
-/**
- * GET /api/settings
- * Return settings from DB. Create with defaults if not exists.
- */
-export async function GET(request: NextRequest) {
+// GET - جلب الإعدادات (public - all users see the same current settings)
+export async function GET() {
   try {
-    // Ensure settings row exists (create if not)
-    let settings = await db.settings.findUnique({
-      where: { id: 'default' },
-    });
+    let settings = await db.settings.findFirst();
 
     if (!settings) {
-      settings = await db.settings.create({
-        data: { id: 'default', ...DEFAULT_SETTINGS },
-      });
+      settings = await db.settings.create({ data: DEFAULT_SETTINGS });
     }
 
-    return NextResponse.json({ settings });
+    return NextResponse.json(
+      { settings },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache' } }
+    );
   } catch (error) {
-    console.error('Error fetching settings:', error);
-    return NextResponse.json({ error: 'حدث خطأ أثناء تحميل الإعدادات' }, { status: 500 });
+    console.error("Get settings error:", error);
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء جلب الإعدادات" },
+      { status: 500 }
+    );
   }
 }
 
-/**
- * PUT /api/settings
- * Require developer auth. Use upsert to properly save ALL settings fields.
- * Returns the saved settings directly (no re-read to avoid caching issues).
- */
-export async function PUT(request: NextRequest) {
+// PUT - تحديث الإعدادات (developer only) - changes take effect immediately for ALL users
+export async function PUT(request: Request) {
   try {
-    const decoded = await requireDeveloper(request);
-    if (decoded instanceof Response) return decoded;
+    if (!(await isDeveloper(request))) {
+      return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
+    }
 
     const body = await request.json();
 
-    // Use upsert: creates if not exists, updates if exists
-    const settings = await db.settings.upsert({
-      where: { id: 'default' },
-      update: {
-        contactFee: body.contactFee ?? DEFAULT_SETTINGS.contactFee,
-        regularFee: body.regularFee ?? DEFAULT_SETTINGS.regularFee,
-        featuredFee: body.featuredFee ?? DEFAULT_SETTINGS.featuredFee,
-        premiumFee: body.premiumFee ?? DEFAULT_SETTINGS.premiumFee,
-        vipFee: body.vipFee ?? DEFAULT_SETTINGS.vipFee,
-        saleDisplayFee: body.saleDisplayFee ?? DEFAULT_SETTINGS.saleDisplayFee,
-        rentDisplayFee: body.rentDisplayFee ?? DEFAULT_SETTINGS.rentDisplayFee,
-        otherServicesFee: body.otherServicesFee ?? DEFAULT_SETTINGS.otherServicesFee,
-        highlightFee: body.highlightFee ?? DEFAULT_SETTINGS.highlightFee,
-        priorityListingFee: body.priorityListingFee ?? DEFAULT_SETTINGS.priorityListingFee,
-        verifiedListingFee: body.verifiedListingFee ?? DEFAULT_SETTINGS.verifiedListingFee,
-        currency: body.currency ?? DEFAULT_SETTINGS.currency,
-      },
-      create: {
-        id: 'default',
-        contactFee: body.contactFee ?? DEFAULT_SETTINGS.contactFee,
-        regularFee: body.regularFee ?? DEFAULT_SETTINGS.regularFee,
-        featuredFee: body.featuredFee ?? DEFAULT_SETTINGS.featuredFee,
-        premiumFee: body.premiumFee ?? DEFAULT_SETTINGS.premiumFee,
-        vipFee: body.vipFee ?? DEFAULT_SETTINGS.vipFee,
-        saleDisplayFee: body.saleDisplayFee ?? DEFAULT_SETTINGS.saleDisplayFee,
-        rentDisplayFee: body.rentDisplayFee ?? DEFAULT_SETTINGS.rentDisplayFee,
-        otherServicesFee: body.otherServicesFee ?? DEFAULT_SETTINGS.otherServicesFee,
-        highlightFee: body.highlightFee ?? DEFAULT_SETTINGS.highlightFee,
-        priorityListingFee: body.priorityListingFee ?? DEFAULT_SETTINGS.priorityListingFee,
-        verifiedListingFee: body.verifiedListingFee ?? DEFAULT_SETTINGS.verifiedListingFee,
-        currency: body.currency ?? DEFAULT_SETTINGS.currency,
-      },
-    });
+    // Server-side validation
+    const validatedData = {
+      contactFee: validateFee(body.contactFee),
+      regularFee: validateFee(body.regularFee),
+      featuredFee: validateFee(body.featuredFee),
+      premiumFee: validateFee(body.premiumFee),
+      vipFee: validateFee(body.vipFee),
+      saleDisplayFee: validateFee(body.saleDisplayFee),
+      rentDisplayFee: validateFee(body.rentDisplayFee),
+      otherServicesFee: validateFee(body.otherServicesFee),
+      highlightFee: validateFee(body.highlightFee),
+      priorityListingFee: validateFee(body.priorityListingFee),
+      verifiedListingFee: validateFee(body.verifiedListingFee),
+      currency: validateCurrency(body.currency),
+    };
 
-    // Log settings update
+    let settings = await db.settings.findFirst();
+
+    if (!settings) {
+      settings = await db.settings.create({ data: validatedData });
+    } else {
+      settings = await db.settings.update({
+        where: { id: settings.id },
+        data: validatedData,
+      });
+    }
+
+    // Log settings change
+    const currentUserId = await getCurrentUserId(request);
     try {
       await db.operationLog.create({
         data: {
-          action: 'SETTINGS_UPDATED',
+          action: 'UPDATE_SETTINGS',
           entityType: 'Settings',
-          entityId: 'default',
-          details: JSON.stringify({ changedBy: decoded.identifier, settings }),
-          userId: decoded.id,
+          entityId: settings.id,
+          userId: currentUserId,
+          details: JSON.stringify(validatedData),
         },
       });
     } catch {}
 
-    return NextResponse.json({ settings });
+    // Notify ALL connected clients about settings change immediately
+    notifyRealtime('settings-updated', validatedData);
+
+    return NextResponse.json({
+      message: "تم تحديث الإعدادات بنجاح ✅",
+      settings,
+    });
   } catch (error) {
-    console.error('Error updating settings:', error);
-    return NextResponse.json({ error: 'حدث خطأ أثناء تحديث الإعدادات' }, { status: 500 });
+    console.error("Update settings error:", error);
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء تحديث الإعدادات" },
+      { status: 500 }
+    );
   }
 }

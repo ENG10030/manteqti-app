@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-title: "منطقتي | Manteqti - لوحة الشقق الذكية",
+  title: "منطقتي | Manteqti - لوحة الشقق الذكية",
   description: "تطبيق عقارات ذكي للبحث عن الشقق للإيجار والبيع في مصر. أضف عقارك أو ابحث عن شقة أحلامك بسهولة.",
   keywords: ["عقارات", "شقق", "إيجار", "بيع", "مصر", "منطقتي", "Manteqti", "عقارات مصر"],
   authors: [{ name: "Manteqti Team" }],

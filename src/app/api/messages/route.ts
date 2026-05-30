@@ -1,54 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { verifyAuth, requireDeveloper } from '@/lib/auth';
+import { cookies } from 'next/headers';
+import { verify } from 'jsonwebtoken';
+import { requireApprovedUser } from '@/lib/auth-middleware';
 import { sendNewMessageEmail } from '@/lib/email';
+import { notifyRealtime } from '@/lib/realtime';
 
-/**
- * GET /api/messages
- * Require auth. Return messages for current user.
- * Developer can fetch messages for any user with ?userId=xxx&isDeveloper=true
- */
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
+// Helper: get authenticated user from token
+async function getAuthUser(request: NextRequest) {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('auth-token')?.value;
+  if (!token) return null;
+  try {
+    const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string };
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
+// جلب الرسائل
 export async function GET(request: NextRequest) {
   try {
-    const decoded = await verifyAuth(request);
-    if (!decoded) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    const auth = await getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const targetUserId = searchParams.get('userId');
-    const isDeveloper = searchParams.get('isDeveloper') === 'true';
+    const isDeveloper = auth.role === 'DEVELOPER';
+    let messages;
 
-    if (isDeveloper && decoded.role === 'DEVELOPER' && targetUserId) {
-      // Developer fetching messages for a specific user
-      const messages = await db.message.findMany({
+    if (isDeveloper) {
+      messages = await db.message.findMany({
         where: {
           OR: [
-            { senderId: targetUserId },
-            { receiverId: targetUserId },
-          ],
+            { receiverId: null },
+            { senderId: auth.userId }
+          ]
         },
-        orderBy: { createdAt: 'desc' },
         include: {
-          sender: { select: { id: true, name: true, identifier: true } },
+          sender: {
+            select: { id: true, name: true, identifier: true }
+          }
         },
+        orderBy: { createdAt: 'desc' }
       });
-      return NextResponse.json(messages);
+    } else {
+      messages = await db.message.findMany({
+        where: {
+          OR: [
+            { senderId: auth.userId },
+            { receiverId: auth.userId }
+          ]
+        },
+        include: {
+          sender: {
+            select: { id: true, name: true, identifier: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
     }
-
-    // Regular user: fetch their own messages (sent or received)
-    const messages = await db.message.findMany({
-      where: {
-        OR: [
-          { senderId: decoded.id },
-          { receiverId: decoded.id },
-        ],
-      },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        sender: { select: { id: true, name: true, identifier: true } },
-      },
-    });
 
     return NextResponse.json(messages);
   } catch (error) {
@@ -57,105 +71,108 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/**
- * POST /api/messages
- * Require auth. Create a message.
- * Body: { senderId, receiverId, content }
- */
+// إرسال رسالة جديدة
 export async function POST(request: NextRequest) {
   try {
-    const decoded = await verifyAuth(request);
-    if (!decoded) {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
+    const { auth, errorResponse } = await requireApprovedUser(request);
+    if (errorResponse || !auth) return errorResponse!;
 
     const body = await request.json();
-    const { receiverId, content } = body;
+    const { content, receiverId } = body;
 
-    if (!receiverId || !content || !content.trim()) {
-      return NextResponse.json({ error: 'بيانات الرسالة مطلوبة' }, { status: 400 });
+    if (!content || !content.trim()) {
+      return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 });
     }
 
-    // Verify receiver exists
-    const receiver = await db.user.findUnique({
-      where: { id: receiverId },
-    });
+    // Sanitize content - prevent XSS
+    const sanitizedContent = content.trim().replace(/<[^>]*>/g, '').slice(0, 2000);
 
-    if (!receiver) {
-      return NextResponse.json({ error: 'المستقبل غير موجود' }, { status: 404 });
+    if (!sanitizedContent) {
+      return NextResponse.json({ error: 'محتوى الرسالة غير صالح' }, { status: 400 });
     }
 
     const message = await db.message.create({
       data: {
-        senderId: decoded.id,
-        receiverId,
-        content: content.trim(),
-        isRead: false,
+        senderId: auth.userId,
+        receiverId: receiverId || null,
+        content: sanitizedContent,
       },
       include: {
-        sender: { select: { id: true, name: true, identifier: true } },
-      },
+        sender: {
+          select: { id: true, name: true, identifier: true }
+        }
+      }
     });
 
-    // Send email notification to receiver (fire-and-forget)
-    if (receiver.email) {
-      sendNewMessageEmail({
-        to: receiver.email,
-        name: receiver.name,
-        senderName: decoded.name,
-      }).catch((err) => {
-        console.error('Failed to send message notification email:', err);
-      });
+    // Send email notification to receiver (if not to self and RESEND_API_KEY is set)
+    if (process.env.RESEND_API_KEY && receiverId) {
+      const [sender, receiver] = await Promise.all([
+        db.user.findUnique({ where: { id: auth.userId }, select: { name: true } }),
+        db.user.findUnique({ where: { id: receiverId }, select: { name: true, email: true } }),
+      ]);
+      if (receiver?.email && sender?.name) {
+        sendNewMessageEmail({ to: receiver.email, name: receiver.name, senderName: sender.name });
+      }
     }
 
-    return NextResponse.json(message, { status: 201 });
+    // Notify connected clients about new message
+    notifyRealtime('message-sent', { senderId: auth.userId, receiverId });
+
+    return NextResponse.json({ success: true, message });
   } catch (error) {
-    console.error('Error creating message:', error);
-    return NextResponse.json({ error: 'حدث خطأ أثناء إرسال الرسالة' }, { status: 500 });
+    console.error('Error sending message:', error);
+    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }
 
-/**
- * DELETE /api/messages
- * Require developer auth. Delete message.
- * Query param: ?id=messageId
- */
+// حذف رسالة (المطور فقط)
 export async function DELETE(request: NextRequest) {
   try {
-    const decoded = await requireDeveloper(request);
-    if (decoded instanceof Response) return decoded;
+    const auth = await getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+
+    // Only developer can delete messages
+    if (auth.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح - فقط المطور يمكنه حذف الرسائل' }, { status: 403 });
+    }
 
     const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
+    const messageId = searchParams.get('id');
 
-    if (!id) {
+    if (!messageId) {
       return NextResponse.json({ error: 'معرف الرسالة مطلوب' }, { status: 400 });
     }
 
-    const existingMessage = await db.message.findUnique({
-      where: { id },
+    // Validate message exists
+    const message = await db.message.findUnique({
+      where: { id: messageId },
     });
 
-    if (!existingMessage) {
+    if (!message) {
       return NextResponse.json({ error: 'الرسالة غير موجودة' }, { status: 404 });
     }
 
-    await db.message.delete({ where: { id } });
+    // Delete the message
+    await db.message.delete({
+      where: { id: messageId },
+    });
 
-    // Log deletion
+    // Log the deletion
     try {
       await db.operationLog.create({
         data: {
-          action: 'MESSAGE_DELETED',
+          action: 'DELETE_MESSAGE',
           entityType: 'Message',
-          entityId: id,
-          details: JSON.stringify({ deletedBy: decoded.identifier }),
-          userId: decoded.id,
+          entityId: messageId,
+          details: `Deleted message from ${message.senderId}`,
+          userId: auth.userId,
         },
       });
     } catch {}
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, message: 'تم حذف الرسالة' });
   } catch (error) {
     console.error('Error deleting message:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });

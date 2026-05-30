@@ -10,7 +10,6 @@ function getResend(): Resend {
 
 const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
 const APP_NAME = 'منطقتي | Manteqti';
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
 
 interface SendOTPParams {
   to: string;
@@ -28,77 +27,6 @@ interface SendPaymentConfirmedParams {
   name: string;
   apartmentTitle?: string;
   amount: number;
-}
-
-// ========== إيميل تأكيد البريد الإلكتروني (Verification OTP) ==========
-interface SendVerificationParams {
-  to: string;
-  otp: string;
-  name?: string;
-}
-
-export async function sendVerificationEmail({ to, otp, name }: SendVerificationParams) {
-  try {
-    const { data, error } = await getResend().emails.send({
-      from: `${APP_NAME} <${FROM_EMAIL}>`,
-      to: [to],
-      subject: `📧 تأكيد البريد الإلكتروني - رمز التحقق: ${otp}`,
-      html: `
-        <!DOCTYPE html>
-        <html dir="rtl" lang="ar">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; direction: rtl; }
-            .container { max-width: 480px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
-            .header { background: linear-gradient(135deg, #059669, #10b981); padding: 32px; text-align: center; }
-            .header h1 { color: white; margin: 0; font-size: 24px; }
-            .header p { color: rgba(255,255,255,0.8); margin: 8px 0 0; font-size: 14px; }
-            .content { padding: 32px; text-align: center; }
-            .greeting { font-size: 16px; color: #334155; margin-bottom: 24px; }
-            .otp-box { background: linear-gradient(135deg, #f0fdf4, #dcfce7); border: 2px dashed #059669; border-radius: 16px; padding: 24px; margin: 24px 0; }
-            .otp-code { font-size: 40px; font-weight: 800; letter-spacing: 12px; color: #059669; font-family: 'Courier New', monospace; direction: ltr; }
-            .note { font-size: 13px; color: #94a3b8; margin-top: 16px; }
-            .warning { background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; padding: 12px; margin: 16px 0; }
-            .warning p { color: #92400e; font-size: 13px; margin: 4px 0; }
-            .footer { background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0; }
-            .footer p { color: #94a3b8; font-size: 12px; margin: 4px 0; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>📧 تأكيد البريد الإلكتروني</h1>
-              <p>مرحباً بك في ${APP_NAME}</p>
-            </div>
-            <div class="content">
-              <p class="greeting">${name ? `مرحباً <strong>${name}</strong>` : 'مرحباً'} 👋</p>
-              <p style="color: #475569; font-size: 15px;">أدخل الرمز التالي لتأكيد بريدك الإلكتروني:</p>
-              <div class="otp-box">
-                <div class="otp-code">${otp}</div>
-              </div>
-              <div class="warning">
-                <p>⏰ الرمز صالح لمدة <strong>10 دقائق</strong> فقط</p>
-                <p>🔒 لا تشارك هذا الرمز مع أي شخص</p>
-              </div>
-            </div>
-            <div class="footer">
-              <p>تم الإرسال تلقائياً من ${APP_NAME}</p>
-              <p>إذا لم تقم بإنشاء حساب، تجاهل هذا البريد</p>
-            </div>
-          </div>
-        </body>
-        </html>
-      `,
-    });
-    if (error) { console.error('Resend error:', error); return { success: false, error: error.message }; }
-    console.log(`📧 Verification email sent to ${to}, ID: ${data?.id}`);
-    return { success: true, messageId: data?.id };
-  } catch (error: any) {
-    console.error('Error sending verification email:', error);
-    return { success: false, error: error.message };
-  }
 }
 
 export async function sendOTPEmail({ to, otp, name }: SendOTPParams) {
@@ -454,6 +382,73 @@ export async function sendPasswordChangedEmail({ to, name }: SendPasswordChanged
   } catch (error: any) { console.error('Error sending password changed email:', error); return { success: false, error: error.message }; }
 }
 
+// ========== إيميل إشعار المطور بتسجيل مستخدم جديد ==========
+interface SendNewUserNotificationParams {
+  to: string;
+  userName: string;
+  userEmail: string;
+  userPhone?: string | null;
+}
+
+export async function sendNewUserNotificationEmail({ to, userName, userEmail, userPhone }: SendNewUserNotificationParams) {
+  try {
+    const { data, error } = await getResend().emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: [to],
+      subject: `🆕 تسجيل مستخدم جديد - ${APP_NAME}`,
+      html: `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head><meta charset="UTF-8"><style>
+          body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; direction: rtl; }
+          .container { max-width: 480px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+          .header { background: linear-gradient(135deg, #7c3aed, #a855f7); padding: 32px; text-align: center; }
+          .header h1 { color: white; margin: 0; font-size: 22px; }
+          .content { padding: 32px; }
+          .content p { color: #475569; font-size: 15px; line-height: 1.8; }
+          .info-box { background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 12px; padding: 16px; margin: 16px 0; }
+          .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #ede9fe; }
+          .info-row:last-child { border-bottom: none; }
+          .info-label { color: #6b7280; font-size: 14px; }
+          .info-value { color: #5b21b6; font-weight: 600; font-size: 14px; direction: ltr; text-align: right; }
+          .action-box { background: #fef3c7; border: 1px solid #fde68a; border-radius: 12px; padding: 16px; margin: 16px 0; text-align: center; }
+          .action-box p { margin: 0; color: #92400e; font-size: 14px; }
+          .footer { background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0; }
+          .footer p { color: #94a3b8; font-size: 12px; margin: 4px 0; }
+        </style></head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🆕 تسجيل مستخدم جديد</h1>
+              <p style="color: rgba(255,255,255,0.9); margin-top: 8px;">إشعار من ${APP_NAME}</p>
+            </div>
+            <div class="content">
+              <p>مرحباً <strong>المطور</strong>،</p>
+              <p>تم تسجيل مستخدم جديد في المنصة. إليك تفاصيل الحساب:</p>
+              <div class="info-box">
+                <div class="info-row"><span class="info-label">الاسم</span><span class="info-value">${userName}</span></div>
+                <div class="info-row"><span class="info-label">البريد الإلكتروني</span><span class="info-value">${userEmail}</span></div>
+                ${userPhone ? `<div class="info-row"><span class="info-label">رقم الهاتف</span><span class="info-value">${userPhone}</span></div>` : ''}
+              </div>
+              <div class="action-box">
+                <p>📋 سجل دخولك لمراجعة وتأكيد الحساب من لوحة التحكم</p>
+              </div>
+            </div>
+            <div class="footer">
+              <p>${APP_NAME} - لوحة الشقق الذكية</p>
+              <p>تم الإرسال تلقائياً - لا ترد على هذا البريد</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+    });
+    if (error) { console.error('Resend error:', error); return { success: false, error: error.message }; }
+    console.log(`📧 New user notification sent to developer: ${to}`);
+    return { success: true, messageId: data?.id };
+  } catch (error: any) { console.error('Error sending new user notification:', error); return { success: false, error: error.message }; }
+}
+
 // ========== إيميل رسالة جديدة ==========
 interface SendNewMessageParams {
   to: string;
@@ -503,67 +498,4 @@ export async function sendNewMessageEmail({ to, name, senderName }: SendNewMessa
     if (error) { console.error('Resend error:', error); return { success: false, error: error.message }; }
     return { success: true, messageId: data?.id };
   } catch (error: any) { console.error('Error sending message email:', error); return { success: false, error: error.message }; }
-}
-
-// ========== إشعار المطور بتسجيل مستخدم جديد ==========
-interface SendNewUserNotificationParams {
-  to: string;
-  userName: string;
-  userEmail: string;
-  userPhone?: string | null;
-}
-
-export async function sendNewUserNotificationEmail({ to, userName, userEmail, userPhone }: SendNewUserNotificationParams) {
-  try {
-    const { data, error } = await getResend().emails.send({
-      from: `${APP_NAME} <${FROM_EMAIL}>`,
-      to: [to],
-      subject: `🆕 مستخدم جديد سجل في ${APP_NAME}`,
-      html: `
-        <!DOCTYPE html>
-        <html dir="rtl" lang="ar">
-        <head><meta charset="UTF-8"><style>
-          body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; direction: rtl; }
-          .container { max-width: 480px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
-          .header { background: linear-gradient(135deg, #f59e0b, #f97316); padding: 32px; text-align: center; }
-          .header h1 { color: white; margin: 0; font-size: 22px; }
-          .content { padding: 32px; }
-          .content p { color: #475569; font-size: 15px; line-height: 1.8; }
-          .info-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 16px; margin: 16px 0; }
-          .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #fef3c7; }
-          .info-row:last-child { border-bottom: none; }
-          .info-label { color: #92400e; font-size: 14px; font-weight: 600; }
-          .info-value { color: #166534; font-weight: 600; font-size: 14px; }
-          .action-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; margin: 16px 0; text-align: center; }
-          .footer { background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0; }
-          .footer p { color: #94a3b8; font-size: 12px; margin: 4px 0; }
-        </style></head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1>🆕 مستخدم جديد</h1>
-              <p style="color: rgba(255,255,255,0.9); margin-top: 8px;">تسجيل جديد في ${APP_NAME}</p>
-            </div>
-            <div class="content">
-              <p>مرحباً <strong>المطور</strong>،</p>
-              <p>تم تسجيل مستخدم جديد في المنصة وينتظر تأكيد بريده الإلكتروني وموافقتك.</p>
-              <div class="info-box">
-                <div class="info-row"><span class="info-label">👤 الاسم</span><span class="info-value">${userName}</span></div>
-                <div class="info-row"><span class="info-label">📧 البريد</span><span class="info-value">${userEmail}</span></div>
-                ${userPhone ? `<div class="info-row"><span class="info-label">📱 الهاتف</span><span class="info-value">${userPhone}</span></div>` : ''}
-              </div>
-              <div class="action-box">
-                <p style="margin:0;color:#166534;font-size:14px;">⚡ أدخل لوحة التحكم لمراجعة التسجيل والموافقة</p>
-              </div>
-            </div>
-            <div class="footer"><p>${APP_NAME} - لوحة الشقق الذكية</p><p>إشعار تلقائي - لا ترد على هذا البريد</p></div>
-          </div>
-        </body>
-        </html>
-      `,
-    });
-    if (error) { console.error('Resend error (dev notification):', error); return { success: false, error: error.message }; }
-    console.log(`📧 Developer notification sent, ID: ${data?.id}`);
-    return { success: true, messageId: data?.id };
-  } catch (error: any) { console.error('Error sending dev notification:', error); return { success: false, error: error.message }; }
 }
