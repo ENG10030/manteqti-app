@@ -13,7 +13,8 @@ import {
   Send, Bot, Home, Crown, Diamond, Ban, Brain, Search,
   VideoIcon, Activity, Wallet, Key, ArrowUp, Layers,
   Download, Smartphone, Zap, Save,
-  Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen
+  Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen,
+  GitCompareArrows, Trophy, Maximize2
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
 import { io } from 'socket.io-client';
@@ -252,6 +253,12 @@ export default function App() {
   const [aiAction, setAiAction] = useState<string | null>(null);
   const [aiResponse, setAiResponse] = useState<string>('');
   const [aiLoading, setAiLoading] = useState(false);
+
+  // Comparison feature states (v57)
+  const [selectedForCompare, setSelectedForCompare] = useState<Set<string>>(new Set());
+  const [showCompareModal, setShowCompareModal] = useState(false);
+  const [aiCompareResult, setAiCompareResult] = useState('');
+  const [aiCompareLoading, setAiCompareLoading] = useState(false);
 
   // Operation Logs
   const [operationLogs, setOperationLogs] = useState<any[]>([]);
@@ -1582,6 +1589,81 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     } catch { addToast('حدث خطأ', 'error'); }
   };
 
+  // ========== Comparison Feature (v57) ==========
+  const toggleCompareSelect = (apartmentId: string) => {
+    setSelectedForCompare(prev => {
+      const next = new Set(prev);
+      if (next.has(apartmentId)) {
+        next.delete(apartmentId);
+      } else if (next.size < 4) {
+        next.add(apartmentId);
+      } else {
+        addToast('الحد الأقصى ٤ شقق للمقارنة', 'info');
+        return prev;
+      }
+      return next;
+    });
+  };
+
+  const openCompareModal = () => {
+    if (selectedForCompare.size < 2) {
+      addToast('اختر شقتين على الأقل للمقارنة', 'info');
+      return;
+    }
+    setShowCompareModal(true);
+  };
+
+  const getCompareApartments = () => {
+    return allApartments.filter(a => selectedForCompare.has(a.id));
+  };
+
+  const getBestValue = (apts: Apartment[], key: 'price' | 'area' | 'bedrooms' | 'bathrooms') => {
+    if (apts.length === 0) return null;
+    if (key === 'price') {
+      return apts.reduce((best, a) => parseFloat(a.area || '0') > 0 && a.price / parseFloat(a.area || '0') < (best.price / parseFloat(best.area || '0')) ? a : best, apts[0]).id;
+    }
+    if (key === 'area') return apts.reduce((best, a) => parseFloat(a.area || '0') > parseFloat(best.area || '0') ? a : best, apts[0]).id;
+    if (key === 'bedrooms') return apts.reduce((best, a) => a.bedrooms > best.bedrooms ? a : best, apts[0]).id;
+    if (key === 'bathrooms') return apts.reduce((best, a) => a.bathrooms > best.bathrooms ? a : best, apts[0]).id;
+    return null;
+  };
+
+  const runAiComparison = async () => {
+    const apts = getCompareApartments();
+    if (apts.length < 2) return;
+    setAiCompareLoading(true);
+    setAiCompareResult('');
+    try {
+      const prompt = `قارن بين الشقق التالية وقدم تحليل مفصل بالعربية:
+${apts.map((a, i) => `شقة ${i + 1}: ${a.title}
+- السعر: ${a.price.toLocaleString()} ج.م ${a.type === 'rent' ? '/شهر' : ''}
+- المساحة: ${a.area} م²
+- غرف النوم: ${a.bedrooms}
+- الحمامات: ${a.bathrooms}
+- الدور: ${a.floor || '-'}
+- المميزات: ${a.amenities?.join(', ') || 'لا يوجد'}
+- الوصف: ${a.description}`).join('\n\n')}
+
+قدم:
+1. تحليل مقارنة لكل شقة (مميزات وعيوب)
+2. أفضل قيمة من حيث السعر مقابل المساحة
+3. أفضل شقة للعائلات
+4. أفضل شقة للاستثمار
+5. التوصية النهائية`;
+      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: prompt }) });
+      const data = await res.json();
+      if (data.reply) {
+        setAiCompareResult(data.reply);
+      } else {
+        setAiCompareResult('عذراً، لم نتمكن من تحليل الشقق حالياً. حاول مرة أخرى.');
+      }
+    } catch {
+      setAiCompareResult('حدث خطأ في الاتصال. حاول مرة أخرى.');
+    } finally {
+      setAiCompareLoading(false);
+    }
+  };
+
   const addComment = async (apartmentId: string) => {
     if (!currentUser && !isDeveloper) { addToast('يجب تسجيل الدخول للتعليق', 'error'); return; }
     if (!newComment.trim()) { addToast('اكتب تعليقاً', 'error'); return; }
@@ -1908,6 +1990,12 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <button onClick={() => toggleFavorite(apartment.id)} className={`absolute bottom-3 right-3 p-2 rounded-full ${darkMode ? 'bg-slate-900/80' : 'bg-white/80'} backdrop-blur transition-all hover:scale-110`}>
                       <Heart className={`h-5 w-5 ${favorites.includes(apartment.id) ? 'fill-red-500 text-red-500' : darkMode ? 'text-slate-300' : 'text-slate-600'}`} />
                     </button>
+                    {currentUser && favorites.includes(apartment.id) && (
+                      <button onClick={(e) => { e.stopPropagation(); toggleCompareSelect(apartment.id); }} className={`absolute bottom-3 left-3 px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1 transition-all ${selectedForCompare.has(apartment.id) ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : darkMode ? 'bg-slate-900/80 text-slate-300' : 'bg-white/80 text-slate-600'} backdrop-blur`}>
+                        <GitCompareArrows className="h-3.5 w-3.5" />
+                        {selectedForCompare.has(apartment.id) ? 'محدد' : 'مقارنة'}
+                      </button>
+                    )}
                   </div>
                   <div className="p-4">
                     <h3 className={`text-lg font-bold mb-2 line-clamp-1 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apartment.title}</h3>
@@ -1968,6 +2056,50 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Confirm Dialog */}
       <ConfirmDialog {...confirmDialog} darkMode={darkMode} onCancel={() => setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' })} />
+
+            {/* Comparison Floating Bar (v57) */}
+            <AnimatePresence>
+              {selectedForCompare.size >= 2 && (
+                <motion.div
+                  initial={{ y: 100, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: 100, opacity: 0 }}
+                  className="fixed bottom-0 left-0 right-0 z-50 p-4 sm:hidden"
+                >
+                  <div className={`mx-auto max-w-lg rounded-2xl p-3 shadow-2xl flex items-center justify-between ${darkMode ? 'bg-slate-800 border border-slate-700' : 'bg-white border border-slate-200'}`}>
+                    <div className="flex items-center gap-2">
+                      <GitCompareArrows className="h-5 w-5 text-emerald-500" />
+                      <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{selectedForCompare.size} شقق محددة</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => { setSelectedForCompare(new Set()); addToast('تم إلغاء التحديد', 'info'); }} className={`px-3 py-2 rounded-xl text-xs font-medium ${darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>إلغاء</button>
+                      <button onClick={openCompareModal} className="px-4 py-2 rounded-xl text-xs font-medium bg-gradient-to-l from-emerald-600 to-teal-600 text-white">مقارنة الآن</button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <AnimatePresence>
+              {selectedForCompare.size >= 2 && (
+                <motion.div
+                  initial={{ y: 100, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: 100, opacity: 0 }}
+                  className="fixed bottom-0 left-0 right-0 z-50 p-4 hidden sm:block"
+                >
+                  <div className={`mx-auto max-w-md rounded-2xl p-3 shadow-2xl flex items-center justify-between ${darkMode ? 'bg-slate-800 border border-slate-700' : 'bg-white border border-slate-200'}`}>
+                    <div className="flex items-center gap-2">
+                      <GitCompareArrows className="h-5 w-5 text-emerald-500" />
+                      <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{selectedForCompare.size} شقق محددة</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => { setSelectedForCompare(new Set()); addToast('تم إلغاء التحديد', 'info'); }} className={`px-3 py-2 rounded-xl text-xs font-medium ${darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>إلغاء</button>
+                      <button onClick={openCompareModal} className="px-4 py-2 rounded-xl text-xs font-medium bg-gradient-to-l from-emerald-600 to-teal-600 text-white">مقارنة الآن</button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
       {/* Toasts */}
       <div className="fixed top-4 left-4 z-[100] space-y-2">
@@ -3348,6 +3480,139 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
           </motion.div>
         </motion.div>
       )}</AnimatePresence>
+
+            {/* Comparison Modal (v57) */}
+            <AnimatePresence>
+              {showCompareModal && (() => {
+                const compareApts = getCompareApartments();
+                const bestPrice = getBestValue(compareApts, 'price');
+                const bestArea = getBestValue(compareApts, 'area');
+                const bestBedrooms = getBestValue(compareApts, 'bedrooms');
+                const bestBathrooms = getBestValue(compareApts, 'bathrooms');
+                
+                return (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto"
+                    onClick={() => setShowCompareModal(false)}
+                  >
+                    <motion.div
+                      initial={{ scale: 0.95, y: 20 }}
+                      animate={{ scale: 1, y: 0 }}
+                      exit={{ scale: 0.95, y: 20 }}
+                      onClick={(e) => e.stopPropagation()}
+                      className={`w-full max-w-5xl rounded-2xl shadow-2xl my-8 ${darkMode ? 'bg-slate-800' : 'bg-white'}`}
+                    >
+                      {/* Modal Header */}
+                      <div className={`sticky top-0 z-10 flex items-center justify-between p-4 border-b rounded-t-2xl ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                        <div className="flex items-center gap-2">
+                          <GitCompareArrows className="h-5 w-5 text-emerald-500" />
+                          <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>مقارنة الشقق</h2>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${darkMode ? 'bg-emerald-900/30 text-emerald-400' : 'bg-emerald-100 text-emerald-700'}`}>{compareApts.length} شقق</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button onClick={runAiComparison} disabled={aiCompareLoading || compareApts.length < 2} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all ${aiCompareLoading ? 'opacity-50 cursor-not-allowed' : ''} ${darkMode ? 'bg-violet-600 text-white hover:bg-violet-700' : 'bg-violet-100 text-violet-700 hover:bg-violet-200'}`}>
+                            {aiCompareLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                            تحليل بالذكاء الاصطناعي
+                          </button>
+                          <button onClick={() => setShowCompareModal(false)} className={`p-2 rounded-xl transition-colors ${darkMode ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}>
+                            <X className="h-5 w-5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="p-4 space-y-4">
+                        {/* Apartment Headers */}
+                        <div className="grid gap-3" style={{ gridTemplateColumns: `minmax(0, 1fr) repeat(${compareApts.length}, minmax(0, 1fr))` }}>
+                          <div />
+                          {compareApts.map(apt => (
+                            <div key={apt.id} className="text-center">
+                              <div className={`h-32 rounded-xl overflow-hidden mb-2 ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
+                                {apt.images && apt.images[0] ? (
+                                  <img src={apt.images[0]} alt={apt.title} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="flex h-full items-center justify-center">
+                                    <Building2 className={`h-12 w-12 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
+                                  </div>
+                                )}
+                              </div>
+                              <h3 className={`text-sm font-bold line-clamp-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
+                              <div className="flex items-center justify-center gap-1 mt-1">
+                                <MapPin className="h-3 w-3 text-emerald-500" />
+                                <span className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.type === 'rent' ? 'للإيجار' : 'للبيع'}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Comparison Table */}
+                        <div className={`rounded-xl overflow-hidden border ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                          {[
+                            { label: 'السعر', icon: <DollarSign className="h-4 w-4 text-emerald-500" />, render: (a: Apartment) => <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{a.price.toLocaleString()} ج.م{a.type === 'rent' && <span className={`text-xs font-normal ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}> /شهر</span>}</span>, best: bestPrice, bestLabel: 'أفضل سعر/م²' },
+                            { label: 'المساحة', icon: <Maximize2 className="h-4 w-4 text-blue-500" />, render: (a: Apartment) => <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{a.area} م²</span>, best: bestArea, bestLabel: 'أكبر مساحة' },
+                            { label: 'السعر/م²', icon: <TrendingUp className="h-4 w-4 text-violet-500" />, render: (a: Apartment) => { const areaVal = parseFloat(a.area || '0'); return <span className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{areaVal > 0 ? (a.price / areaVal).toFixed(0).toLocaleString() : '-'} ج.م</span>; } },
+                            { label: 'غرف النوم', icon: <Bed className="h-4 w-4 text-indigo-500" />, render: (a: Apartment) => <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{a.bedrooms} غرفة</span>, best: bestBedrooms, bestLabel: 'أكثر غرف' },
+                            { label: 'الحمامات', icon: <Bath className="h-4 w-4 text-cyan-500" />, render: (a: Apartment) => <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{a.bathrooms} حمام</span>, best: bestBathrooms, bestLabel: 'أكثر حمامات' },
+                            { label: 'الدور', icon: <Layers className="h-4 w-4 text-amber-500" />, render: (a: Apartment) => <span className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{a.floor || '-'}</span> },
+                            { label: 'المميزات', icon: <Star className="h-4 w-4 text-amber-500" />, render: (a: Apartment) => <div className="flex flex-wrap gap-1 justify-center">{(a.amenities || []).slice(0, 5).map((am: string, i: number) => <span key={i} className={`px-1.5 py-0.5 rounded-full text-[10px] ${darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>{am}</span>)}{(a.amenities || []).length > 5 && <span className={`text-[10px] ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>+{(a.amenities || []).length - 5}</span>}</div> },
+                            { label: 'الوصف', icon: <FilePen className="h-4 w-4 text-gray-500" />, render: (a: Apartment) => <p className={`text-xs leading-relaxed text-start max-h-20 overflow-y-auto ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{a.description}</p> },
+                          ].map((row, idx) => (
+                            <div key={row.label} className={`grid gap-3 px-4 py-3 ${idx % 2 === 0 ? (darkMode ? 'bg-slate-800/50' : 'bg-slate-50/50') : ''} ${idx > 0 ? `border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}` : ''}`} style={{ gridTemplateColumns: `minmax(0, 1fr) repeat(${compareApts.length}, minmax(0, 1fr))` }}>
+                              <div className="flex items-center gap-2">
+                                {row.icon}
+                                <span className={`text-xs font-semibold ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{row.label}</span>
+                              </div>
+                              {compareApts.map(apt => (
+                                <div key={apt.id} className="flex flex-col items-center gap-1">
+                                  {row.render(apt)}
+                                  {row.best === apt.id && (
+                                    <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                                      <Trophy className="h-2.5 w-2.5" />
+                                      {row.bestLabel}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* AI Analysis Result */}
+                        {(aiCompareLoading || aiCompareResult) && (
+                          <div className={`rounded-xl border p-4 ${darkMode ? 'border-slate-700 bg-slate-800/50' : 'border-violet-200 bg-violet-50/50'}`}>
+                            <div className="flex items-center gap-2 mb-3">
+                              <Brain className="h-5 w-5 text-violet-500" />
+                              <h3 className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>تحليل الذكاء الاصطناعي</h3>
+                            </div>
+                            {aiCompareLoading ? (
+                              <div className="flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin text-violet-500" />
+                                <span className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>جاري التحليل...</span>
+                              </div>
+                            ) : (
+                              <div className={`text-sm leading-relaxed whitespace-pre-wrap ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{aiCompareResult}</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Modal Footer */}
+                      <div className={`flex items-center justify-between p-4 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                        <button onClick={() => { setSelectedForCompare(new Set()); setShowCompareModal(false); }} className={`px-4 py-2 rounded-xl text-sm font-medium ${darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                          إلغاء التحديد
+                        </button>
+                        <button onClick={() => setShowCompareModal(false)} className="px-4 py-2 rounded-xl text-sm font-medium bg-gradient-to-l from-emerald-600 to-teal-600 text-white hover:from-emerald-700 hover:to-teal-700">
+                          إغلاق
+                        </button>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                );
+              })()}
+            </AnimatePresence>
+
     </div>
   );
 }
