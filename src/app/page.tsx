@@ -431,7 +431,23 @@ export default function App() {
         } catch {}
       }
 
-      // Step 4: Fetch likes for current user
+      // Step 4: Load developer data if logged in as developer
+      if (dev) {
+        try {
+          const [inqRes, payRes, pendRes, usersRes, blockedRes] = await Promise.all([fetch('/api/inquiries'), fetch('/api/payments'), fetch('/api/users?pending=true'), fetch('/api/users'), fetch('/api/block')]);
+          const [inqData, payData, pendData, usersData, blockedData] = await Promise.all([inqRes.json(), payRes.json(), pendRes.json(), usersRes.json(), blockedRes.json()]);
+          if (cancelled) return;
+          setInquiries(Array.isArray(inqData) ? inqData : []);
+          setPayments(Array.isArray(payData) ? payData : []);
+          if (pendData.users) setPendingUsers(pendData.users);
+          const users = usersData.users || usersData;
+          setAllUsers(Array.isArray(users) ? users : []);
+          setBlockedUsers(Array.isArray(blockedData) ? blockedData : []);
+          fetchApprovalLogs();
+        } catch {}
+      }
+
+      // Step 5: Fetch likes for current user
       if (user) {
         try {
           const likesRes = await fetch(`/api/likes?userId=${user.id}`);
@@ -475,7 +491,7 @@ export default function App() {
 
   // Fetch developer data
   const fetchDevData = async () => {
-    if (!isDeveloper) return;
+    if (!isDeveloperRef.current) return;
     try {
       const [inqRes, payRes, pendRes] = await Promise.all([fetch('/api/inquiries'), fetch('/api/payments'), fetch('/api/users?pending=true')]);
       const [inqData, payData, pendData] = await Promise.all([inqRes.json(), payRes.json(), pendRes.json()]);
@@ -1095,14 +1111,21 @@ export default function App() {
           const meRes = await fetch('/api/auth/me');
           const meData = await meRes.json();
           if (meData.user) {
-            setCurrentUser({ id: meData.user.id, identifier: meData.user.identifier || devEmail, name: meData.user.name });
+            const userData = { id: meData.user.id, identifier: meData.user.identifier || devEmail, name: meData.user.name };
+            setCurrentUser(userData);
+            currentUserRef.current = userData;
           } else {
-            setCurrentUser({ id: data.user?.id || '', identifier: devEmail, name: data.user?.name || 'المطور' });
+            const userData = { id: data.user?.id || '', identifier: devEmail, name: data.user?.name || 'المطور' };
+            setCurrentUser(userData);
+            currentUserRef.current = userData;
           }
         } catch {
-          setCurrentUser({ id: data.user?.id || '', identifier: devEmail, name: data.user?.name || 'المطور' });
+          const userData = { id: data.user?.id || '', identifier: devEmail, name: data.user?.name || 'المطور' };
+          setCurrentUser(userData);
+          currentUserRef.current = userData;
         }
         setIsDeveloper(true);
+        isDeveloperRef.current = true; // Update ref immediately so fetchDevData works
         setShowDevLogin(false);
         if (rememberMe) {
           localStorage.setItem('manteqti_dev_email', devEmail);
@@ -1113,7 +1136,7 @@ export default function App() {
         }
         setDevPassword('');
         addToast('مرحباً بك في لوحة تحكم المطور!', 'success');
-        fetchDevData();
+        await fetchDevData(); // Wait for dev data to load
       } else {
         addToast(data.error || 'بيانات الدخول غير صحيحة', 'error');
       }
