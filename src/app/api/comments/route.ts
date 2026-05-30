@@ -13,9 +13,45 @@ export async function GET(request: NextRequest) {
     const apartmentId = searchParams.get('apartmentId');
     const status = searchParams.get('status');
     const userId = searchParams.get('userId');
+    const currentUserId = searchParams.get('currentUserId');
 
+    // If fetching for a specific apartment (public view)
+    if (apartmentId) {
+      const where: Record<string, unknown> = {
+        apartmentId,
+        // Show approved comments OR user's own pending comments
+        OR: [
+          { status: 'approved' },
+        ],
+      };
+
+      // If currentUserId provided, also include their own pending comments
+      if (currentUserId) {
+        where.OR = [
+          { status: 'approved' },
+          { status: 'pending', userId: currentUserId },
+        ];
+      }
+
+      const comments = await db.comment.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              identifier: true,
+            }
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      return NextResponse.json(comments);
+    }
+
+    // General fetch (dev dashboard) — return all comments
     const where: Record<string, unknown> = {};
-    if (apartmentId) where.apartmentId = apartmentId;
     if (status) where.status = status;
     if (userId) where.userId = userId;
 
@@ -80,10 +116,10 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       comment,
-      message: isDeveloper ? 'تم نشر التعليق مباشرة' : 'تم إرسال تعليقك وهو في انتظار موافقة المطور' 
+      message: isDeveloper ? 'تم نشر التعليق مباشرة' : 'تم إرسال تعليقك وهو في انتظار موافقة المطور'
     });
   } catch (error) {
     console.error('Error creating comment:', error);

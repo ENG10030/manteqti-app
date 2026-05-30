@@ -14,21 +14,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ user: null });
     }
 
-    let decoded: { userId: string };
-    try {
-      decoded = verify(token, JWT_SECRET) as { userId: string };
-    } catch {
-      // Token invalid/expired — clear it
-      const response = NextResponse.json({ user: null, tokenExpired: true });
-      response.cookies.set("auth-token", "", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 0,
-        path: "/",
-      });
-      return response;
-    }
+    const decoded = verify(token, JWT_SECRET) as { userId: string };
 
     const user = await db.user.findUnique({
       where: { id: decoded.userId },
@@ -50,29 +36,7 @@ export async function GET(request: Request) {
     });
 
     if (!user) {
-      // User was DELETED — clear cookie and notify client
-      const response = NextResponse.json({ user: null, userDeleted: true });
-      response.cookies.set("auth-token", "", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 0,
-        path: "/",
-      });
-      return response;
-    }
-
-    // User exists but is blocked
-    if (user.isBlocked) {
-      const response = NextResponse.json({ user: null, userBlocked: true });
-      response.cookies.set("auth-token", "", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 0,
-        path: "/",
-      });
-      return response;
+      return NextResponse.json({ user: null });
     }
 
     return NextResponse.json({ user });

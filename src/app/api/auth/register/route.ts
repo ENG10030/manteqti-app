@@ -82,33 +82,8 @@ export async function POST(request: Request) {
     });
 
     if (existingUser) {
-      // If user exists but is not verified, resend OTP (don't auto-verify!)
-      if (!existingUser.emailVerified && existingUser.role !== 'DEVELOPER') {
-        console.log('📧 Unverified user re-registering, resending OTP:', userEmail);
-        // Generate new OTP
-        const otp = crypto.randomInt(100000, 999999).toString();
-        const otpExpires = new Date(Date.now() + 30 * 60 * 1000);
-        await db.user.update({
-          where: { id: existingUser.id },
-          data: { otp, otpExpires },
-        });
-        // Try to send OTP email
-        try {
-          const emailResult = await sendOTPEmail({ to: userEmail, otp, name: existingUser.name });
-          console.log(`📧 Resend OTP result: ${JSON.stringify(emailResult)}`);
-        } catch (emailErr) {
-          console.error('Failed to resend OTP email:', emailErr);
-        }
-        return NextResponse.json({
-          message: "لديك حساب بالفعل ولكن لم يتم تأكيده. يرجى إدخال رمز التحقق",
-          emailVerificationRequired: true,
-          email: userEmail,
-          user: null, // Don't return user — force OTP verification
-        });
-      }
-      // User exists and is verified
       return NextResponse.json(
-        { error: "البريد الإلكتروني مستخدم بالفعل. يرجى تسجيل الدخول بدلاً من ذلك", accountExists: true },
+        { error: "البريد الإلكتروني مستخدم بالفعل" },
         { status: 400 }
       );
     }
@@ -116,9 +91,9 @@ export async function POST(request: Request) {
     const hashedPassword = await bcrypt.hash(password, 10);
     const isDeveloper = userEmail === (process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com");
 
-    // Generate OTP for email verification (always for non-developers)
+    // Generate OTP for email verification
     const otp = isDeveloper ? null : crypto.randomInt(100000, 999999).toString();
-    const otpExpires = isDeveloper ? null : new Date(Date.now() + 30 * 60 * 1000);
+    const otpExpires = isDeveloper ? null : new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
 
     const user = await db.user.create({
       data: {
@@ -129,13 +104,13 @@ export async function POST(request: Request) {
         identifier: userEmail,
         role: isDeveloper ? "DEVELOPER" : "USER",
         isApproved: isDeveloper,
-        emailVerified: isDeveloper, // Only developers are auto-verified
+        emailVerified: isDeveloper,
         otp,
         otpExpires,
       },
     });
 
-    // Log registration
+    // Log registration in OperationLog
     try {
       await db.operationLog.create({
         data: {
@@ -154,15 +129,13 @@ export async function POST(request: Request) {
       });
     } catch {}
 
-    // Send OTP email for non-developer users — MUST verify before login
+    // Send OTP email for non-developer users
     if (!isDeveloper && otp) {
       try {
         const emailResult = await sendOTPEmail({ to: userEmail, otp, name: user.name });
         console.log(`📧 Registration OTP email result: ${JSON.stringify(emailResult)}`);
-        // Note: We NO LONGER auto-verify on failure. User MUST verify.
       } catch (err) {
         console.error('Error sending registration OTP:', err);
-        // Note: We NO LONGER auto-verify on failure. User MUST verify.
       }
     }
 
@@ -176,25 +149,15 @@ export async function POST(request: Request) {
           userEmail: user.email || userEmail,
           userPhone: phone || null,
         });
+        console.log(`📧 Developer notification email sent for new user: ${user.name}`);
       } catch (err) {
         console.error('Error sending developer notification:', err);
       }
     }
 
-    // For non-developers, ALWAYS require email verification
-    if (!isDeveloper) {
-      return NextResponse.json({
-        message: "تم إنشاء الحساب بنجاح! يرجى تأكيد البريد الإلكتروني لإتمام التسجيل",
-        emailVerificationRequired: true,
-        email: userEmail,
-        user: null, // Don't give user session — force OTP first
-      });
-    }
-
-    // Developer auto-verified
     return NextResponse.json({
-      message: "تم إنشاء الحساب بنجاح",
-      emailVerificationRequired: false,
+      message: isDeveloper ? "تم إنشاء الحساب بنجاح" : "تم إنشاء الحساب بنجاح. يرجى تأكيد البريد الإلكتروني",
+      emailVerificationRequired: !isDeveloper,
       email: userEmail,
       user: {
         id: user.id,
@@ -203,7 +166,7 @@ export async function POST(request: Request) {
         identifier: user.identifier,
         role: user.role,
         isApproved: user.isApproved,
-        emailVerified: true,
+        emailVerified: user.emailVerified,
       },
     });
   } catch (error) {
