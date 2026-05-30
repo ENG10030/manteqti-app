@@ -359,8 +359,10 @@ export default function App() {
       setAllApartments(processedData);
       setError(null);
     } catch (err: any) {
-      if (retryCount < 3) setTimeout(() => fetchApartments(retryCount + 1, isInitial), 1000 * (retryCount + 1));
-      else { setApartments([]); setAllApartments([]); }
+      if (isInitial && retryCount < 1) {
+        setTimeout(() => fetchApartments(retryCount + 1, true), 3000);
+      }
+      // Non-initial/background fetch errors: silently ignore, never clear apartments
     } finally { if (isInitial) { setLoading(false); setInitialLoad(false); initialLoadRef.current = false; } }
   };
   // Keep ref in sync so socket/polling can call latest version
@@ -1054,7 +1056,7 @@ export default function App() {
   // Filter apartments
   const uniqueAreas = [...new Set([...apartments.map(apt => apt.area), ...egyptianAreas])].filter(a => a).sort();
   const filteredApartments = apartments.filter(apt => {
-    if (!isDeveloper && (apt.status === 'pending' || apt.status === 'rejected')) return false;
+    if (!isDeveloper && ['pending', 'rejected', 'hidden'].includes(apt.status)) return false;
     if (typeFilter !== 'all' && apt.type !== typeFilter) return false;
     if (areaFilter !== 'all' && apt.area !== areaFilter) return false;
     if (bedroomsFilter !== 'all' && apt.bedrooms < parseInt(bedroomsFilter)) return false;
@@ -1087,7 +1089,7 @@ export default function App() {
       });
       const data = await res.json();
       
-      if (res.ok && data.success) {
+      if (res.ok && data.user) {
         // جلب بيانات المستخدم الكاملة من /api/auth/me (باستخدام الـ cookie)
         try {
           const meRes = await fetch('/api/auth/me');
@@ -3564,7 +3566,7 @@ ${apts.map((a, i) => `شقة ${i + 1}: ${a.title}
                           })
                         });
                         const data = await res.json();
-                        if (res.ok && data.success) {
+                        if (res.ok && (data.success || data.message)) {
                           addToast('تم تغيير كلمة المرور بنجاح!', 'success');
                           setDevPasswordChange({ current: '', new: '', confirm: '' });
                         } else {
