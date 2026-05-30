@@ -1,132 +1,192 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { verifyAuth } from '@/lib/auth';
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { verify } from "jsonwebtoken";
+import { notifyApartmentsChanged } from "@/lib/realtime";
 
-/**
- * GET /api/apartments
- * Return apartments. No auth needed, but:
- * - Non-logged users: DON'T include ownerPhone
- * - Logged in users: include ownerPhone only for paid apartments
- * - Developer: always sees everything
- * Supports filtering: ?status=pending, ?type=rent|sale, etc.
- */
-export async function GET(request: NextRequest) {
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
+async function getCurrentUser(request: Request) {
+  const cookieHeader = request.headers.get("cookie");
+  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
+  const token = cookies.get("auth-token");
+
+  if (!token) return null;
+
   try {
-    const decoded = await verifyAuth(request);
-    const isDeveloper = decoded?.role === 'DEVELOPER';
-    const isLoggedIn = !!decoded;
+    const decoded = verify(token, JWT_SECRET) as { userId: string };
+    return await db.user.findUnique({
+      where: { id: decoded.userId },
+    });
+  } catch {
+    return null;
+  }
+}
 
+// GET - جلب العقارات
+export async function GET(request: Request) {
+  try {
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status');
+    const status = searchParams.get("status");
+    const type = searchParams.get("type");
+    const area = searchParams.get("area");
+    
+    let user: Awaited<ReturnType<typeof getCurrentUser>> = null;
+    try {
+      user = await getCurrentUser(request);
+    } catch (authErr: any) {
+      console.warn("Auth check failed, continuing as guest:", authErr.message);
+    }
+    const isDeveloper = user?.role === "DEVELOPER";
 
-    const where: Record<string, unknown> = {};
+    const where: any = {};
+
+    // المطور يرى جميع العقارات، المستخدم العادي يرى العقارات المتاحة والموافق عليها فقط
     if (status) {
       where.status = status;
+    } else if (!isDeveloper) {
+      where.status = { in: ["available", "reserved", "sold", "rented"] };
+    }
+    // المطور يرى كل الحالات (لا نضيف شرط للحالة)
+
+    if (type && type !== "all") {
+      where.type = type;
+    }
+
+    if (area && area !== "all") {
+      where.area = area;
+    }
+
+    // استبعاد عقارات المحظورين للمستخدمين العاديين
+    if (!isDeveloper) {
+      try {
+        const blockedUsers = await db.user.findMany({
+          where: { isBlocked: true },
+          select: { id: true },
+        });
+        const blockedIds = blockedUsers.map((u) => u.id);
+        if (blockedIds.length > 0) {
+          where.createdBy = { notIn: blockedIds };
+        }
+      } catch (blockErr: any) {
+        console.warn("Blocked users check failed:", blockErr.message);
+      }
     }
 
     const apartments = await db.apartment.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
       include: {
-        _count: { select: { likes: true, comments: true, inquiries: true } },
+        user: {
+          select: { id: true, name: true, email: true },
+        },
       },
+      orderBy: [
+        { isVip: "desc" },
+        { isFeatured: "desc" },
+        { createdAt: "desc" },
+      ],
     });
 
-    // Get paid apartment IDs for the current user (if logged in)
-    let paidApartmentIds: Set<string> = new Set();
-    if (isLoggedIn && !isDeveloper) {
-      const userPayments = await db.payment.findMany({
-        where: {
-          userId: decoded!.id,
-          status: 'Paid',
-        },
-        include: {
-          inquiry: { select: { apartmentId: true } },
-        },
-      });
-      userPayments.forEach((p) => {
-        if (p.inquiry?.apartmentId) {
-          paidApartmentIds.add(p.inquiry.apartmentId);
-        }
-      });
-    }
-
-    // Process apartments: hide ownerPhone for non-authorized users
-    const processedApartments = apartments.map((apt) => {
-      if (isDeveloper) return apt; // Developer sees everything
-      if (isLoggedIn && paidApartmentIds.has(apt.id)) return apt; // Paid user sees phone
-      // Strip ownerPhone
-      const { ownerPhone, ...rest } = apt;
-      return { ...rest, ownerPhone: null };
-    });
-
-    return NextResponse.json(processedApartments);
-  } catch (error) {
-    console.error('Error fetching apartments:', error);
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+    return NextResponse.json(apartments);
+  } catch (error: any) {
+    console.error("Get apartments error:", error);
+    return NextResponse.json(
+      { 
+        error: "حدث خطأ أثناء جلب العقارات",
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      },
+      { status: 500 }
+    );
   }
 }
 
-/**
- * POST /api/apartments
- * Require auth. Create apartment with status 'pending'.
- */
-export async function POST(request: NextRequest) {
+// POST - إضافة عقار جديد
+export async function POST(request: Request) {
   try {
-    const decoded = await verifyAuth(request);
-    if (!decoded) {
-      return NextResponse.json({ error: 'غير مصرح - يرجى تسجيل الدخول' }, { status: 401 });
+    const user = await getCurrentUser(request);
+
+    if (!user) {
+      return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
+    }
+
+    if (user.isBlocked) {
+      return NextResponse.json(
+        { error: "تم حظر حسابك. لا يمكنك إضافة عقارات" },
+        { status: 403 }
+      );
+    }
+
+    // Only approved users or developers can create apartments
+    if (!user.isApproved && user.role !== 'DEVELOPER') {
+      return NextResponse.json(
+        { error: "حسابك قيد المراجعة. بانتظار موافقة الإدارة", pendingApproval: true },
+        { status: 403 }
+      );
     }
 
     const body = await request.json();
-    const { title, description, type, price, area, bedrooms, bathrooms, ownerPhone, mapLink, images, videos, amenities, isFeatured, isVip } = body;
+    const {
+      title,
+      description,
+      price,
+      area,
+      bedrooms,
+      bathrooms,
+      floor,
+      apartmentSize,
+      ownerPhone,
+      mapLink,
+      type,
+      images,
+      videos,
+    } = body;
 
-    if (!title || !type || !price || !area) {
-      return NextResponse.json({ error: 'العنوان والنوع والسعر والمنطقة مطلوبون' }, { status: 400 });
+    if (!title || !price || !area || !ownerPhone) {
+      return NextResponse.json(
+        { error: "البيانات الأساسية مطلوبة" },
+        { status: 400 }
+      );
     }
+
+    // المطور ينشر مباشرة، المستخدم العادي يرسل للمراجعة
+    const status = user.role === "DEVELOPER" ? "available" : "pending";
 
     const apartment = await db.apartment.create({
       data: {
         title,
-        description: description || '',
-        type: type === 'sale' ? 'sale' : 'rent',
-        price: parseFloat(price) || 0,
-        area: area || '',
+        description: description || "",
+        price: parseInt(price),
+        area,
         bedrooms: parseInt(bedrooms) || 1,
         bathrooms: parseInt(bathrooms) || 1,
-        ownerPhone: ownerPhone || null,
+        floor: floor ? parseInt(floor) : null,
+        apartmentSize: apartmentSize ? parseInt(apartmentSize) : null,
+        ownerPhone,
         mapLink: mapLink || null,
-        images: Array.isArray(images) ? JSON.stringify(images) : images || null,
-        videos: Array.isArray(videos) ? JSON.stringify(videos) : videos || null,
-        amenities: Array.isArray(amenities) ? JSON.stringify(amenities) : amenities || null,
-        isFeatured: isFeatured || false,
-        isVip: isVip || false,
-        status: 'pending',
-        createdBy: decoded.id,
+        type: type || "rent",
+        status,
+        images: images || null,
+        videos: videos || null,
+        createdBy: user.id,
+        isFeatured: false,
+        isVip: false,
       },
     });
 
-    // Log apartment creation
-    try {
-      await db.operationLog.create({
-        data: {
-          action: 'APARTMENT_CREATED',
-          entityType: 'Apartment',
-          entityId: apartment.id,
-          details: JSON.stringify({
-            title: apartment.title,
-            type: apartment.type,
-            price: apartment.price,
-            createdBy: decoded.identifier,
-          }),
-          userId: decoded.id,
-        },
-      });
-    } catch {}
+    // Notify all connected clients
+    notifyApartmentsChanged('created', apartment.id);
 
-    return NextResponse.json(apartment, { status: 201 });
+    return NextResponse.json({
+      message:
+        user.role === "DEVELOPER"
+          ? "تم إضافة العقار بنجاح"
+          : "تم إضافة العقار وهو في انتظار المراجعة",
+      apartment,
+    });
   } catch (error) {
-    console.error('Error creating apartment:', error);
-    return NextResponse.json({ error: 'حدث خطأ أثناء إنشاء العقار' }, { status: 500 });
+    console.error("Create apartment error:", error);
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء إضافة العقار" },
+      { status: 500 }
+    );
   }
 }

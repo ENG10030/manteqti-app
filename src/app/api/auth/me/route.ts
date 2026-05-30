@@ -1,81 +1,46 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { verifyAuth } from '@/lib/auth';
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { verify } from "jsonwebtoken";
 
-/**
- * GET /api/auth/me
- * Returns current user info. Checks if user still exists in DB.
- * - If user deleted: { userDeleted: true }
- * - If user blocked: { userBlocked: true }
- * - Otherwise: { user: { id, email, name, identifier, role, isApproved, emailVerified, isBlocked, phone } }
- */
-export async function GET(request: NextRequest) {
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
+export async function GET(request: Request) {
   try {
-    const decoded = await verifyAuth(request);
-    if (!decoded) {
+    const cookieHeader = request.headers.get("cookie");
+    const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
+    const token = cookies.get("auth-token");
+
+    if (!token) {
       return NextResponse.json({ user: null });
     }
 
-    // Check if user still exists in DB (handles deleted users)
+    const decoded = verify(token, JWT_SECRET) as { userId: string };
+
     const user = await db.user.findUnique({
-      where: { id: decoded.id },
+      where: { id: decoded.userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        role: true,
+        isApproved: true,
+        isBlocked: true,
+        identifier: true,
+        emailVerified: true,
+        createdAt: true,
+        _count: {
+          select: { apartments: true },
+        },
+      },
     });
 
     if (!user) {
-      // User was deleted from DB but token still valid
-      return NextResponse.json({ userDeleted: true });
+      return NextResponse.json({ user: null });
     }
 
-    // Check if user is blocked
-    if (user.isBlocked) {
-      return NextResponse.json({ userBlocked: true, user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        identifier: user.identifier,
-        role: user.role,
-        isApproved: user.isApproved,
-        emailVerified: user.emailVerified,
-        isBlocked: user.isBlocked,
-        phone: user.phone,
-      }});
-    }
-
-    return NextResponse.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        identifier: user.identifier,
-        role: user.role,
-        isApproved: user.isApproved,
-        emailVerified: user.emailVerified,
-        isBlocked: user.isBlocked,
-        phone: user.phone,
-      },
-    });
+    return NextResponse.json({ user });
   } catch (error) {
-    console.error('Error in /api/auth/me:', error);
-    return NextResponse.json({ user: null }, { status: 500 });
+    return NextResponse.json({ user: null });
   }
-}
-
-/**
- * POST /api/auth/me
- * Handle logout by clearing the auth-token cookie.
- */
-export async function POST(request: NextRequest) {
-  const response = NextResponse.json({ success: true, message: 'تم تسجيل الخروج بنجاح' });
-
-  // Clear the auth-token cookie
-  response.cookies.set('auth-token', '', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 0,
-    expires: new Date(0),
-  });
-
-  return response;
 }

@@ -1,161 +1,217 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { requireDeveloper } from '@/lib/auth';
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { verify } from "jsonwebtoken";
 
-/**
- * POST /api/block
- * Require developer auth. Block a user.
- * Body: { userId: string, reason?: string }
- */
-export async function POST(request: NextRequest) {
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
+
+async function isDeveloper(request: Request) {
+  const cookieHeader = request.headers.get("cookie");
+  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
+  const token = cookies.get("auth-token");
+
+  if (!token) return false;
+
   try {
-    const decoded = await requireDeveloper(request);
-    if (decoded instanceof Response) return decoded;
+    const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
+    
+    // التحقق من دور DEVELOPER أو بريد المطور
+    if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
 
-    const body = await request.json();
-    const { userId, reason } = body;
-
-    if (!userId) {
-      return NextResponse.json({ error: 'معرف المستخدم مطلوب' }, { status: 400 });
-    }
-
-    // Verify user exists
     const user = await db.user.findUnique({
-      where: { id: userId },
+      where: { id: decoded.userId },
+      select: { role: true, identifier: true },
     });
 
-    if (!user) {
-      return NextResponse.json({ error: 'المستخدم غير موجود' }, { status: 404 });
-    }
-
-    if (user.role === 'DEVELOPER') {
-      return NextResponse.json({ error: 'لا يمكن حظر حساب المطور' }, { status: 403 });
-    }
-
-    // Block the user
-    await db.user.update({
-      where: { id: userId },
-      data: { isBlocked: true, blockReason: reason || 'محظور من قبل الإدارة' },
-    });
-
-    // Create block record
-    await db.block.create({
-      data: {
-        userId,
-        blockedUserId: userId,
-        reason: reason || 'محظور من قبل الإدارة',
-      },
-    });
-
-    // Log block action
-    try {
-      await db.operationLog.create({
-        data: {
-          action: 'USER_BLOCKED',
-          entityType: 'User',
-          entityId: userId,
-          details: JSON.stringify({ blockedUser: user.name, email: user.email, reason, blockedBy: decoded.identifier }),
-          userId: decoded.id,
-        },
-      });
-    } catch {}
-
-    return NextResponse.json({ success: true, message: `تم حظر المستخدم "${user.name}" ✅` });
-  } catch (error) {
-    console.error('Error blocking user:', error);
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+    return user?.role === "DEVELOPER" || user?.identifier === DEVELOPER_EMAIL;
+  } catch {
+    return false;
   }
 }
 
-/**
- * DELETE /api/block
- * Require developer auth. Unblock a user.
- * Body: { userId: string }
- */
-export async function DELETE(request: NextRequest) {
+// GET - جلب المحظورين أو جميع المستخدمين
+export async function GET(request: Request) {
   try {
-    const decoded = await requireDeveloper(request);
-    if (decoded instanceof Response) return decoded;
-
-    const body = await request.json();
-    const { userId } = body;
-
-    if (!userId) {
-      return NextResponse.json({ error: 'معرف المستخدم مطلوب' }, { status: 400 });
+    if (!(await isDeveloper(request))) {
+      return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
     }
 
-    // Verify user exists
-    const user = await db.user.findUnique({
-      where: { id: userId },
-    });
+    const { searchParams } = new URL(request.url);
+    const getAll = searchParams.get("all");
 
-    if (!user) {
-      return NextResponse.json({ error: 'المستخدم غير موجود' }, { status: 404 });
-    }
-
-    // Unblock the user
-    await db.user.update({
-      where: { id: userId },
-      data: { isBlocked: false, blockReason: null },
-    });
-
-    // Remove block records
-    await db.block.deleteMany({ where: { userId } });
-
-    // Log unblock action
-    try {
-      await db.operationLog.create({
-        data: {
-          action: 'USER_UNBLOCKED',
-          entityType: 'User',
-          entityId: userId,
-          details: JSON.stringify({ unblockedUser: user.name, email: user.email, unblockedBy: decoded.identifier }),
-          userId: decoded.id,
+    // إذا كان all=true، جلب جميع المستخدمين
+    if (getAll === "true") {
+      const users = await db.user.findMany({
+        where: { role: { not: "DEVELOPER" } },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          identifier: true,
+          isBlocked: true,
+          blockedAt: true,
+          blockReason: true,
+          createdAt: true,
+          _count: {
+            select: { apartments: true },
+          },
         },
+        orderBy: { createdAt: "desc" },
       });
-    } catch {}
+      return NextResponse.json({ users });
+    }
 
-    return NextResponse.json({ success: true, message: `تم إلغاء حظر المستخدم "${user.name}" ✅` });
-  } catch (error) {
-    console.error('Error unblocking user:', error);
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
-  }
-}
-
-/**
- * GET /api/block
- * Require developer auth. Return blocked users.
- */
-export async function GET(request: NextRequest) {
-  try {
-    const decoded = await requireDeveloper(request);
-    if (decoded instanceof Response) return decoded;
-
+    // وإلا جلب المحظورين فقط
     const blockedUsers = await db.user.findMany({
       where: { isBlocked: true },
-      orderBy: { updatedAt: 'desc' },
       select: {
         id: true,
         name: true,
         email: true,
-        identifier: true,
-        isBlocked: true,
+        blockedAt: true,
         blockReason: true,
-        createdAt: true,
+        _count: {
+          select: { apartments: true },
+        },
       },
+      orderBy: { blockedAt: "desc" },
     });
 
-    // Also get Block records with user details
-    const blocks = await db.block.findMany({
-      orderBy: { blockedAt: 'desc' },
-      include: {
-        user: { select: { id: true, name: true, identifier: true } },
-      },
-    });
-
-    return NextResponse.json({ blockedUsers, blocks });
+    return NextResponse.json({ blockedUsers });
   } catch (error) {
-    console.error('Error fetching blocked users:', error);
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+    console.error("Get blocked users error:", error);
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء جلب البيانات" },
+      { status: 500 }
+    );
+  }
+}
+
+// POST - حظر/إلغاء حظر
+export async function POST(request: Request) {
+  try {
+    if (!(await isDeveloper(request))) {
+      return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { userId, action, reason } = body;
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: "معرف المستخدم مطلوب" },
+        { status: 400 }
+      );
+    }
+
+    // إذا لم يتم تحديد action، يكون الإجراء الافتراضي هو الحظر
+    const finalAction = action || "block";
+
+    if (finalAction === "block") {
+      // Prevent blocking a developer
+      const targetUser = await db.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      });
+      if (targetUser?.role === "DEVELOPER") {
+        return NextResponse.json({ error: "لا يمكن حظر مطور" }, { status: 403 });
+      }
+
+      const user = await db.user.update({
+        where: { id: userId },
+        data: {
+          isBlocked: true,
+          blockedAt: new Date(),
+          blockReason: reason || "تم الحظر من قبل الإدارة",
+        },
+      });
+
+      // تحديث حالة عقارات المستخدم إلى مخفية
+      await db.apartment.updateMany({
+        where: { createdBy: userId },
+        data: { status: "hidden" },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: "تم حظر المستخدم وإخفاء عقاراته",
+        user: { id: user.id, name: user.name, email: user.email },
+      });
+    } else if (finalAction === "unblock") {
+      const user = await db.user.update({
+        where: { id: userId },
+        data: {
+          isBlocked: false,
+          blockedAt: null,
+          blockReason: null,
+        },
+      });
+
+      // إعادة عقارات المستخدم للمراجعة
+      await db.apartment.updateMany({
+        where: { createdBy: userId, status: "hidden" },
+        data: { status: "pending" },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: "تم إلغاء حظر المستخدم",
+        user: { id: user.id, name: user.name, email: user.email },
+      });
+    } else {
+      return NextResponse.json({ error: "إجراء غير صالح" }, { status: 400 });
+    }
+  } catch (error) {
+    console.error("Block/unblock error:", error);
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء تنفيذ العملية" },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE - إلغاء حظر مستخدم
+export async function DELETE(request: Request) {
+  try {
+    if (!(await isDeveloper(request))) {
+      return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get("userId");
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: "معرف المستخدم مطلوب" },
+        { status: 400 }
+      );
+    }
+
+    const user = await db.user.update({
+      where: { id: userId },
+      data: {
+        isBlocked: false,
+        blockedAt: null,
+        blockReason: null,
+      },
+    });
+
+    // إعادة عقارات المستخدم للمراجعة
+    await db.apartment.updateMany({
+      where: { createdBy: userId, status: "hidden" },
+      data: { status: "pending" },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "تم إلغاء حظر المستخدم",
+      user: { id: user.id, name: user.name, email: user.email },
+    });
+  } catch (error) {
+    console.error("Unblock error:", error);
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء إلغاء الحظر" },
+      { status: 500 }
+    );
   }
 }
