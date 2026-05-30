@@ -2040,6 +2040,11 @@ ${apts.map((a, i) => `شقة ${i + 1}: ${a.title}
                 {isDeveloper && messages.filter(m => !m.isRead).length > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">{messages.filter(m => !m.isRead).length}</span>}
               </motion.button>
 
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setShowMyFavorites(true)} className={`flex items-center gap-2 px-4 py-3 rounded-xl font-medium shadow-lg relative ${favorites.length > 0 ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white' : darkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                <Heart className={`h-5 w-5 ${favorites.length > 0 ? 'fill-white' : ''}`} /><span className="hidden lg:inline">المفضلة</span>
+                {favorites.length > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-400 text-amber-900 text-xs rounded-full flex items-center justify-center font-bold">{favorites.length}</span>}
+              </motion.button>
+
               {isDeveloper ? (
                 <div className="flex items-center gap-2">
                   <motion.button whileHover={{ scale: 1.02 }} onClick={() => setShowDevPanel(true)} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium shadow-lg relative">
@@ -2464,6 +2469,7 @@ ${apts.map((a, i) => `شقة ${i + 1}: ${a.title}
                 <button onClick={() => { setShowAddModal(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white"><Building2 className="h-5 w-5" />إضافة شقة</button>
                 <button onClick={() => { setShowChat(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><Brain className="h-5 w-5" />المساعد الذكي</button>
                 <button onClick={() => { if (isDeveloper) { fetchMessages(); setShowMessages(true); } else if (currentUser) { setShowMessages(true); } else { setShowAuth(true); } setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><MessageCircle className="h-5 w-5" />تواصل معنا</button>
+                <button onClick={() => { setShowMyFavorites(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${favorites.length > 0 ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white' : darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><Heart className={`h-5 w-5 ${favorites.length > 0 ? 'fill-white' : ''}`} />المفضلة{favorites.length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-white/20 text-xs">{favorites.length}</span>}</button>
                 {isDeveloper ? (
                   <>
         <button onClick={() => { setShowDevPanel(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white"><ShieldCheck className="h-5 w-5" />لوحة المطور{pendingApartments.length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-white/20 text-xs">{pendingApartments.length}</span>}</button>
