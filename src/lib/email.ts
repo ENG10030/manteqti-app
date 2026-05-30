@@ -397,6 +397,62 @@ export async function sendApartmentRejectedEmail({ to, name, apartmentTitle, rea
   } catch (error: any) { console.error('Error sending rejected email:', error); return { success: false, error: error.message }; }
 }
 
+// ========== إيميل تغيير كلمة المرور ==========
+interface SendPasswordChangedParams {
+  to: string;
+  name: string;
+}
+
+export async function sendPasswordChangedEmail({ to, name }: SendPasswordChangedParams) {
+  try {
+    const { data, error } = await getResend().emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: [to],
+      subject: `🔒 تم تغيير كلمة المرور - ${APP_NAME}`,
+      html: `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head><meta charset="UTF-8"><style>
+          body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; direction: rtl; }
+          .container { max-width: 480px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+          .header { background: linear-gradient(135deg, #dc2626, #ef4444); padding: 32px; text-align: center; }
+          .header h1 { color: white; margin: 0; font-size: 22px; }
+          .content { padding: 32px; text-align: center; }
+          .content p { color: #475569; font-size: 15px; line-height: 1.8; }
+          .alert-box { background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 16px; margin: 16px 0; }
+          .alert-box p { margin: 0; color: #991b1b; font-size: 14px; }
+          .safe-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; margin: 16px 0; }
+          .safe-box p { margin: 0; color: #166534; font-size: 14px; }
+          .footer { background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0; }
+          .footer p { color: #94a3b8; font-size: 12px; margin: 4px 0; }
+        </style></head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🔒 تم تغيير كلمة المرور</h1>
+              <p style="color: rgba(255,255,255,0.9); margin-top: 8px;">إشعار أمني من ${APP_NAME}</p>
+            </div>
+            <div class="content">
+              <p>مرحباً <strong>${name}</strong>،</p>
+              <p>تم تغيير كلمة المرور لحسابك بنجاح.</p>
+              <div class="alert-box">
+                <p>⚠️ إذا لم تقم بطلب هذا التغيير، يرجى تواصل معنا فوراً وتغيير كلمة المرور فوراً.</p>
+              </div>
+              <div class="safe-box">
+                <p>✅ إذا كنت أنت من قام بالتغيير، لا حاجة للقلق. كلمة مرورك محمية الآن.</p>
+              </div>
+            </div>
+            <div class="footer"><p>${APP_NAME} - لوحة الشقق الذكية</p></div>
+          </div>
+        </body>
+        </html>
+      `,
+    });
+    if (error) { console.error('Resend error:', error); return { success: false, error: error.message }; }
+    return { success: true, messageId: data?.id };
+  } catch (error: any) { console.error('Error sending password changed email:', error); return { success: false, error: error.message }; }
+}
+
 // ========== إيميل رسالة جديدة ==========
 interface SendNewMessageParams {
   to: string;

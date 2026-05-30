@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import { sendWelcomeEmail, sendVerificationEmail } from "@/lib/email";
+import { sendOTPEmail } from "@/lib/email";
 
 // قائمة نطاقات البريد المؤقتة المحظورة
 const BLOCKED_DOMAINS = [
@@ -40,13 +40,6 @@ function isValidEmail(email: string): boolean {
   if (!tld || tld.length < 2) return false;
   if (isDisposableEmail(email)) return false;
   return true;
-}
-
-/**
- * توليد رمز OTP مكون من 6 أرقام
- */
-function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 export async function POST(request: Request) {
@@ -98,9 +91,9 @@ export async function POST(request: Request) {
     const hashedPassword = await bcrypt.hash(password, 10);
     const isDeveloper = userEmail === (process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com");
 
-    // توليد رمز OTP للتأكيد (للمستخدمين العاديين فقط)
-    const otp = isDeveloper ? null : generateOTP();
-    const otpExpires = isDeveloper ? null : new Date(Date.now() + 10 * 60 * 1000); // 10 دقائق
+    // Generate OTP for email verification
+    const otp = isDeveloper ? null : crypto.randomInt(100000, 999999).toString();
+    const otpExpires = isDeveloper ? null : new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
 
     const user = await db.user.create({
       data: {
@@ -112,12 +105,12 @@ export async function POST(request: Request) {
         role: isDeveloper ? "DEVELOPER" : "USER",
         isApproved: isDeveloper,
         emailVerified: isDeveloper,
-        otp: otp,
-        otpExpires: otpExpires,
+        otp,
+        otpExpires,
       },
     });
 
-    // تسجيل العملية في OperationLog
+    // Log registration in OperationLog
     try {
       await db.operationLog.create({
         data: {
@@ -129,43 +122,27 @@ export async function POST(request: Request) {
             email: user.email,
             phone: phone || null,
             needsApproval: !isDeveloper,
+            otpSent: !isDeveloper,
           }),
           userId: user.id,
         },
       });
     } catch {}
 
-    // ===== إرسال الإيميلات =====
-    let emailResults = { welcome: false, verification: false };
-
-    if (!isDeveloper) {
-      // إرسال إيميل تأكيد مع رمز OTP (للمستخدمين العاديين)
+    // Send OTP email for non-developer users
+    if (!isDeveloper && otp) {
       try {
-        const result = await sendVerificationEmail({
-          to: user.email!,
-          otp: otp!,
-          name: user.name,
-        });
-        emailResults.verification = result.success;
-        console.log(`📧 Verification OTP email result for ${user.email}: ${result.success ? 'SENT ✅' : 'FAILED ❌ - ' + result.error}`);
-      } catch (emailError) {
-        console.error('Failed to send verification email:', emailError);
-      }
-
-      // إرسال إيميل ترحيبي
-      try {
-        const result = await sendWelcomeEmail({ to: user.email!, name: user.name });
-        emailResults.welcome = result.success;
-        console.log(`📧 Welcome email result for ${user.email}: ${result.success ? 'SENT ✅' : 'FAILED ❌ - ' + result.error}`);
-      } catch (emailError) {
-        console.error('Failed to send welcome email:', emailError);
+        const emailResult = await sendOTPEmail({ to: userEmail, otp, name: user.name });
+        console.log(`📧 Registration OTP email result: ${JSON.stringify(emailResult)}`);
+      } catch (err) {
+        console.error('Error sending registration OTP:', err);
       }
     }
 
     return NextResponse.json({
-      message: isDeveloper 
-        ? "تم إنشاء الحساب بنجاح" 
-        : "تم إنشاء الحساب بنجاح. تم إرسال رمز التحقق إلى بريدك الإلكتروني.",
+      message: isDeveloper ? "تم إنشاء الحساب بنجاح" : "تم إنشاء الحساب بنجاح. يرجى تأكيد البريد الإلكتروني",
+      emailVerificationRequired: !isDeveloper,
+      email: userEmail,
       user: {
         id: user.id,
         email: user.email,
@@ -175,13 +152,6 @@ export async function POST(request: Request) {
         isApproved: user.isApproved,
         emailVerified: user.emailVerified,
       },
-      // معلومات الإيميلات (للتصحيح فقط في وضع التطوير)
-      ...(process.env.NODE_ENV === 'development' && {
-        debug: {
-          otp: otp,
-          emailResults,
-        }
-      }),
     });
   } catch (error) {
     console.error("Register error:", error);
