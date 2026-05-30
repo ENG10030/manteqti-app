@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import { sendOTPEmail } from "@/lib/email";
+import { sendOTPEmail, sendNewUserNotificationEmail } from "@/lib/email";
 
 // قائمة نطاقات البريد المؤقتة المحظورة
 const BLOCKED_DOMAINS = [
@@ -136,6 +136,22 @@ export async function POST(request: Request) {
         console.log(`📧 Registration OTP email result: ${JSON.stringify(emailResult)}`);
       } catch (err) {
         console.error('Error sending registration OTP:', err);
+      }
+    }
+
+    // Send notification email to developer about new registration
+    if (!isDeveloper) {
+      const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
+      try {
+        await sendNewUserNotificationEmail({
+          to: DEVELOPER_EMAIL,
+          userName: user.name,
+          userEmail: user.email,
+          userPhone: phone || null,
+        });
+        console.log(`📧 Developer notification email sent for new user: ${user.name}`);
+      } catch (err) {
+        console.error('Error sending developer notification:', err);
       }
     }
 

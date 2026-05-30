@@ -4,13 +4,13 @@ import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { email, identifier, password } = body;
 
-    // Accept either email or identifier
     const loginIdentifier = (email || identifier || "").toLowerCase().trim();
 
     if (!loginIdentifier || !password) {
@@ -20,7 +20,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Find user by identifier
     const user = await db.user.findUnique({
       where: { identifier: loginIdentifier },
     });
@@ -48,8 +47,18 @@ export async function POST(request: Request) {
       );
     }
 
+    // Block login if email not verified (developers and pre-existing users exempt)
+    const isDeveloper = user.role === 'DEVELOPER' || user.identifier === DEVELOPER_EMAIL;
+    if (!user.emailVerified && !isDeveloper) {
+      return NextResponse.json({
+        error: "يجب تأكيد البريد الإلكتروني أولاً",
+        emailVerificationRequired: true,
+        email: user.email || user.identifier,
+      }, { status: 403 });
+    }
+
     // Check if user is approved (developers are always approved)
-    if (!user.isApproved && user.role !== 'DEVELOPER') {
+    if (!user.isApproved && !isDeveloper) {
       const token = sign(
         { userId: user.id, identifier: user.identifier, role: user.role },
         JWT_SECRET,
