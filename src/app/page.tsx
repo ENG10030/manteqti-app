@@ -259,6 +259,7 @@ export default function App() {
   const [showCompareModal, setShowCompareModal] = useState(false);
   const [aiCompareResult, setAiCompareResult] = useState('');
   const [aiCompareLoading, setAiCompareLoading] = useState(false);
+  const [showMyFavorites, setShowMyFavorites] = useState(false);
 
   // Operation Logs
   const [operationLogs, setOperationLogs] = useState<any[]>([]);
@@ -1591,11 +1592,20 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
   // ========== Comparison Feature (v57) ==========
   const toggleCompareSelect = (apartmentId: string) => {
+    const clickedApt = allApartments.find(a => a.id === apartmentId);
     setSelectedForCompare(prev => {
       const next = new Set(prev);
       if (next.has(apartmentId)) {
         next.delete(apartmentId);
       } else if (next.size < 4) {
+        // تحقق من النوع قبل الإضافة
+        if (clickedApt && next.size > 0) {
+          const firstType = allApartments.find(a => next.has(a.id))?.type;
+          if (firstType && clickedApt.type !== firstType) {
+            addToast('⚠️ لا يمكن مقارنة عقار ' + (clickedApt.type === 'rent' ? 'للإيجار' : 'للبيع') + ' مع عقار ' + (firstType === 'rent' ? 'للإيجار' : 'للبيع') + '! يجب أن تكون كل الشقق من نفس النوع.', 'error');
+            return prev;
+          }
+        }
         next.add(apartmentId);
       } else {
         addToast('الحد الأقصى ٤ شقق للمقارنة', 'info');
@@ -1608,6 +1618,13 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
   const openCompareModal = () => {
     if (selectedForCompare.size < 2) {
       addToast('اختر شقتين على الأقل للمقارنة', 'info');
+      return;
+    }
+    // التحقق من أن كل الشقق من نفس النوع (بيع أو إيجار)
+    const compareApts = allApartments.filter(a => selectedForCompare.has(a.id));
+    const types = new Set(compareApts.map(a => a.type));
+    if (types.size > 1) {
+      addToast('⚠️ لا يمكن مقارنة عقارات من أنواع مختلفة! اختر إما عقارات للإيجار فقط أو عقارات للبيع فقط.', 'error');
       return;
     }
     setShowCompareModal(true);
@@ -1990,10 +2007,11 @@ ${apts.map((a, i) => `شقة ${i + 1}: ${a.title}
                     <button onClick={() => toggleFavorite(apartment.id)} className={`absolute bottom-3 right-3 p-2 rounded-full ${darkMode ? 'bg-slate-900/80' : 'bg-white/80'} backdrop-blur transition-all hover:scale-110`}>
                       <Heart className={`h-5 w-5 ${favorites.includes(apartment.id) ? 'fill-red-500 text-red-500' : darkMode ? 'text-slate-300' : 'text-slate-600'}`} />
                     </button>
-                    {currentUser && favorites.includes(apartment.id) && (
-                      <button onClick={(e) => { e.stopPropagation(); toggleCompareSelect(apartment.id); }} className={`absolute bottom-3 left-3 px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1 transition-all ${selectedForCompare.has(apartment.id) ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : darkMode ? 'bg-slate-900/80 text-slate-300' : 'bg-white/80 text-slate-600'} backdrop-blur`}>
-                        <GitCompareArrows className="h-3.5 w-3.5" />
-                        {selectedForCompare.has(apartment.id) ? 'محدد' : 'مقارنة'}
+                    {/* زر المقارنة - ظاهر لكل المستخدمين المسجلين */}
+                    {currentUser && (
+                      <button onClick={(e) => { e.stopPropagation(); toggleCompareSelect(apartment.id); }} className={`absolute bottom-3 left-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shadow-lg backdrop-blur transition-all hover:scale-105 ${selectedForCompare.has(apartment.id) ? 'bg-emerald-500 text-white shadow-emerald-500/40 ring-2 ring-emerald-300' : 'bg-gradient-to-r from-violet-500/90 to-purple-600/90 text-white shadow-violet-500/30'}`}>
+                        <GitCompareArrows className="h-4 w-4" />
+                        {selectedForCompare.has(apartment.id) ? '✓ محدد' : 'مقارنة'}
                       </button>
                     )}
                   </div>
@@ -2049,6 +2067,99 @@ ${apts.map((a, i) => `شقة ${i + 1}: ${a.title}
         </div>
       </main>
 
+      {/* قسم المحفوظات / المعجب بها (v57) - يظهر فوق الفوتر */}
+      {currentUser && !isDeveloper && favorites.length > 0 && (
+        <section className={`relative z-10 py-8 border-t ${darkMode ? 'bg-slate-900/50 border-slate-700' : 'bg-gradient-to-b from-white to-slate-50 border-slate-200'}`}>
+          <div className="max-w-7xl mx-auto px-4">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-rose-600 shadow-lg shadow-red-500/20">
+                  <Heart className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>المحفوظات</h2>
+                  <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>الشقق اللي اعجبت بيها ({favorites.length})</p>
+                </div>
+              </div>
+              <button onClick={() => { setShowMyFavorites(true); }} className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium ${darkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                <Eye className="h-3.5 w-3.5" />
+                عرض الكل
+              </button>
+            </div>
+
+            {/* Saved Apartments Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {allApartments.filter(a => favorites.includes(a.id)).slice(0, 8).map(apt => (
+                <motion.div
+                  key={apt.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`rounded-2xl overflow-hidden border-2 transition-all hover:shadow-xl hover:-translate-y-1 ${darkMode ? 'border-slate-700 bg-slate-800' : 'border-slate-200 bg-white'} cursor-pointer`}
+                  onClick={() => { setSelectedApartment(apt); fetchComments(apt.id); setCurrentImageIndex(0); }}
+                >
+                  {/* Image */}
+                  <div className="relative h-36 overflow-hidden">
+                    <img src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                    {/* Price */}
+                    <div className="absolute bottom-2 right-2">
+                      <span className="px-2.5 py-1 rounded-lg bg-white/95 text-sm font-bold text-slate-900 shadow">
+                        {apt.price.toLocaleString()} ج.م{apt.type === 'rent' && <span className="text-[10px] font-normal text-slate-500"> /شهر</span>}
+                      </span>
+                    </div>
+                    {/* Type Badge */}
+                    <div className="absolute top-2 left-2">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold text-white ${apt.type === 'rent' ? 'bg-emerald-500' : 'bg-blue-500'}`}>
+                        {apt.type === 'rent' ? 'للإيجار' : 'للبيع'}
+                      </span>
+                    </div>
+                    {/* Remove from favorites */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleFavorite(apt.id); }}
+                      className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center rounded-full bg-white/90 shadow hover:scale-110 transition-transform"
+                    >
+                      <Heart className="h-4 w-4 fill-red-500 text-red-500" />
+                    </button>
+                  </div>
+                  {/* Content */}
+                  <div className="p-3">
+                    <h3 className={`text-sm font-bold line-clamp-1 mb-1 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
+                    <div className="flex items-center gap-1 mb-2">
+                      <MapPin className="h-3 w-3 text-emerald-500 shrink-0" />
+                      <span className={`text-xs line-clamp-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.area || 'غير محدد'}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                      <span className={`flex items-center gap-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                        <Bed className="h-3 w-3" />{apt.bedrooms} غرف
+                      </span>
+                      <span className={`flex items-center gap-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                        <Bath className="h-3 w-3" />{apt.bathrooms} حمام
+                      </span>
+                      {apt.floor && (
+                        <span className={`flex items-center gap-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                          <Layers className="h-3 w-3" />الدور {apt.floor}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Show more button */}
+            {favorites.length > 8 && (
+              <div className="text-center mt-4">
+                <button onClick={() => { setShowMyFavorites(true); }} className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium ${darkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                  عرض كل المحفوظات ({favorites.length} شقة)
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Footer */}
       <footer className={`relative z-10 mt-auto py-6 border-t ${darkMode ? 'bg-slate-900/80 border-slate-700' : 'bg-white/80 border-slate-200'} backdrop-blur`}>
         <div className="max-w-7xl mx-auto px-4 text-center"><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>© 2026 منطقتي | Manteqti - جميع الحقوق محفوظة</p></div>
@@ -2056,6 +2167,115 @@ ${apts.map((a, i) => `شقة ${i + 1}: ${a.title}
 
       {/* Confirm Dialog */}
       <ConfirmDialog {...confirmDialog} darkMode={darkMode} onCancel={() => setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' })} />
+
+      {/* نافذة المحفوظات الكاملة (v57) */}
+      <AnimatePresence>
+        {showMyFavorites && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[85] bg-black/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto"
+            onClick={() => setShowMyFavorites(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-4xl rounded-2xl shadow-2xl my-8 ${darkMode ? 'bg-slate-800' : 'bg-white'}`}
+            >
+              {/* Header */}
+              <div className={`flex items-center justify-between p-4 border-b ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-rose-600">
+                    <Heart className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>كل المحفوظات</h2>
+                    <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{favorites.length} شقة محفوظة</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowMyFavorites(false)} className={`p-2 rounded-xl transition-colors ${darkMode ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}>
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* List */}
+              <div className="p-4 max-h-[70vh] overflow-y-auto space-y-3">
+                {allApartments.filter(a => favorites.includes(a.id)).length === 0 ? (
+                  <div className="text-center py-12">
+                    <Heart className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
+                    <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد محفوظات</p>
+                  </div>
+                ) : (
+                  allApartments.filter(a => favorites.includes(a.id)).map(apt => (
+                    <motion.div
+                      key={apt.id}
+                      layout
+                      className={`rounded-xl border-2 p-4 transition-all hover:shadow-lg ${darkMode ? 'border-slate-700 bg-slate-800/50 hover:border-slate-600' : 'border-slate-200 bg-white hover:border-slate-300'} cursor-pointer`}
+                      onClick={() => { setShowMyFavorites(false); setSelectedApartment(apt); fetchComments(apt.id); setCurrentImageIndex(0); }}
+                    >
+                      <div className="flex gap-4">
+                        {/* Image */}
+                        <div className={`w-28 h-28 shrink-0 rounded-xl overflow-hidden ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
+                          <img src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
+                        </div>
+                        {/* Details */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className={`text-sm font-bold line-clamp-1 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleFavorite(apt.id); }}
+                              className="shrink-0 p-1.5 rounded-full hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                            >
+                              <Heart className="h-5 w-5 fill-red-500 text-red-500" />
+                            </button>
+                          </div>
+                          {/* Price */}
+                          <p className="text-lg font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent mt-1">
+                            {apt.price.toLocaleString()} ج.م{apt.type === 'rent' && <span className={`text-xs font-normal ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}> /شهر</span>}
+                          </p>
+                          {/* Location */}
+                          <div className="flex items-center gap-1 mt-1">
+                            <MapPin className="h-3 w-3 text-emerald-500 shrink-0" />
+                            <span className={`text-xs line-clamp-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.area || 'غير محدد'}</span>
+                          </div>
+                          {/* Stats */}
+                          <div className="flex items-center gap-3 mt-2">
+                            <span className={`flex items-center gap-1 text-[11px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                              <Bed className="h-3 w-3" />{apt.bedrooms} غرف
+                            </span>
+                            <span className={`flex items-center gap-1 text-[11px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                              <Bath className="h-3 w-3" />{apt.bathrooms} حمام
+                            </span>
+                            {apt.floor && <span className={`flex items-center gap-1 text-[11px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}><Layers className="h-3 w-3" />الدور {apt.floor}</span>}
+                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${apt.type === 'rent' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                              {apt.type === 'rent' ? 'إيجار' : 'بيع'}
+                            </span>
+                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${statusConfig[apt.status]?.bgColor || 'bg-slate-100'} ${statusConfig[apt.status]?.color || 'text-slate-600'}`}>
+                              {statusConfig[apt.status]?.label || apt.status}
+                            </span>
+                          </div>
+                          {/* Amenities */}
+                          {(apt.amenities && apt.amenities.length > 0) && (
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {apt.amenities.slice(0, 4).map((am: string, i: number) => (
+                                <span key={i} className={`px-1.5 py-0.5 rounded-full text-[10px] ${darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>{am}</span>
+                              ))}
+                              {apt.amenities.length > 4 && <span className={`text-[10px] ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>+{apt.amenities.length - 4}</span>}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
             {/* Comparison Floating Bar (v57) */}
             <AnimatePresence>
