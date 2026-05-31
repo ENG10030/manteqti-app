@@ -1,5 +1,5 @@
-// This is your Prisma schema file for PRODUCTION (PostgreSQL)
-// Use this file when deploying to Vercel/Supabase
+// Manteqti - PostgreSQL Schema for Vercel production
+// This is the COMPLETE schema matching schema.prisma but for PostgreSQL
 
 generator client {
   provider = "prisma-client-js"
@@ -12,50 +12,75 @@ datasource db {
 }
 
 model User {
-  id         String      @id @default(cuid())
-  identifier String      @unique
-  name       String
-  password   String
-  phone      String?
-  email      String?
-  otp        String?
-  otpExpires DateTime?   @map("otp_expires")
-  createdAt  DateTime    @default(now()) @map("created_at")
-  updatedAt  DateTime    @updatedAt @map("updated_at")
-  inquiries  Inquiry[]
-  payments   Payment[]
+  id                    String    @id @default(cuid())
+  identifier            String    @unique
+  name                  String
+  email                 String?
+  phone                 String?
+  password              String
+  role                  String    @default("user")
+  isBlocked             Boolean   @default(false)
+  blockedAt             DateTime?
+  blockReason           String?
+  isApproved            Boolean   @default(true)
+  walletBalance         Float     @default(0)
+  passwordResetToken    String?
+  passwordResetExpires  DateTime?
+  otp                   String?
+  otpExpires            DateTime?
+  emailVerified         Boolean   @default(false)
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  apartments        Apartment[]
+  inquiries         Inquiry[]
+  payments          Payment[]
+  likes             Like[]
+  comments          Comment[]
+  messages          Message[]
+  editRequests      PropertyEditRequest[]
+  blockedUsers      BlockedUser[]             @relation("BlockedUserRelation")
+  walletTransactions WalletTransaction[]
 
   @@map("users")
 }
 
 model Apartment {
-  id              String      @id @default(cuid())
-  title           String
-  price           Int
-  area            String
-  bedrooms        Int
-  bathrooms       Int
-  description     String      @db.Text
-  ownerPhone      String      @map("owner_phone")
-  mapLink         String?     @map("map_link") @db.Text
-  imageUrl        String?     @map("image_url") @db.Text
-  images          String?     @db.Text
-  videoUrl        String?     @map("video_url") @db.Text
-  videos          String?     @db.Text
-  amenities       String?     @db.Text
-  featured        Boolean     @default(false)
-  type            String
-  status          String      @default("pending")
-  statusChangedAt DateTime?   @map("status_changed_at")
-  views           Int         @default(0)
-  paymentRef      String?     @map("payment_ref")
-  agreementStatus String?     @map("agreement_status")
-  createdBy       String?     @map("created_by")
-  approvedBy      String?     @map("approved_by")
-  approvedAt      DateTime?   @map("approved_at")
-  createdAt       DateTime    @default(now()) @map("created_at")
-  updatedAt       DateTime    @updatedAt @map("updated_at")
-  inquiries       Inquiry[]
+  id               String    @id @default(cuid())
+  title            String
+  price            Int
+  area             String
+  bedrooms         Int
+  bathrooms        Int
+  floor            Int?
+  apartmentSize    Int?
+  description      String    @db.Text
+  ownerPhone       String    @map("owner_phone")
+  mapLink          String?   @map("map_link") @db.Text
+  imageUrl         String?   @map("image_url") @db.Text
+  images           String?   @db.Text
+  videoUrl         String?   @map("video_url") @db.Text
+  videos           String?   @db.Text
+  amenities        String?   @db.Text
+  isFeatured       Boolean   @default(false) @map("is_featured")
+  isVip            Boolean   @default(false) @map("is_vip")
+  type             String    @default("rent")
+  status           String    @default("pending")
+  statusChangedAt  DateTime? @map("status_changed_at")
+  paymentRef       String?   @map("payment_ref")
+  createdBy        String?   @map("created_by")
+  approvedBy       String?   @map("approved_by")
+  approvedAt       DateTime? @map("approved_at")
+  contactHidden    Boolean   @default(false) @map("contact_hidden")
+  views            Int       @default(0)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  user          User?                 @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  inquiries     Inquiry[]
+  likes         Like[]
+  comments      Comment[]
+  editRequests  PropertyEditRequest[]
 
   @@index([status])
   @@index([type])
@@ -64,42 +89,203 @@ model Apartment {
 }
 
 model Inquiry {
-  id               String    @id @default(cuid())
-  apartmentId      String    @map("apartment_id")
-  userId           String?   @map("user_id")
-  name             String
-  email            String
-  phone            String
-  message          String    @db.Text
-  lifecycleStatus  String    @default("New") @map("lifecycle_status")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
-  apartment        Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
-  user             User?     @relation(fields: [userId], references: [id])
-  payment          Payment?
+  id              String   @id @default(cuid())
+  apartmentId     String   @map("apartment_id")
+  userId          String?  @map("user_id")
+  name            String
+  email           String
+  phone           String
+  message         String   @db.Text
+  lifecycleStatus String   @default("new") @map("lifecycle_status")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  payment   Payment?
 
   @@index([apartmentId])
   @@map("inquiries")
 }
 
 model Payment {
-  id             String    @id @default(cuid())
-  inquiryId      String    @unique @map("inquiry_id")
+  id             String   @id @default(cuid())
+  inquiryId      String   @unique @map("inquiry_id")
   method         String
-  status         String    @default("Pending")
-  inquiryStatus  String    @default("Contacted") @map("inquiry_status")
+  status         String   @default("Pending")
+  inquiryStatus  String   @default("new") @map("inquiry_status")
   amount         Int
-  transactionRef String?   @map("transaction_ref")
-  paymentLink    String?   @map("payment_link") @db.Text
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
-  inquiry        Inquiry   @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
-  user           User?     @relation(fields: [userId], references: [id])
-  userId         String?   @map("user_id")
+  transactionRef String?  @map("transaction_ref")
+  paymentLink    String?  @map("payment_link") @db.Text
+  userId         String?  @map("user_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  inquiry Inquiry @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@map("payments")
 }
 
+model Like {
+  id          String   @id @default(cuid())
+  apartmentId String   @map("apartment_id")
+  userId      String   @map("user_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([apartmentId, userId])
+  @@map("likes")
+}
+
+model Comment {
+  id          String   @id @default(cuid())
+  apartmentId String   @map("apartment_id")
+  userId      String   @map("user_id")
+  content     String   @db.Text
+  status      String   @default("pending")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("comments")
+}
+
+model Message {
+  id         String    @id @default(cuid())
+  senderId   String    @map("sender_id")
+  receiverId String?   @map("receiver_id")
+  content    String    @db.Text
+  isRead     Boolean   @default(false) @map("is_read")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model PropertyEditRequest {
+  id           String    @id @default(cuid())
+  apartmentId  String    @map("apartment_id")
+  userId       String    @map("user_id")
+  editType     String    @default("update") @map("edit_type")
+  changes      String?   @db.Text
+  newImages    String?   @db.Text @map("new_images")
+  newVideos    String?   @db.Text @map("new_videos")
+  newPrice     Int?      @map("new_price")
+  newStatus    String?   @map("new_status")
+  description  String?   @db.Text
+  status       String    @default("pending")
+  reviewedBy   String?   @map("reviewed_by")
+  reviewedAt   DateTime? @map("reviewed_at")
+  reviewNotes  String?   @db.Text @map("review_notes")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("property_edit_requests")
+}
+
+model BlockedUser {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  reason    String?  @db.Text
+  blockedAt DateTime @default(now()) @map("blocked_at")
+
+  user User @relation("BlockedUserRelation", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("blocked_users")
+}
+
+model Settings {
+  id                  String   @id @default(cuid())
+  contactFee          Int      @default(50) @map("contact_fee")
+  regularFee          Int      @default(30) @map("regular_fee")
+  featuredFee         Int      @default(100) @map("featured_fee")
+  premiumFee          Int      @default(200) @map("premium_fee")
+  vipFee              Int      @default(300) @map("vip_fee")
+  saleDisplayFee      Int      @default(100) @map("sale_display_fee")
+  rentDisplayFee      Int      @default(75) @map("rent_display_fee")
+  otherServicesFee    Int      @default(50) @map("other_services_fee")
+  highlightFee        Int      @default(150) @map("highlight_fee")
+  priorityListingFee  Int      @default(200) @map("priority_listing_fee")
+  verifiedListingFee  Int      @default(250) @map("verified_listing_fee")
+  currency            String   @default("ج.م")
+
+  // 🔐 Developer Payment Receiving Accounts
+  vodafoneCashNumber   String?  @default("")
+  orangeCashNumber     String?  @default("")
+  etisalatCashNumber   String?  @default("")
+  bankAccountName      String?  @default("")
+  bankAccountNumber    String?  @default("")
+  bankName             String?  @default("")
+  instapayAccount      String?  @default("")
+  usdtTronAddress      String?  @default("")
+  visaEnabled          Boolean  @default(false) @map("visa_enabled")
+  visaPublicKey        String?  @default("")
+  visaSecretKey        String?  @default("")
+  minRechargeAmount    Int      @default(10) @map("min_recharge_amount")
+  maxRechargeAmount    Int      @default(50000) @map("max_recharge_amount")
+  paymentAutoConfirm   Boolean  @default(false) @map("payment_auto_confirm")
+  paymentSecurityPin   String?  @default("") @map("payment_security_pin")
+
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+model OperationLog {
+  id         String   @id @default(cuid())
+  action     String
+  entityType String?  @map("entity_type")
+  entityId   String?  @map("entity_id")
+  details    String?  @db.Text
+  userId     String?  @map("user_id")
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @db.Text @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("operation_logs")
+}
+
+model ApprovalLog {
+  id            String    @id @default(cuid())
+  userId        String    @map("user_id")
+  action        String
+  userName      String    @map("user_name")
+  userEmail     String?   @map("user_email")
+  reason        String?   @db.Text
+  performedBy   String?   @map("performed_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@map("approval_logs")
+}
+
+model WalletTransaction {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  type        String
+  amount      Float
+  balance     Float
+  method      String?  @db.Text
+  description String?  @db.Text
+  reference   String?  @db.Text
+  status      String   @default("completed")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("wallet_transactions")
+}
+
+// Legacy models kept for backward compatibility
 model OtpCode {
   id        String   @id @default(cuid())
   code      String
@@ -110,58 +296,26 @@ model OtpCode {
   @@map("otp_codes")
 }
 
-model OperationLog {
-  id          String   @id @default(cuid())
-  action      String
-  entityType  String   @map("entity_type")
-  entityId    String?  @map("entity_id")
-  userId      String?  @map("user_id")
-  details     String?  @db.Text
-  ipAddress   String?  @map("ip_address")
-  userAgent   String?  @map("user_agent") @db.Text
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  @@map("operation_logs")
-}
-
-model Settings {
-  id                  String   @id @default(cuid())
-  contactFee          Int      @default(50) @map("contact_fee")
-  featuredFee         Int      @default(100) @map("featured_fee")
-  premiumFee          Int      @default(200) @map("premium_fee")
-  saleDisplayFee      Int      @default(100) @map("sale_display_fee")
-  rentDisplayFee      Int      @default(75) @map("rent_display_fee")
-  otherServicesFee    Int      @default(50) @map("other_services_fee")
-  highlightFee        Int      @default(150) @map("highlight_fee")
-  priorityListingFee  Int      @default(200) @map("priority_listing_fee")
-  verifiedListingFee  Int      @default(250) @map("verified_listing_fee")
-  currency            String   @default("ج.م")
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
-
-  @@map("settings")
-}
-
 model Session {
   id           String   @id @default(cuid())
   userId       String   @map("user_id")
   token        String   @unique
   expiresAt    DateTime @map("expires_at")
   ipAddress    String?  @map("ip_address")
-  userAgent    String?  @map("user_agent") @db.Text
+  userAgent    String?  @db.Text @map("user_agent")
   createdAt    DateTime @default(now()) @map("created_at")
 
   @@map("sessions")
 }
 
 model SecurityLog {
-  id          String   @id @default(cuid())
-  action      String
-  identifier  String
-  ipAddress   String?  @map("ip_address")
-  userAgent   String?  @map("user_agent") @db.Text
-  details     String?  @db.Text
-  createdAt   DateTime @default(now()) @map("created_at")
+  id         String   @id @default(cuid())
+  action     String
+  identifier String
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @db.Text @map("user_agent")
+  details    String?  @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
 
   @@map("security_logs")
 }
