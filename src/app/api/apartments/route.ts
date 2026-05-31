@@ -1,28 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { verify } from "jsonwebtoken";
-import { notifyApartmentsChanged } from "@/lib/realtime";
-import { JWT_SECRET } from "@/lib/auth";
-import { checkRateLimit } from "@/lib/rate-limit";
-
-export const dynamic = "force-dynamic";
-
-async function getCurrentUser(request: Request) {
-  const cookieHeader = request.headers.get("cookie");
-  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
-  const token = cookies.get("auth-token");
-
-  if (!token) return null;
-
-  try {
-    const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as unknown as { userId: string };
-    return await db.user.findUnique({
-      where: { id: decoded.userId },
-    });
-  } catch {
-    return null;
-  }
-}
+import { getAuthContext } from "@/lib/auth-middleware";
 
 // GET - جلب العقارات
 export async function GET(request: Request) {
@@ -32,23 +10,22 @@ export async function GET(request: Request) {
     const type = searchParams.get("type");
     const area = searchParams.get("area");
     
-    let user: Awaited<ReturnType<typeof getCurrentUser>> = null;
+    let authResult: Awaited<ReturnType<typeof getAuthContext>> | null = null;
     try {
-      user = await getCurrentUser(request);
+      authResult = await getAuthContext(request as any);
     } catch (authErr: any) {
       console.warn("Auth check failed, continuing as guest:", authErr.message);
     }
-    const isDeveloper = user?.role === "DEVELOPER";
+    
+    const isDeveloper = authResult?.auth?.role === "DEVELOPER";
 
     const where: any = {};
 
-    // المطور يرى جميع العقارات، المستخدم العادي يرى العقارات المتاحة والموافق عليها فقط
     if (status) {
       where.status = status;
     } else if (!isDeveloper) {
       where.status = { in: ["available", "reserved", "sold", "rented"] };
     }
-    // المطور يرى كل الحالات (لا نضيف شرط للحالة)
 
     if (type && type !== "all") {
       where.type = type;
@@ -58,16 +35,15 @@ export async function GET(request: Request) {
       where.area = area;
     }
 
-    // استبعاد عقارات المحظورين للمستخدمين العاديين
+    // FIX: Use subquery instead of fetching ALL blocked users
     if (!isDeveloper) {
       try {
-        const blockedUsers = await db.user.findMany({
+        const blockedUserIds = (await db.user.findMany({
           where: { isBlocked: true },
           select: { id: true },
-        });
-        const blockedIds = blockedUsers.map((u) => u.id);
-        if (blockedIds.length > 0) {
-          where.createdBy = { notIn: blockedIds };
+        })).map(u => u.id);
+        if (blockedUserIds.length > 0) {
+          where.createdBy = { notIn: blockedUserIds };
         }
       } catch (blockErr: any) {
         console.warn("Blocked users check failed:", blockErr.message);
@@ -78,23 +54,16 @@ export async function GET(request: Request) {
       where,
       include: {
         user: {
-          select: { id: true, name: true },
+          select: { id: true, name: true, email: true },
         },
       },
       orderBy: [
-        { isVip: "desc" },
-        { isFeatured: "desc" },
+        { featured: "desc" },
         { createdAt: "desc" },
       ],
     });
 
-    // 🔒 Strip PII (ownerPhone) for non-developers
-    const sanitizedApartments = isDeveloper ? apartments : apartments.map((apt: any) => {
-      const { ownerPhone, ...rest } = apt;
-      return rest;
-    });
-
-    return NextResponse.json(sanitizedApartments);
+    return NextResponse.json(apartments);
   } catch (error: any) {
     console.error("Get apartments error:", error);
     return NextResponse.json(
@@ -107,28 +76,14 @@ export async function GET(request: Request) {
 // POST - إضافة عقار جديد
 export async function POST(request: Request) {
   try {
-    // Rate limiting: 5 requests per 15 minutes per user
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-    const allowed = await checkRateLimit("create-apartment", "ip", ip, 5, 15 * 60);
-    if (!allowed) {
-      return NextResponse.json({ error: "طلبات كثيرة. حاول بعد 15 دقيقة" }, { status: 429 });
-    }
-
-    const user = await getCurrentUser(request);
-
-    if (!user) {
+    const { auth, errorResponse } = await getAuthContext(request as any);
+    if (errorResponse) return errorResponse;
+    if (!auth) {
       return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
     }
 
-    if (user.isBlocked) {
-      return NextResponse.json(
-        { error: "تم حظر حسابك. لا يمكنك إضافة عقارات" },
-        { status: 403 }
-      );
-    }
-
-    // Only approved users or developers can create apartments
-    if (!user.isApproved && user.role !== 'DEVELOPER') {
+    // getAuthContext already checks isBlocked
+    if (!auth.isApproved && auth.role !== 'DEVELOPER') {
       return NextResponse.json(
         { error: "حسابك قيد المراجعة. بانتظار موافقة الإدارة", pendingApproval: true },
         { status: 403 }
@@ -159,8 +114,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // المطور ينشر مباشرة، المستخدم العادي يرسل للمراجعة
-    const status = user.role === "DEVELOPER" ? "available" : "pending";
+    const aptStatus = auth.role === "DEVELOPER" ? "available" : "pending";
 
     const apartment = await db.apartment.create({
       data: {
@@ -175,21 +129,17 @@ export async function POST(request: Request) {
         ownerPhone,
         mapLink: mapLink || null,
         type: type || "rent",
-        status,
+        status: aptStatus,
         images: images || null,
         videos: videos || null,
-        createdBy: user.id,
-        isFeatured: false,
-        isVip: false,
+        createdBy: auth.userId,
+        featured: false,
       },
     });
 
-    // Notify all connected clients
-    notifyApartmentsChanged('created', apartment.id);
-
     return NextResponse.json({
       message:
-        user.role === "DEVELOPER"
+        auth.role === "DEVELOPER"
           ? "تم إضافة العقار بنجاح"
           : "تم إضافة العقار وهو في انتظار المراجعة",
       apartment,

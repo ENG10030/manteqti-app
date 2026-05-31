@@ -1,27 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { cookies } from 'next/headers';
-import { verify } from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
+import { getAuthContext, requireDeveloper } from '@/lib/auth-middleware';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
+    const { auth, errorResponse } = await getAuthContext(request);
+    if (errorResponse) return errorResponse;
 
     const { id } = await params;
     
@@ -29,9 +16,7 @@ export async function GET(
       where: { id },
       include: {
         inquiry: {
-          include: {
-            apartment: true
-          }
+          include: { apartment: true }
         }
       }
     });
@@ -41,19 +26,9 @@ export async function GET(
     }
 
     // Authorization: must be the payment owner or a developer
-    const isDev = decoded.role === 'DEVELOPER' || decoded.identifier === DEVELOPER_EMAIL;
-    if (!isDev) {
-      try {
-        const user = await db.user.findUnique({ where: { id: decoded.userId }, select: { role: true, identifier: true } });
-        if (user?.role !== 'DEVELOPER' && user?.identifier !== DEVELOPER_EMAIL) {
-          if (payment.userId !== decoded.userId) {
-            return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
-          }
-        }
-      } catch {
-        if (payment.userId !== decoded.userId) {
-          return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
-        }
+    if (auth!.role !== 'DEVELOPER') {
+      if (payment.userId !== auth!.userId) {
+        return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
       }
     }
 
@@ -93,24 +68,17 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
-
-    if (decoded.role !== 'DEVELOPER') {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
-    }
+    const { auth, errorResponse } = await requireDeveloper(request);
+    if (errorResponse) return errorResponse;
 
     const { id } = await params;
     const data = await request.json();
+
+    // Validate status values
+    const validStatuses = ['Pending', 'Paid', 'Failed', 'Refunded', 'Cancelled'];
+    if (data.status && !validStatuses.includes(data.status)) {
+      return NextResponse.json({ error: 'Invalid status value' }, { status: 400 });
+    }
 
     const payment = await db.payment.update({
       where: { id },
@@ -136,24 +104,16 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
-
-    if (decoded.role !== 'DEVELOPER') {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
-    }
+    const { auth, errorResponse } = await requireDeveloper(request);
+    if (errorResponse) return errorResponse;
 
     const { id } = await params;
     const data = await request.json();
+
+    const validStatuses = ['Pending', 'Paid', 'Failed', 'Refunded', 'Cancelled'];
+    if (data.status && !validStatuses.includes(data.status)) {
+      return NextResponse.json({ error: 'Invalid status value' }, { status: 400 });
+    }
 
     const payment = await db.payment.update({
       where: { id },

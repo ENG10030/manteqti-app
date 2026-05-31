@@ -1,22 +1,25 @@
 import { db } from "./db";
 import { verify } from "jsonwebtoken";
 import { NextRequest } from "next/server";
+import bcrypt from "bcryptjs";
 
-// 🔐 JWT_SECRET — safe for both build time and runtime
-// At build time (local), uses a placeholder so the build succeeds.
-// At runtime on Vercel, JWT_SECRET is always set — the real value is used.
-function _getJwtSecret(): string {
+// CRITICAL: No fallback secret in production — prevents token forgery
+export const JWT_SECRET = (() => {
   const secret = process.env.JWT_SECRET;
-  if (secret) return secret;
-  // Only reached during local build (JWT_SECRET not in .env)
-  // On Vercel, this line NEVER executes.
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("FATAL: JWT_SECRET environment variable is not set in production!");
+  if (!secret && process.env.NODE_ENV === "production") {
+    throw new Error("FATAL: JWT_SECRET environment variable is not set!");
   }
-  return "build-time-placeholder-not-used-at-runtime";
-}
+  return secret || "manteqti-dev-only-secret";
+})();
 
-export const JWT_SECRET: string = _getJwtSecret();
+// CRITICAL: No fallback email in production
+export const DEVELOPER_EMAIL = (() => {
+  const email = process.env.DEVELOPER_EMAIL;
+  if (!email && process.env.NODE_ENV === "production") {
+    throw new Error("FATAL: DEVELOPER_EMAIL environment variable is not set!");
+  }
+  return email || "dev@manteqti.local";
+})();
 
 export interface AuthUser {
   id: string;
@@ -28,14 +31,14 @@ export interface AuthUser {
   emailVerified: boolean;
 }
 
-// الحصول على المستخدم الحالي من الطلب
+// الحصول على المستخدم الحالي من الطلب (with DB verification)
 export async function getCurrentUser(request: NextRequest): Promise<AuthUser | null> {
   try {
     const token = request.cookies.get("auth-token")?.value;
-
     if (!token) return null;
 
-    const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as unknown as { userId: string };
+    const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as { userId: string };
+    if (!decoded.userId) return null;
 
     const user = await db.user.findUnique({
       where: { id: decoded.userId },
@@ -59,9 +62,9 @@ export async function getCurrentUser(request: NextRequest): Promise<AuthUser | n
 }
 
 // التحقق من صلاحيات المطور
-export async function isDeveloper(request: NextRequest): Promise<boolean> {
+export async function isDeveloperCheck(request: NextRequest): Promise<boolean> {
   const user = await getCurrentUser(request);
-  return user?.role === "DEVELOPER";
+  return user?.role === "DEVELOPER" || user?.id === "developer";
 }
 
 // التحقق من تسجيل الدخول (بدون DB - للـ routes الخفيفة)
@@ -70,7 +73,7 @@ export function authenticateRequest(request: NextRequest): { user: { id: string;
     const token = request.cookies.get("auth-token")?.value;
     if (!token) return null;
 
-    const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as unknown as { userId: string; role: string };
+    const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as { userId: string; role: string };
     if (!decoded.userId) return null;
     return {
       user: { id: decoded.userId, role: decoded.role || 'USER' },
@@ -88,30 +91,29 @@ export function isDeveloperOrAdmin(user: { role: string }): boolean {
 // التحقق من تسجيل الدخول
 export async function requireAuth(request: NextRequest): Promise<AuthUser> {
   const user = await getCurrentUser(request);
-
+  
   if (!user) {
     throw new Error("يجب تسجيل الدخول");
   }
-
+  
   if (user.isBlocked) {
     throw new Error("تم حظر حسابك");
   }
 
-  // Check email verification (developers bypass this check)
   if (!user.emailVerified && user.role !== 'DEVELOPER') {
     throw new Error("يجب تأكيد البريد الإلكتروني أولاً");
   }
-
+  
   return user;
 }
 
 // التحقق من صلاحيات المطور
 export async function requireDeveloper(request: NextRequest): Promise<AuthUser> {
   const user = await requireAuth(request);
-
+  
   if (user.role !== "DEVELOPER") {
     throw new Error("غير مصرح لك بهذا الإجراء");
   }
-
+  
   return user;
 }

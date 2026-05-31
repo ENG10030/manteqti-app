@@ -1,37 +1,12 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { verify } from "jsonwebtoken";
-
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
-
-async function isDeveloper(request: Request): Promise<boolean> {
-  const cookieHeader = request.headers.get("cookie");
-  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
-  const token = cookies.get("auth-token");
-
-  if (!token) return false;
-
-  try {
-    const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
-    if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
-
-    const user = await db.user.findUnique({
-      where: { id: decoded.userId },
-      select: { role: true, identifier: true },
-    });
-
-    return user?.role === "DEVELOPER" || user?.identifier === DEVELOPER_EMAIL;
-  } catch {
-    return false;
-  }
-}
+import { requireDeveloper } from "@/lib/auth-middleware";
 
 export async function POST(request: Request) {
   try {
-    if (!(await isDeveloper(request))) {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
-    }
+    // Use centralized developer auth
+    const { auth, errorResponse } = await requireDeveloper(request as any);
+    if (errorResponse) return errorResponse;
 
     const dbUrl = process.env.DATABASE_URL || '';
     const isPostgres = dbUrl.startsWith('postgres') || dbUrl.startsWith('postgresql');
@@ -39,9 +14,6 @@ export async function POST(request: Request) {
     const results: string[] = [];
 
     if (isPostgres) {
-      // All table names use lowercase (via @@map in schema.postgres.prisma)
-      // Column names use snake_case (via @map in schema.postgres.prisma)
-
       // 1. Ensure settings table exists
       const settingsExists = await db.$queryRaw<Array<{ exists: boolean }>>`
         SELECT EXISTS (SELECT FROM pg_tables WHERE tablename = 'settings') as "exists"
@@ -151,7 +123,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Sync schema error:', error);
     return NextResponse.json(
-      { error: 'فشل مزامنة قاعدة البيانات', details: String(error) },
+      { error: 'فشل مزامنة قاعدة البيانات' },
       { status: 500 }
     );
   }

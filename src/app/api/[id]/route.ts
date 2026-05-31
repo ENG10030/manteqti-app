@@ -1,42 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { cookies } from 'next/headers';
-import { verify } from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
-
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
+import { getAuthContext, requireDeveloper } from '@/lib/auth-middleware';
 
 async function authenticateRequest(request: NextRequest): Promise<{ userId: string; role?: string; identifier?: string } | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get('auth-token')?.value;
-  if (!token) return null;
-  try {
-    return verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
-  } catch {
-    return null;
-  }
-}
-
-async function isDeveloper(request: NextRequest): Promise<boolean> {
-  const auth = await authenticateRequest(request);
-  if (!auth) return false;
-  if (auth.role === 'DEVELOPER' || auth.identifier === DEVELOPER_EMAIL) return true;
-  try {
-    const user = await db.user.findUnique({ where: { id: auth.userId }, select: { role: true, identifier: true } });
-    return user?.role === 'DEVELOPER' || user?.identifier === DEVELOPER_EMAIL;
-  } catch { return false; }
+  const { auth, errorResponse } = await getAuthContext(request);
+  if (errorResponse || !auth) return null;
+  return { userId: auth.userId, role: auth.role, identifier: auth.identifier };
 }
 
 async function isOwnerOrDeveloper(request: NextRequest, apartmentId: string): Promise<boolean> {
-  const auth = await authenticateRequest(request);
-  if (!auth) return false;
-  // Check developer
-  if (auth.role === 'DEVELOPER' || auth.identifier === DEVELOPER_EMAIL) return true;
-  try {
-    const user = await db.user.findUnique({ where: { id: auth.userId }, select: { role: true, identifier: true } });
-    if (user?.role === 'DEVELOPER' || user?.identifier === DEVELOPER_EMAIL) return true;
-  } catch { /* continue */ }
-  // Check owner
+  const { auth, errorResponse } = await getAuthContext(request);
+  if (errorResponse || !auth) return false;
+  if (auth.role === 'DEVELOPER') return true;
   try {
     const apartment = await db.apartment.findUnique({ where: { id: apartmentId }, select: { createdBy: true } });
     return apartment?.createdBy === auth.userId;
@@ -73,7 +48,6 @@ export async function GET(
           name: inquiry.name,
           message: inquiry.message,
           createdAt: inquiry.createdAt,
-          // Exclude email and phone for unauthenticated users
         })),
       };
       return NextResponse.json(filteredApartment);
@@ -91,14 +65,12 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await authenticateRequest(request);
-    if (!auth) {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-    }
+    const { auth, errorResponse } = await getAuthContext(request);
+    if (errorResponse) return errorResponse;
+    if (!auth) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
 
     const { id } = await params;
 
-    // Authorization: must be owner or developer
     const authorized = await isOwnerOrDeveloper(request, id);
     if (!authorized) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
@@ -106,31 +78,22 @@ export async function PUT(
 
     const body = await request.json();
 
-    const existingApartment = await db.apartment.findUnique({
-      where: { id },
-    });
-
+    const existingApartment = await db.apartment.findUnique({ where: { id } });
     if (!existingApartment) {
       return NextResponse.json({ error: 'العقار غير موجود' }, { status: 404 });
     }
 
-    // معالجة الإجراءات الخاصة
     let updateData: Record<string, unknown> = {};
 
     if (body.action === 'approve') {
-      // الموافقة على العقار
       updateData = {
         status: 'available',
-        approvedBy: body.approvedBy || 'developer',
+        approvedBy: auth.userId,
         approvedAt: new Date(),
       };
     } else if (body.action === 'reject') {
-      // رفض العقار
-      updateData = {
-        status: 'rejected',
-      };
+      updateData = { status: 'rejected' };
     } else {
-      // تحديث عادي
       updateData = {
         title: body.title,
         description: body.description,
@@ -167,14 +130,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await authenticateRequest(request);
-    if (!auth) {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-    }
+    const { auth, errorResponse } = await getAuthContext(request);
+    if (errorResponse) return errorResponse;
+    if (!auth) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
 
     const { id } = await params;
 
-    // Authorization: must be owner or developer
     const authorized = await isOwnerOrDeveloper(request, id);
     if (!authorized) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
@@ -196,11 +157,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PATCH requires DEVELOPER authentication
-    const dev = await isDeveloper(request);
-    if (!dev) {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
-    }
+    const { auth, errorResponse } = await requireDeveloper(request);
+    if (errorResponse) return errorResponse;
 
     const { id } = await params;
     const body = await request.json();

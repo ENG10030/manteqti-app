@@ -1,34 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { verify } from 'jsonwebtoken';
-import { db } from '@/lib/db';
-
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
-
-async function isDeveloper(request: NextRequest): Promise<boolean> {
-  const token = request.cookies.get('auth-token')?.value;
-  if (!token) return false;
-  try {
-    const decoded = verify(token, JWT_SECRET) as { userId?: string; role?: string; identifier?: string };
-    if (decoded.role === 'DEVELOPER' || decoded.identifier === DEVELOPER_EMAIL) return true;
-    if (decoded.userId) {
-      const user = await db.user.findUnique({ where: { id: decoded.userId }, select: { role: true, identifier: true } });
-      return user?.role === 'DEVELOPER' || user?.identifier === DEVELOPER_EMAIL;
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
+import { requireDeveloper } from '@/lib/auth-middleware';
 
 export async function GET(request: NextRequest) {
   // Auth check: only developers can download the ZIP
-  const dev = await isDeveloper(request);
-  if (!dev) {
-    return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
-  }
+  const { auth, errorResponse } = await requireDeveloper(request);
+  if (errorResponse) return errorResponse;
 
   const isBase64 = request.nextUrl.searchParams.get('base64') === 'true';
   

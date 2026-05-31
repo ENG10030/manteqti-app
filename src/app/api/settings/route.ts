@@ -1,48 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { verify } from "jsonwebtoken";
-import { notifyRealtime } from "@/lib/realtime";
-
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
-
-async function isDeveloper(request: Request): Promise<boolean> {
-  const cookieHeader = request.headers.get("cookie");
-  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
-  const token = cookies.get("auth-token");
-
-  if (!token) return false;
-
-  try {
-    const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
-    
-    if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
-
-    const user = await db.user.findUnique({
-      where: { id: decoded.userId },
-      select: { role: true, identifier: true },
-    });
-
-    return user?.role === "DEVELOPER" || user?.identifier === DEVELOPER_EMAIL;
-  } catch {
-    return false;
-  }
-}
-
-async function getCurrentUserId(request: Request): Promise<string | null> {
-  const cookieHeader = request.headers.get("cookie");
-  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
-  const token = cookies.get("auth-token");
-
-  if (!token) return null;
-
-  try {
-    const decoded = verify(token, JWT_SECRET) as { userId: string };
-    return decoded.userId;
-  } catch {
-    return null;
-  }
-}
+import { requireDeveloper, getAuthContext } from "@/lib/auth-middleware";
+import { sanitizeString } from "@/lib/auth-middleware";
 
 // Validate fee value - must be non-negative integer
 function validateFee(value: any): number {
@@ -54,7 +13,7 @@ function validateFee(value: any): number {
 // Validate currency - max 10 chars, no HTML
 function validateCurrency(value: any): string {
   if (typeof value !== 'string') return 'ج.م';
-  const sanitized = value.replace(/<[^>]*>/g, '').trim().slice(0, 10);
+  const sanitized = sanitizeString(value).trim().slice(0, 10);
   return sanitized || 'ج.م';
 }
 
@@ -74,10 +33,6 @@ const DEFAULT_SETTINGS = {
 };
 
 // ============= AUTO-MIGRATION =============
-// Ensures the Settings table exists with ALL required columns.
-// The Prisma schema uses @@map("settings") and column @map() directives.
-// This handles cases where prisma db:push fails during Vercel build.
-
 let migrationDone = false;
 
 async function ensureSettingsTable(): Promise<boolean> {
@@ -88,8 +43,6 @@ async function ensureSettingsTable(): Promise<boolean> {
     const isPostgres = dbUrl.startsWith('postgres') || dbUrl.startsWith('postgresql');
 
     if (isPostgres) {
-      // PostgreSQL: table name is "settings" (lowercase, via @@map)
-      // Columns use snake_case (via @map)
       const tableExists = await db.$queryRaw<Array<{ exists: boolean }>>`
         SELECT EXISTS (
           SELECT FROM pg_tables 
@@ -98,7 +51,6 @@ async function ensureSettingsTable(): Promise<boolean> {
       `;
 
       if (!tableExists[0]?.exists) {
-        // Create table matching schema.postgres.prisma exactly
         await db.$executeRawUnsafe(`
           CREATE TABLE "settings" (
             "id" TEXT NOT NULL PRIMARY KEY,
@@ -120,7 +72,6 @@ async function ensureSettingsTable(): Promise<boolean> {
         `);
         console.log('[Settings Migration] Table "settings" created');
       } else {
-        // Table exists - add any missing columns
         const existingColumns = await db.$queryRaw<Array<{ column_name: string }>>`
           SELECT column_name FROM information_schema.columns 
           WHERE table_name = 'settings'
@@ -150,7 +101,6 @@ async function ensureSettingsTable(): Promise<boolean> {
         }
       }
     } else {
-      // SQLite: table name is "Settings" (Prisma default)
       const tableExists = await db.$queryRaw<Array<{ name: string }>>`
         SELECT name FROM sqlite_master WHERE type='table' AND name='Settings'
       `;
@@ -208,12 +158,12 @@ export async function GET() {
   }
 }
 
-// PUT - تحديث الإعدادات (developer only)
+// PUT - تحديث الإعدادات (developer only) — FIXED: uses centralized auth
 export async function PUT(request: Request) {
   try {
-    if (!(await isDeveloper(request))) {
-      return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
-    }
+    // Use centralized developer auth (DB-backed, fresh data)
+    const { auth, errorResponse } = await requireDeveloper(request as any);
+    if (errorResponse) return errorResponse;
 
     const body = await request.json();
 
@@ -246,21 +196,17 @@ export async function PUT(request: Request) {
     }
 
     // Log settings change
-    const currentUserId = await getCurrentUserId(request);
     try {
       await db.operationLog.create({
         data: {
           action: 'UPDATE_SETTINGS',
           entityType: 'Settings',
           entityId: settings.id,
-          userId: currentUserId,
+          userId: auth?.userId,
           details: JSON.stringify(validatedData),
         },
       });
     } catch {}
-
-    // Notify ALL connected clients
-    notifyRealtime('settings-updated', validatedData);
 
     return NextResponse.json({
       message: "تم تحديث الإعدادات بنجاح ✅",

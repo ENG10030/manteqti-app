@@ -1,58 +1,61 @@
 import { NextResponse } from "next/server";
-import { NextRequest } from "next/server";
+import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
-import { JWT_SECRET } from "@/lib/auth";
 
-export const dynamic = "force-dynamic";
+// CRITICAL: Get secret securely
+function getSecret() {
+  const s = process.env.JWT_SECRET;
+  if (!s && process.env.NODE_ENV === "production") throw new Error("JWT_SECRET not set");
+  return s || "manteqti-dev-only-secret";
+}
 
-export async function GET(request: NextRequest) {
-  const noCacheHeaders = {
-    "Cache-Control": "no-store, no-cache, must-revalidate",
-    "Pragma": "no-cache",
-    "Expires": "0",
-  };
-
+export async function GET(request: Request) {
   try {
-    const token = request.cookies.get("auth-token")?.value;
+    const cookieHeader = request.headers.get("cookie");
+    const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
+    const token = cookies.get("auth-token");
 
     if (!token) {
-      return NextResponse.json({ user: null }, { headers: noCacheHeaders });
+      return NextResponse.json({ user: null });
     }
 
-    // ✅ Decode JWT directly — NO DATABASE NEEDED
-    const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as unknown as {
-      userId: string;
-      identifier?: string;
-      role?: string;
-      name?: string;
-      email?: string;
-      isApproved?: boolean;
-      emailVerified?: boolean;
-      isBlocked?: boolean;
-    };
-
-    // If user is blocked, treat as not logged in
-    if (decoded.isBlocked) {
-      return NextResponse.json({ user: null }, { headers: noCacheHeaders });
+    // CRITICAL: Always specify algorithms
+    const decoded = verify(token, getSecret(), { algorithms: ["HS256"] }) as { userId: string };
+    if (!decoded.userId) {
+      return NextResponse.json({ user: null });
     }
 
-    const user = {
-      id: decoded.userId,
-      identifier: decoded.identifier || "",
-      name: decoded.name || "",
-      email: decoded.email || null,
-      role: decoded.role || "USER",
-      isApproved: decoded.isApproved !== false,
-      emailVerified: decoded.emailVerified === true,
-      isBlocked: false,
-      phone: null,
-      createdAt: null,
-      _count: null,
-    };
+    // CRITICAL FIX: Fetch FRESH data from DB — don't trust stale JWT
+    const user = await db.user.findUnique({
+      where: { id: decoded.userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        role: true,
+        isApproved: true,
+        isBlocked: true,
+        identifier: true,
+        emailVerified: true,
+        createdAt: true,
+        _count: {
+          select: { apartments: true },
+        },
+      },
+    });
 
-    return NextResponse.json({ user }, { headers: noCacheHeaders });
+    if (!user) {
+      return NextResponse.json({ user: null });
+    }
+
+    // CRITICAL FIX: If user is blocked, return null — force re-login
+    if (user.isBlocked) {
+      return NextResponse.json({ user: null, blocked: true });
+    }
+
+    return NextResponse.json({ user });
   } catch (error) {
-    console.error("[/api/auth/me] Token verification error:", error instanceof Error ? error.message : String(error));
-    return NextResponse.json({ user: null }, { headers: noCacheHeaders });
+    return NextResponse.json({ user: null });
   }
 }
