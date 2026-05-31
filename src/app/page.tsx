@@ -12,7 +12,7 @@ import {
   ChevronLeft, ChevronRight, Plus, Trash2, ShieldCheck, Hourglass,
   Send, Bot, Home, Crown, Diamond, Ban, Brain, Search,
   VideoIcon, Activity, Wallet, Key, ArrowUp, Layers,
-  Download, Smartphone, Zap, Save, Mail, UserPlus,
+  Download, Smartphone, Zap, Save, Mail, UserPlus, Upload,
   Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
@@ -1463,9 +1463,41 @@ export default function App() {
   };
 
   const handleUpdateStatus = async (id: string, newStatus: string, confirmed: boolean = false) => {
-    if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'تغيير حالة العقار', message: `هل تريد تغيير الحالة؟`, confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm: () => handleUpdateStatus(id, newStatus, true), type: 'warning' }); return; }
+    if (!confirmed) {
+      const statusLabels: Record<string, string> = { available: 'متاح', reserved: 'محجوز', sold: 'تم البيع', rented: 'تم التأجير', unavailable: 'غير متاح', preview: 'في معاينة', rejected: 'مرفوض', hidden: 'مخفي' };
+      const statusLabel = statusLabels[newStatus] || newStatus;
+      const autoDeleteStatuses = ['sold', 'unavailable', 'rented'];
+      const isAutoDelete = autoDeleteStatuses.includes(newStatus);
+      const message = isAutoDelete
+        ? `⚠️ تحذير مهم!\n\nهل تريد تغيير حالة العقار إلى "${statusLabel}"؟\n\n العقار سيتم حذفه تلقائياً بعد 48 ساعة من هذا التغيير.\n\nإذا كنت لا تريد حذفه، اختر حالة أخرى (مثل "متاح" أو "محجوز").`
+        : `هل تريد تغيير حالة العقار إلى "${statusLabel}"؟`;
+      setConfirmDialog({
+        isOpen: true,
+        title: isAutoDelete ? '⚠️ تحذير: حذف تلقائي بعد 48 ساعة' : 'تغيير حالة العقار',
+        message,
+        confirmText: isAutoDelete ? `تغيير إلى "${statusLabel}" (سيُحذف بعد 48 ساعة)` : 'تأكيد',
+        cancelText: 'إلغاء',
+        onConfirm: () => handleUpdateStatus(id, newStatus, true),
+        type: isAutoDelete ? 'danger' : 'warning',
+      });
+      return;
+    }
     setConfirmDialog(prev => ({ ...prev, loading: true }));
-    try { await fetch(`/api/apartments/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) }); fetchApartments(); addToast('تم تغيير حالة العقار', 'success'); }
+    try {
+      const body: any = { status: newStatus };
+      const autoDeleteStatuses = ['sold', 'unavailable', 'rented'];
+      if (autoDeleteStatuses.includes(newStatus)) {
+        body.statusChangedAt = new Date().toISOString();
+      }
+      await fetch(`/api/apartments/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      fetchApartments();
+      const autoDeleteStatuses2 = ['sold', 'unavailable', 'rented'];
+      if (autoDeleteStatuses2.includes(newStatus)) {
+        addToast('⚠️ تم تغيير الحالة — سيتم حذف العقار تلقائياً بعد 48 ساعة', 'info');
+      } else {
+        addToast('تم تغيير حالة العقار', 'success');
+      }
+    }
     finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
   };
 
@@ -3724,6 +3756,55 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <div className={`p-2.5 rounded-lg ${settings.priorityListingFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>🔝 أولوية: {settings.priorityListingFee === 0 ? 'مجاني ✨' : `${settings.priorityListingFee} ${settings.currency}`}</div>
                     </div>
                     <p className={`text-xs mt-2 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>💡 الأسعار تتحدث للمستخدمين تلقائياً بدون تحديث الصفحة</p>
+                  </div>
+                  {/* Backup & Restore */}
+                  <div className={`p-4 rounded-xl border-2 ${darkMode ? 'bg-slate-700 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200'}`}>
+                    <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Download className="h-5 w-5 text-emerald-500" />نسخ احتياطي واستعادة</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <button onClick={async () => {
+                        try {
+                          const res = await fetch('/api/backup');
+                          if (!res.ok) throw new Error('فشل التصدير');
+                          const blob = await res.blob();
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `manteqti-backup-${new Date().toISOString().split('T')[0]}.json`;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                          addToast('تم تحميل النسخة الاحتياطية بنجاح ✅', 'success');
+                        } catch { addToast('فشل تحميل النسخة الاحتياطية', 'error'); }
+                      }} className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-medium text-sm transition-all bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:opacity-90`}>
+                        <Download className="h-4 w-4" />تصدير نسخة احتياطية (JSON)
+                      </button>
+                      <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-medium text-sm transition-all cursor-pointer bg-gradient-to-r from-blue-500 to-cyan-600 text-white hover:opacity-90`}>
+                        <Upload className="h-4 w-4" />استعادة من نسخة احتياطية
+                        <input type="file" accept=".json" className="hidden" onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setConfirmDialog({
+                            isOpen: true, title: 'استعادة بيانات', message: 'هل تريد استعادة البيانات من النسخة الاحتياطية؟\n\nسيتم إضافة البيانات المفقودة فقط (لن يتم حذف أي بيانات موجودة).', confirmText: 'استعادة', cancelText: 'إلغاء', type: 'warning',
+                            onConfirm: async () => {
+                              setConfirmDialog(prev => ({ ...prev, loading: true }));
+                              try {
+                                const text = await file.text();
+                                const data = JSON.parse(text);
+                                const res = await fetch('/api/backup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, mode: 'merge' }) });
+                                const result = await res.json();
+                                if (res.ok) {
+                                  addToast(`تم الاستعادة: ${JSON.stringify(result.restored)}`, 'success');
+                                  fetchDevData(); fetchApartments(0, false); fetchAllUsers();
+                                } else addToast(result.error || 'فشلت الاستعادة', 'error');
+                              } catch { addToast('ملف غير صالح', 'error'); }
+                              finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+                            }
+                          });
+                        }} />
+                      </label>
+                    </div>
+                    <p className={`text-xs mt-2 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>💡 يُنصح بأخذ نسخة احتياطية بشكل دوري لحماية بياناتك</p>
                   </div>
                 </div>
               )}

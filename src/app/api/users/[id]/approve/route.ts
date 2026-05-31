@@ -129,9 +129,18 @@ export async function PUT(
         });
       } catch {}
 
-      // Delete user and all their data (cascade)
-      await db.user.delete({ where: { id } });
-      return NextResponse.json({ message: "تم رفض التسجيل وحذف الحساب" });
+      // Instead of deleting the user and all their data (cascade),
+      // just mark them as blocked so their data is preserved
+      await db.user.update({
+        where: { id },
+        data: {
+          isBlocked: true,
+          blockReason: reason || "تم رفض التسجيل",
+          blockedAt: new Date(),
+          isApproved: false,
+        },
+      });
+      return NextResponse.json({ message: "تم رفض التسجيل وحظر الحساب (تم الاحتفاظ بالبيانات)" });
     }
   } catch (error) {
     console.error("User approval error:", error);
