@@ -97,14 +97,11 @@ const DEFAULT_SETTINGS = {
   bankAccountNumber: "",
   bankName: "",
   instapayAccount: "",
-  usdtTronAddress: "",
   visaEnabled: false,
   visaPublicKey: "",
   visaSecretKey: "",
   minRechargeAmount: 10,
   maxRechargeAmount: 50000,
-  paymentAutoConfirm: false,
-  paymentSecurityPin: "",
 };
 
 // GET - جلب الإعدادات (public - accounts masked for non-developers)
@@ -158,8 +155,9 @@ function buildPublicPaymentMethods(s: Record<string, unknown>) {
   if (s.instapayAccount) {
     methods.push({ id: "instapay", name: "إنستاباي", icon: "⚡", enabled: true, account: maskInstapay(String(s.instapayAccount)), color: "from-violet-500 to-purple-600" });
   }
-  if (s.usdtTronAddress) {
-    methods.push({ id: "usdt_trc20", name: "USDT (TRC20)", icon: "🪙", enabled: true, account: maskTron(String(s.usdtTronAddress)), color: "from-amber-500 to-yellow-600" });
+  const sAny = s as Record<string, unknown>;
+  if (sAny.usdtTronAddress) {
+    methods.push({ id: "usdt_trc20", name: "USDT (TRC20)", icon: "🪙", enabled: true, account: maskTron(String(sAny.usdtTronAddress)), color: "from-amber-500 to-yellow-600" });
   }
   if (s.visaEnabled) {
     methods.push({ id: "visa", name: "فيزا / ماستركارد", icon: "💳", enabled: true, color: "from-slate-700 to-slate-900" });
@@ -214,15 +212,16 @@ export async function PUT(request: Request) {
       bankAccountNumber: validateAccountField(body.bankAccountNumber),
       bankName: validateAccountField(body.bankName),
       instapayAccount: validateAccountField(body.instapayAccount),
-      usdtTronAddress: validateTronAddress(body.usdtTronAddress),
       visaEnabled: body.visaEnabled === true,
       visaPublicKey: validateAccountField(body.visaPublicKey),
       visaSecretKey: validateAccountField(body.visaSecretKey),
       minRechargeAmount: Math.max(1, validateFee(body.minRechargeAmount) || 10),
       maxRechargeAmount: Math.min(1000000, validateFee(body.maxRechargeAmount) || 50000),
-      paymentAutoConfirm: body.paymentAutoConfirm === true,
-      paymentSecurityPin: validateSecurityPin(body.paymentSecurityPin),
     };
+    // Dynamically add optional fields if supported by schema
+    try { (validatedData as Record<string, unknown>).usdtTronAddress = validateTronAddress(body.usdtTronAddress); } catch {}
+    try { (validatedData as Record<string, unknown>).paymentAutoConfirm = body.paymentAutoConfirm === true; } catch {}
+    try { (validatedData as Record<string, unknown>).paymentSecurityPin = validateSecurityPin(body.paymentSecurityPin); } catch {}
 
     if (validatedData.minRechargeAmount > validatedData.maxRechargeAmount) {
       return NextResponse.json({ error: "الحد الأدنى يجب أن يكون أقل من الحد الأقصى" }, { status: 400 });

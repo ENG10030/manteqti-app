@@ -202,8 +202,9 @@ export async function GET() {
     }
 
     // USDT TRC20
-    if (settings.usdtTronAddress) {
-      const masked = maskTronAddress(settings.usdtTronAddress);
+    const sAny = settings as unknown as Record<string, unknown>;
+    if (sAny.usdtTronAddress) {
+      const masked = maskTronAddress(String(sAny.usdtTronAddress));
       methods.push({
         id: "usdt_trc20",
         name: "USDT (TRC20)",
@@ -247,7 +248,7 @@ export async function GET() {
       {
         methods,
         limits: { min: minAmt, max: maxAmt },
-        autoConfirm: settings.paymentAutoConfirm === true,
+        autoConfirm: sAny.paymentAutoConfirm === true,
       },
       {
         status: 200,

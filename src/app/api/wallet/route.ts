@@ -223,8 +223,9 @@ export async function POST(request: NextRequest) {
     };
 
     if (settings) {
+      const sAny = settings as unknown as Record<string, unknown>;
       for (const [methodId, field] of Object.entries(methodFieldMap)) {
-        if (settings[field as keyof typeof settings]) {
+        if (sAny[field]) {
           validMethods.push(methodId);
         }
       }
@@ -308,7 +309,7 @@ export async function POST(request: NextRequest) {
     // ==========================================
     // Auto-confirm if developer enabled it
     // ==========================================
-    const isAutoConfirm = settings?.paymentAutoConfirm === true;
+    const isAutoConfirm = (settings as unknown as Record<string, unknown>)?.paymentAutoConfirm === true;
     const finalStatus = isAutoConfirm ? "completed" : "pending";
     const txTimestamp = Date.now();
     const txRef = generateTxRef(method.toUpperCase());

@@ -309,7 +309,7 @@ export async function POST(request: NextRequest) {
       }
 
       // --- Step 9: Determine Confirm Mode ---
-      const autoConfirm = settings?.paymentAutoConfirm === true;
+      const autoConfirm = (settings as unknown as Record<string, unknown>)?.paymentAutoConfirm === true;
       const txTimestamp = Date.now();
       const txRef = transactionId || generateTxRef();
       const txSignature = signTransaction({

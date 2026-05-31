@@ -151,16 +151,17 @@ export async function GET() {
     }
 
     // USDT TRC20
-    if (settings.usdtTronAddress) {
+    const sAny = settings as unknown as Record<string, unknown>;
+    if (sAny.usdtTronAddress) {
       methods.push({
         id: "usdt_trc20",
         name: "USDT (TRC20)",
         nameEn: "USDT Tether",
         icon: "🪙",
         enabled: true,
-        account: maskTronAddress(settings.usdtTronAddress),
+        account: maskTronAddress(String(sAny.usdtTronAddress)),
         accountLabel: "عنوان Tron",
-        instructions: `إرسال USDT عبر شبكة TRC20:\n📍 العنوان: ${maskTronAddress(settings.usdtTronAddress)}\n⚠️ تأكد من استخدام شبكة TRC20 فقط\n⚠️ لا ترسل عملات أخرى غير USDT\n\nأدخل رقم المعاملة (TxID) بعد الإرسال`,
+        instructions: `إرسال USDT عبر شبكة TRC20:\n📍 العنوان: ${maskTronAddress(String(sAny.usdtTronAddress))}\n⚠️ تأكد من استخدام شبكة TRC20 فقط\n⚠️ لا ترسل عملات أخرى غير USDT\n\nأدخل رقم المعاملة (TxID) بعد الإرسال`,
         color: "from-amber-500 to-yellow-600",
         minAmount: Math.max(minAmt, 5),
         maxAmount: maxAmt,
@@ -184,7 +185,7 @@ export async function GET() {
       });
     }
 
-    return NextResponse.json({ methods, limits: { min: minAmt, max: maxAmt }, autoConfirm: settings.paymentAutoConfirm || false });
+    return NextResponse.json({ methods, limits: { min: minAmt, max: maxAmt }, autoConfirm: sAny.paymentAutoConfirm === true });
   } catch (error) {
     console.error("Payment methods GET error:", error);
     return NextResponse.json({ error: "حدث خطأ" }, { status: 500 });

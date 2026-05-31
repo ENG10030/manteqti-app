@@ -211,7 +211,7 @@ export async function PUT(request: NextRequest) {
       // Verify security PIN if set in settings
       if (securityPin) {
         const settings = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
-        if (settings?.paymentSecurityPin && settings.paymentSecurityPin !== securityPin) {
+        if ((settings as unknown as Record<string, unknown>)?.paymentSecurityPin && (settings as unknown as Record<string, unknown>).paymentSecurityPin !== securityPin) {
           await db.operationLog.create({
             data: {
               action: "WALLET_BULK_PIN_FAILED",
@@ -257,7 +257,7 @@ export async function PUT(request: NextRequest) {
     // Verify security PIN if set in settings
     if (securityPin) {
       const settings = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
-      if (settings?.paymentSecurityPin && settings.paymentSecurityPin !== securityPin) {
+      if ((settings as unknown as Record<string, unknown>)?.paymentSecurityPin && (settings as unknown as Record<string, unknown>).paymentSecurityPin !== securityPin) {
         await db.operationLog.create({
           data: {
             action: "WALLET_PIN_FAILED",

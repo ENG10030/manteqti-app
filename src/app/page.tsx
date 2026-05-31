@@ -381,9 +381,6 @@ export default function App() {
     visaSecretKey: '',
     minRechargeAmount: 10,
     maxRechargeAmount: 50000,
-    usdtTronAddress: '',
-    paymentAutoConfirm: false,
-    paymentSecurityPin: '',
   });
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -789,9 +786,6 @@ export default function App() {
           visaSecretKey: s.visaSecretKey ?? '',
           minRechargeAmount: s.minRechargeAmount ?? 10,
           maxRechargeAmount: s.maxRechargeAmount ?? 50000,
-          usdtTronAddress: s.usdtTronAddress ?? '',
-          paymentAutoConfirm: s.paymentAutoConfirm ?? false,
-          paymentSecurityPin: s.paymentSecurityPin ?? '',
         });
         // Also fetch payment methods
         try { const pmRes = await fetch('/api/payment-methods'); const pmData = await pmRes.json(); if (pmRes.ok && Array.isArray(pmData.methods)) setPaymentMethods(pmData.methods); } catch {}
