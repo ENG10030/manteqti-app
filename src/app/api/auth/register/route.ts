@@ -75,9 +75,19 @@ export async function POST(request: Request) {
       );
     }
 
-    if (password.length < 6) {
+    if (password.length < 8) {
       return NextResponse.json(
-        { error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" },
+        { error: "كلمة المرور يجب أن تكون 8 أحرف على الأقل وتحتوي على حروف وأرقام" },
+        { status: 400 }
+      );
+    }
+
+    // 🔒 Check password strength
+    const hasLetter = /[a-zA-Z]/.test(password);
+    const hasNumber = /[0-9]/.test(password);
+    if (!hasLetter || !hasNumber) {
+      return NextResponse.json(
+        { error: "كلمة المرور يجب أن تحتوي على حروف وأرقام" },
         { status: 400 }
       );
     }
@@ -154,20 +164,19 @@ export async function POST(request: Request) {
     // Send notification email to developer about new registration
     if (!isDeveloper) {
       const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
-      if (!DEVELOPER_EMAIL) {
+      if (DEVELOPER_EMAIL) {
+        try {
+          await sendNewUserNotificationEmail({
+            to: DEVELOPER_EMAIL,
+            userName: user.name,
+            userEmail: user.email || userEmail,
+            userPhone: phone || null,
+          });
+        } catch (err) {
+          console.error('Error sending developer notification:', err);
+        }
+      } else {
         console.error('DEVELOPER_EMAIL not set, skipping notification');
-        return;
-      }
-      try {
-        await sendNewUserNotificationEmail({
-          to: DEVELOPER_EMAIL,
-          userName: user.name,
-          userEmail: user.email || userEmail,
-          userPhone: phone || null,
-        });
-        console.log(`📧 Developer notification email sent for new user: ${user.name}`);
-      } catch (err) {
-        console.error('Error sending developer notification:', err);
       }
     }
 

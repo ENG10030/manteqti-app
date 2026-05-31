@@ -56,8 +56,11 @@ export async function GET() {
   try {
     const row = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
     if (row) {
+      // 🔒 Strip sensitive fields before returning to public
+      const { visaSecretKey, visaPublicKey, paymentSecurityPin, vodafoneCashNumber, orangeCashNumber, etisalatCashNumber, bankAccountNumber, bankAccountName, instapayAccount, usdtTronAddress, ...publicSettings } = row;
+      
       return NextResponse.json({
-        settings: row,
+        settings: publicSettings,
         paymentMethods: buildPublicPaymentMethods(row),
       }, {
         headers: {
@@ -176,16 +179,17 @@ export async function PUT(request: Request) {
       }
     }
 
-    // Log the change
+    // Log the change — 🔒 Strip sensitive keys before logging
     const currentUserId = await getCurrentUserId(request);
     try {
+      const { visaSecretKey, visaPublicKey, paymentSecurityPin, ...safeForLog } = updateData;
       await db.operationLog.create({
         data: {
           action: "UPDATE_SETTINGS",
           entityType: "Settings",
           entityId: saved.id,
           userId: currentUserId,
-          details: JSON.stringify(updateData),
+          details: JSON.stringify(safeForLog),
         },
       });
     } catch {}

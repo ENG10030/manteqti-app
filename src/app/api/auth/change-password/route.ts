@@ -36,8 +36,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'جميع الحقول مطلوبة' }, { status: 400 });
     }
 
-    if (newPassword.length < 6) {
-      return NextResponse.json({ error: 'كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل' }, { status: 400 });
+    if (newPassword.length < 8) {
+      return NextResponse.json({ error: 'كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل وتحتوي على حروف وأرقام' }, { status: 400 });
+    }
+
+    // 🔒 Check password strength
+    const hasLetter = /[a-zA-Z]/.test(newPassword);
+    const hasNumber = /[0-9]/.test(newPassword);
+    if (!hasLetter || !hasNumber) {
+      return NextResponse.json({ error: 'كلمة المرور يجب أن تحتوي على حروف وأرقام' }, { status: 400 });
     }
 
     if (newPassword.length > 128) {

@@ -88,6 +88,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'حسابك محظور' }, { status: 403 });
     }
 
+    // 🔒 Check email verification and approval
+    if (!decoded.emailVerified && decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'يجب تأكيد البريد الإلكتروني أولاً' }, { status: 403 });
+    }
+    if (!decoded.isApproved && decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'حسابك بانتظار موافقة الإدارة' }, { status: 403 });
+    }
+
     const data = await request.json();
 
     const inquiry = await db.inquiry.create({

@@ -138,7 +138,12 @@ export async function GET(
     const { id: userId } = await params
 
     const userRecord = await db.user.findUnique({
-      where: { id: userId }
+      where: { id: userId },
+      select: {
+        id: true, name: true, email: true, phone: true, identifier: true,
+        role: true, isBlocked: true, blockedAt: true, blockReason: true,
+        emailVerified: true, isApproved: true, createdAt: true, updatedAt: true,
+      }
     })
 
     if (!userRecord) {

@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { sign } from 'jsonwebtoken';
+import crypto from 'crypto';
 import { checkRateLimit, recordFailedAttempt } from '@/lib/rate-limit';
 import { JWT_SECRET } from '@/lib/auth';
 
 export const dynamic = "force-dynamic";
+
+// 🔒 Timing-safe string comparison
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(a, 'utf-8'), Buffer.from(b, 'utf-8'));
+  } catch {
+    return false;
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,7 +52,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'البريد الإلكتروني أو الرمز غير صحيح' }, { status: 400 });
     }
 
-    if (user.otp !== otpCode) {
+    if (!safeCompare(user.otp || '', otpCode)) {
       // 🔒 سجل المحاولة الفاشلة في الداتابيز
       await recordFailedAttempt("verify-otp", "email", normalizedIdentifier, request, "Wrong OTP code");
 

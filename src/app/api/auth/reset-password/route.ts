@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { sendPasswordChangedEmail } from '@/lib/email';
 import { checkRateLimit } from '@/lib/rate-limit';
 
 export const dynamic = "force-dynamic";
+
+// 🔒 Timing-safe string comparison
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(a, 'utf-8'), Buffer.from(b, 'utf-8'));
+  } catch {
+    return false;
+  }
+}
 
 // POST - Reset password using OTP code
 export async function POST(request: NextRequest) {
@@ -20,8 +31,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'كلمتا المرور غير متطابقتين' }, { status: 400 });
     }
 
-    if (newPassword.length < 6) {
-      return NextResponse.json({ error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' }, { status: 400 });
+    if (newPassword.length < 8) {
+      return NextResponse.json({ error: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل وتحتوي على حروف وأرقام' }, { status: 400 });
+    }
+
+    // 🔒 Check password strength
+    const hasLetter = /[a-zA-Z]/.test(newPassword);
+    const hasNumber = /[0-9]/.test(newPassword);
+    if (!hasLetter || !hasNumber) {
+      return NextResponse.json({ error: 'كلمة المرور يجب أن تحتوي على حروف وأرقام' }, { status: 400 });
     }
 
     const normalizedEmail = email.toLowerCase().trim();
@@ -45,8 +63,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'البريد الإلكتروني غير مسجل' }, { status: 400 });
     }
 
-    // Verify OTP
-    if (user.passwordResetToken !== otp) {
+    // Verify OTP — 🔒 timing-safe comparison
+    if (!safeCompare(user.passwordResetToken || '', otp)) {
       return NextResponse.json({ error: 'رمز الاستعادة غير صحيح' }, { status: 400 });
     }
 

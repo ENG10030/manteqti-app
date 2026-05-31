@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/auth';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,12 @@ ${area} - موقع متميز قريب من جميع الخدمات والمرا
 export async function POST(request: NextRequest) {
   const auth = authenticateRequest(request);
   if (!auth) return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
+
+  // 🔒 Rate limiting: 10 requests per 15 minutes per user
+  const allowed = await checkRateLimit('generate-desc', 'userId', auth.user.id, 10, 15 * 60);
+  if (!allowed) {
+    return NextResponse.json({ error: 'طلبات كثيرة. حاول بعد 15 دقيقة' }, { status: 429 });
+  }
 
   try {
     const { type, area, bedrooms, bathrooms, features, price } = await request.json();
