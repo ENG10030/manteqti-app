@@ -325,9 +325,9 @@ function Card3D({
       style={{
         perspective: 800,
         transformStyle: 'preserve-3d',
+        rotateX,
+        rotateY,
       }}
-      animate={{ rotateX, rotateY }}
-      transition={{ type: 'spring', stiffness: 150, damping: 18 }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
