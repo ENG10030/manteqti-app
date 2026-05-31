@@ -21,6 +21,11 @@ import { io } from 'socket.io-client';
 
 // Developer credentials
 const DEVELOPER_EMAIL = process.env.NEXT_PUBLIC_DEVELOPER_EMAIL || '';
+// Helper: detect developer by email OR role (role works even if NEXT_PUBLIC_DEVELOPER_EMAIL is not set)
+function checkIsDev(user: { identifier?: string; role?: string } | null | undefined): boolean {
+  if (!user) return false;
+  return user.identifier === DEVELOPER_EMAIL || user.role === 'DEVELOPER';
+}
 
 // Contact fee now comes from settings (dynamic)
 
@@ -557,7 +562,7 @@ export default function App() {
           if (parsed && parsed.id && !parsed.isBlocked) {
             setCurrentUser(parsed);
             currentUserRef.current = parsed;
-            const isDev = parsed.identifier === DEVELOPER_EMAIL;
+            const isDev = checkIsDev(parsed);
             setIsDeveloper(isDev);
             isDeveloperRef.current = isDev;
           }
@@ -575,7 +580,7 @@ export default function App() {
           // Save to localStorage as backup for next refresh
           try { localStorage.setItem('manteqti_user', JSON.stringify(authData.user)); } catch {}
           if (authData.user.isBlocked) setIsBlocked(true);
-          const isDev = authData.user.identifier === DEVELOPER_EMAIL;
+          const isDev = checkIsDev(authData.user);
           setIsDeveloper(isDev);
           isDeveloperRef.current = isDev;
         } else {
@@ -1282,12 +1287,12 @@ export default function App() {
         if (data.pendingApproval) {
           setCurrentUser(data.user); currentUserRef.current = data.user; setShowAuth(false);
           try { localStorage.setItem('manteqti_user', JSON.stringify(data.user)); } catch {}
-          if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
+          if (checkIsDev(data.user)) setIsDeveloper(true);
           addToast('حسابك قيد المراجعة. بانتظار موافقة الإدارة ⏳', 'info');
         } else {
           setCurrentUser(data.user); currentUserRef.current = data.user; setShowAuth(false);
           try { localStorage.setItem('manteqti_user', JSON.stringify(data.user)); } catch {}
-          if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
+          if (checkIsDev(data.user)) setIsDeveloper(true);
           addToast(`مرحباً ${data.user.name}!`, 'success');
         }
         if (rememberMe) { localStorage.setItem('manteqti_remembered_identifier', authIdentifier.trim().toLowerCase()); localStorage.setItem('manteqti_remember_me', 'true'); }
@@ -1349,11 +1354,11 @@ export default function App() {
           // Check if user needs approval
           if (data.user && !data.user.isApproved) {
             setCurrentUser(data.user); setShowAuth(false);
-            if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
+            if (checkIsDev(data.user)) setIsDeveloper(true);
             addToast('تم إنشاء الحساب بنجاح! حسابك قيد المراجعة وسيتم إشعارك فور الموافقة ⏳', 'info');
           } else {
             setCurrentUser(data.user); setShowAuth(false);
-            if (data.user && data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
+            if (checkIsDev(data.user)) setIsDeveloper(true);
             addToast(`مرحباً ${data.user.name}!`, 'success');
           }
         }
@@ -2155,7 +2160,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     const data = await res.json();
                     if (data.user?.isApproved) {
                       setCurrentUser(data.user);
-                      setIsDeveloper(data.user.identifier === DEVELOPER_EMAIL);
+                      setIsDeveloper(checkIsDev(data.user));
                       addToast('تم تأكيد حسابك! 🎉', 'success');
                     } else {
                       addToast('حسابك لا يزال قيد المراجعة', 'info');
