@@ -264,7 +264,7 @@ export async function PUT(request: Request) {
         data: {
           action: "UPDATE_SETTINGS",
           entityType: "Settings",
-          entityId: rowId || (saved as Record<string, unknown>).id,
+          entityId: rowId || ((saved as Record<string, unknown>).id as string | null | undefined),
           userId: currentUserId,
           details: JSON.stringify(fullData),
         },
@@ -318,4 +318,9 @@ function maskPhone(phone: string): string {
   const cleaned = phone.replace(/\s/g, "");
   if (cleaned.length <= 6) return cleaned;
   return cleaned.slice(0, 4) + "****" + cleaned.slice(-2);
+}
+
+function maskInstapay(account: string): string {
+  if (account.length <= 5) return account;
+  return account.slice(0, 3) + "***" + account.slice(-2);
 }
