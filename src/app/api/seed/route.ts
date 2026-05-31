@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || "";
+import { JWT_SECRET } from '@/lib/auth';
 
 const sampleApartments = [
   {

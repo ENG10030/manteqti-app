@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Bonus: Include user's full transaction history when requested
-    let userHistory = null;
+    let userHistory: Record<string, unknown> | null = null;
     if (targetUserId && includeUserHistory) {
       const userExists = await db.user.findUnique({
         where: { id: targetUserId },

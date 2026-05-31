@@ -16,6 +16,7 @@ import {
   Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
+import { WalletModal } from '@/components/wallet-modal';
 import { io } from 'socket.io-client';
 
 // Developer credentials
@@ -80,6 +81,27 @@ function parseJsonArray(value: string | string[] | undefined): string[] {
 
 function processApartment(apt: any): Apartment {
   return { ...apt, images: parseJsonArray(apt.images), videos: parseJsonArray(apt.videos), amenities: parseJsonArray(apt.amenities) };
+}
+
+function getRelativeTime(dateStr: string): string {
+  try {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHour / 24);
+    const diffWeek = Math.floor(diffDay / 7);
+    if (diffSec < 60) return 'الآن';
+    if (diffMin < 60) return `منذ ${diffMin} دقائق`;
+    if (diffHour < 24) return `منذ ${diffHour} ساعات`;
+    if (diffDay < 7) return `منذ ${diffDay} أيام`;
+    if (diffWeek < 4) return `منذ ${diffWeek} أسابيع`;
+    return date.toLocaleDateString('ar-EG');
+  } catch {
+    return '';
+  }
 }
 
 const egyptianAreas = ['المعادي', 'مدينة نصر', 'الدقي', 'المهندسين', 'حلوان', 'عين شمس', 'مصر الجديدة', 'التجمع الخامس', 'الشيخ زايد', 'العباسية', 'المقطم', 'شبرا', 'الزمالك', 'التجمع الأول', 'القاهرة الجديدة', 'أكتوبر', 'العبور', 'الشروق', 'الرقابة', 'فيصل', 'جاردن سيتي', 'المعصرة', 'عابدين', 'الزهراء', 'حدائق القبة', 'مدينة السلام', '15 مايو', 'حلوان الجديدة', 'بدر', 'النزهة', 'المريوطية'];
@@ -268,6 +290,19 @@ export default function App() {
   const [rechargeMethod, setRechargeMethod] = useState('');
   const [rechargeReference, setRechargeReference] = useState('');
   const [rechargeSubmitting, setRechargeSubmitting] = useState(false);
+  const [walletTab, setWalletTab] = useState<'recharge' | 'transactions'>('recharge');
+  // Payment methods (fetched from API)
+  const [paymentMethods, setPaymentMethods] = useState<Array<{id:string;name:string;nameEn:string;icon:string;enabled:boolean;account?:string;accountLabel?:string;instructions?:string;color:string;minAmount:number;maxAmount:number}>>([]);
+  // Visa card payment state
+  const [showVisaPayment, setShowVisaPayment] = useState(false);
+  const [visaAmount, setVisaAmount] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+  const [cardHolderName, setCardHolderName] = useState('');
+  const [visaSubmitting, setVisaSubmitting] = useState(false);
+  const [visaStep, setVisaStep] = useState<'enter' | 'processing' | 'success'>('enter');
+  const [cardError, setCardError] = useState<{field?:string;message:string}>({message:''});
   const [pendingRecharges, setPendingRecharges] = useState<Array<{id:string;userId:string;amount:number;method:string;reference:string|null;createdAt:string;user:{name:string;email:string;phone:string|null;identifier:string}}>>([]);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
@@ -308,6 +343,19 @@ export default function App() {
     priorityListingFee: number;
     verifiedListingFee: number;
     currency: string;
+    // Payment receiving accounts
+    vodafoneCashNumber: string;
+    orangeCashNumber: string;
+    etisalatCashNumber: string;
+    bankAccountName: string;
+    bankAccountNumber: string;
+    bankName: string;
+    instapayAccount: string;
+    visaEnabled: boolean;
+    visaPublicKey: string;
+    visaSecretKey: string;
+    minRechargeAmount: number;
+    maxRechargeAmount: number;
   }>({ 
     contactFee: 50, 
     regularFee: 30,
@@ -320,7 +368,22 @@ export default function App() {
     highlightFee: 150,
     priorityListingFee: 200,
     verifiedListingFee: 250,
-    currency: 'ج.م'
+    currency: 'ج.م',
+    vodafoneCashNumber: '',
+    orangeCashNumber: '',
+    etisalatCashNumber: '',
+    bankAccountName: '',
+    bankAccountNumber: '',
+    bankName: '',
+    instapayAccount: '',
+    visaEnabled: false,
+    visaPublicKey: '',
+    visaSecretKey: '',
+    minRechargeAmount: 10,
+    maxRechargeAmount: 50000,
+    usdtTronAddress: '',
+    paymentAutoConfirm: false,
+    paymentSecurityPin: '',
   });
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -713,8 +776,25 @@ export default function App() {
           highlightFee: s.highlightFee ?? 150,
           priorityListingFee: s.priorityListingFee ?? 200,
           verifiedListingFee: s.verifiedListingFee ?? 250,
-          currency: s.currency ?? 'ج.م'
+          currency: s.currency ?? 'ج.م',
+          vodafoneCashNumber: s.vodafoneCashNumber ?? '',
+          orangeCashNumber: s.orangeCashNumber ?? '',
+          etisalatCashNumber: s.etisalatCashNumber ?? '',
+          bankAccountName: s.bankAccountName ?? '',
+          bankAccountNumber: s.bankAccountNumber ?? '',
+          bankName: s.bankName ?? '',
+          instapayAccount: s.instapayAccount ?? '',
+          visaEnabled: s.visaEnabled ?? false,
+          visaPublicKey: s.visaPublicKey ?? '',
+          visaSecretKey: s.visaSecretKey ?? '',
+          minRechargeAmount: s.minRechargeAmount ?? 10,
+          maxRechargeAmount: s.maxRechargeAmount ?? 50000,
+          usdtTronAddress: s.usdtTronAddress ?? '',
+          paymentAutoConfirm: s.paymentAutoConfirm ?? false,
+          paymentSecurityPin: s.paymentSecurityPin ?? '',
         });
+        // Also fetch payment methods
+        try { const pmRes = await fetch('/api/payment-methods'); const pmData = await pmRes.json(); if (pmRes.ok && Array.isArray(pmData.methods)) setPaymentMethods(pmData.methods); } catch {}
       }
     } catch {}
   };
@@ -774,6 +854,18 @@ export default function App() {
           priorityListingFee: savedSettings.priorityListingFee ?? settings.priorityListingFee,
           verifiedListingFee: savedSettings.verifiedListingFee ?? settings.verifiedListingFee,
           currency: savedSettings.currency ?? settings.currency,
+          vodafoneCashNumber: savedSettings.vodafoneCashNumber ?? '',
+          orangeCashNumber: savedSettings.orangeCashNumber ?? '',
+          etisalatCashNumber: savedSettings.etisalatCashNumber ?? '',
+          bankAccountName: savedSettings.bankAccountName ?? '',
+          bankAccountNumber: savedSettings.bankAccountNumber ?? '',
+          bankName: savedSettings.bankName ?? '',
+          instapayAccount: savedSettings.instapayAccount ?? '',
+          visaEnabled: savedSettings.visaEnabled ?? false,
+          visaPublicKey: savedSettings.visaPublicKey ?? '',
+          visaSecretKey: savedSettings.visaSecretKey ?? '',
+          minRechargeAmount: savedSettings.minRechargeAmount ?? 10,
+          maxRechargeAmount: savedSettings.maxRechargeAmount ?? 50000,
         });
         addToast('تم تحديث الإعدادات بنجاح ✅', 'success');
       } else {
@@ -3727,6 +3819,139 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <input type="text" maxLength={10} value={settings.currency} onChange={(e) => setSettings({ ...settings, currency: e.target.value.replace(/<[^>]*>/g, '').slice(0, 10) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                   </div>
+
+                  {/* Payment Accounts Section */}
+                  <div className={`p-5 rounded-2xl border-2 ${darkMode ? 'bg-slate-700/50 border-emerald-500/20' : 'bg-emerald-50/50 border-emerald-200'}`}>
+                    <h3 className={`font-bold mb-1 flex items-center gap-2 text-lg ${darkMode ? 'text-white' : 'text-slate-900'}`}><Wallet className="h-5 w-5 text-emerald-500" />حسابات استقبال الدفع</h3>
+                    <p className={`text-xs mb-5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>اضبط حساباتك لاستقبال مدفوعات الشحن — المستخدمون سيرون الأرقام جزئياً masked</p>
+                    
+                    <div className="space-y-5">
+                      {/* 1. Mobile Wallets */}
+                      <div>
+                        <p className={`text-xs font-bold uppercase tracking-wider mb-3 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>📱 محافظ الجوال</p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          {/* Vodafone Cash */}
+                          <div className={`relative rounded-xl border-2 p-4 transition-all ${settings.vodafoneCashNumber ? 'border-red-400/40' : darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
+                            <div className="flex items-center justify-between mb-2.5">
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">VF</div>
+                                <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>فودافون كاش</span>
+                              </div>
+                              <div className={`w-2.5 h-2.5 rounded-full ${settings.vodafoneCashNumber ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : darkMode ? 'bg-slate-600' : 'bg-slate-300'}`} title={settings.vodafoneCashNumber ? 'مفعّل' : 'غير مفعل'} />
+                            </div>
+                            <input type="tel" value={settings.vodafoneCashNumber} onChange={(e) => setSettings({ ...settings, vodafoneCashNumber: e.target.value.replace(/[^0-9\s]/g, '') })} placeholder="01xxxxxxxxx" className={`w-full px-3.5 py-2.5 rounded-lg border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-500 focus:border-red-500' : 'bg-white border-slate-200 placeholder-slate-400 focus:border-red-500'} outline-none transition-colors`} />
+                          </div>
+                          {/* Orange Cash */}
+                          <div className={`relative rounded-xl border-2 p-4 transition-all ${settings.orangeCashNumber ? 'border-orange-400/40' : darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
+                            <div className="flex items-center justify-between mb-2.5">
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">OR</div>
+                                <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>أورنج كاش</span>
+                              </div>
+                              <div className={`w-2.5 h-2.5 rounded-full ${settings.orangeCashNumber ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : darkMode ? 'bg-slate-600' : 'bg-slate-300'}`} />
+                            </div>
+                            <input type="tel" value={settings.orangeCashNumber} onChange={(e) => setSettings({ ...settings, orangeCashNumber: e.target.value.replace(/[^0-9\s]/g, '') })} placeholder="01xxxxxxxxx" className={`w-full px-3.5 py-2.5 rounded-lg border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-500 focus:border-orange-500' : 'bg-white border-slate-200 placeholder-slate-400 focus:border-orange-500'} outline-none transition-colors`} />
+                          </div>
+                          {/* Etisalat Cash */}
+                          <div className={`relative rounded-xl border-2 p-4 transition-all ${settings.etisalatCashNumber ? 'border-blue-400/40' : darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
+                            <div className="flex items-center justify-between mb-2.5">
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">ET</div>
+                                <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>اتصالات كاش</span>
+                              </div>
+                              <div className={`w-2.5 h-2.5 rounded-full ${settings.etisalatCashNumber ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : darkMode ? 'bg-slate-600' : 'bg-slate-300'}`} />
+                            </div>
+                            <input type="tel" value={settings.etisalatCashNumber} onChange={(e) => setSettings({ ...settings, etisalatCashNumber: e.target.value.replace(/[^0-9\s]/g, '') })} placeholder="01xxxxxxxxx" className={`w-full px-3.5 py-2.5 rounded-lg border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-500 focus:border-blue-500' : 'bg-white border-slate-200 placeholder-slate-400 focus:border-blue-500'} outline-none transition-colors`} />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 2. InstaPay */}
+                      <div>
+                        <p className={`text-xs font-bold uppercase tracking-wider mb-3 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>⚡ إنستاباي</p>
+                        <div className={`rounded-xl border-2 p-4 transition-all ${settings.instapayAccount ? 'border-violet-400/40' : darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
+                          <div className="flex items-center justify-between mb-2.5">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">IP</div>
+                              <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>إنستاباي</span>
+                            </div>
+                            <div className={`w-2.5 h-2.5 rounded-full ${settings.instapayAccount ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : darkMode ? 'bg-slate-600' : 'bg-slate-300'}`} />
+                          </div>
+                          <input type="text" value={settings.instapayAccount} onChange={(e) => setSettings({ ...settings, instapayAccount: e.target.value.replace(/<[^>]*>/g, '') })} placeholder="رقم هاتف أو @username" className={`w-full px-3.5 py-2.5 rounded-lg border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-500 focus:border-violet-500' : 'bg-white border-slate-200 placeholder-slate-400 focus:border-violet-500'} outline-none transition-colors`} />
+                        </div>
+                      </div>
+
+                      {/* 3. Bank Transfer */}
+                      <div>
+                        <p className={`text-xs font-bold uppercase tracking-wider mb-3 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>🏦 تحويل بنكي</p>
+                        <div className={`rounded-xl border-2 p-4 transition-all ${(settings.bankAccountNumber && settings.bankName) ? 'border-emerald-400/40' : darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
+                          <div className="flex items-center justify-between mb-2.5">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">BK</div>
+                              <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>حساب بنكي</span>
+                            </div>
+                            <div className={`w-2.5 h-2.5 rounded-full ${(settings.bankAccountNumber && settings.bankName) ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : darkMode ? 'bg-slate-600' : 'bg-slate-300'}`} />
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <input type="text" value={settings.bankName} onChange={(e) => setSettings({ ...settings, bankName: e.target.value.replace(/<[^>]*>/g, '') })} placeholder="اسم البنك" className={`w-full px-3.5 py-2.5 rounded-lg border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-500 focus:border-emerald-500' : 'bg-white border-slate-200 placeholder-slate-400 focus:border-emerald-500'} outline-none transition-colors`} />
+                            <input type="text" value={settings.bankAccountName} onChange={(e) => setSettings({ ...settings, bankAccountName: e.target.value.replace(/<[^>]*>/g, '') })} placeholder="اسم صاحب الحساب" className={`w-full px-3.5 py-2.5 rounded-lg border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-500 focus:border-emerald-500' : 'bg-white border-slate-200 placeholder-slate-400 focus:border-emerald-500'} outline-none transition-colors`} />
+                            <input type="text" value={settings.bankAccountNumber} onChange={(e) => setSettings({ ...settings, bankAccountNumber: e.target.value.replace(/<[^>]*>/g, '') })} placeholder="رقم الحساب / IBAN" className={`w-full px-3.5 py-2.5 rounded-lg border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-500 focus:border-emerald-500' : 'bg-white border-slate-200 placeholder-slate-400 focus:border-emerald-500'} outline-none transition-colors`} />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 4. Card Payment (Visa) */}
+                      <div>
+                        <p className={`text-xs font-bold uppercase tracking-wider mb-3 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>💳 بطاقات الدفع</p>
+                        <div className={`rounded-xl border-2 p-4 transition-all ${settings.visaEnabled ? 'border-indigo-400/40' : darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-sm"><CreditCard className="h-4 w-4 text-white" /></div>
+                              <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>فيزا / ماستركارد</span>
+                            </div>
+                            <button onClick={() => setSettings({ ...settings, visaEnabled: !settings.visaEnabled })} className={`relative w-12 h-6 rounded-full transition-all duration-200 ${settings.visaEnabled ? 'bg-emerald-500 shadow-sm shadow-emerald-500/30' : darkMode ? 'bg-slate-600' : 'bg-slate-300'}`}>
+                              <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-all duration-200 ${settings.visaEnabled ? 'left-0.5' : 'left-6'}`} />
+                            </button>
+                          </div>
+                          {settings.visaEnabled && (
+                            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>Stripe Public Key</label>
+                                <input type="text" value={settings.visaPublicKey} onChange={(e) => setSettings({ ...settings, visaPublicKey: e.target.value })} placeholder="pk_..." className={`w-full px-3 py-2 rounded-lg border text-xs font-mono ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-500 focus:border-indigo-500' : 'bg-white border-slate-200 placeholder-slate-400 focus:border-indigo-500'} outline-none transition-colors`} />
+                              </div>
+                              <div>
+                                <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>Stripe Secret Key</label>
+                                <input type="password" value={settings.visaSecretKey} onChange={(e) => setSettings({ ...settings, visaSecretKey: e.target.value })} placeholder="sk_..." className={`w-full px-3 py-2 rounded-lg border text-xs font-mono ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-500 focus:border-indigo-500' : 'bg-white border-slate-200 placeholder-slate-400 focus:border-indigo-500'} outline-none transition-colors`} />
+                              </div>
+                            </motion.div>
+                          )}
+                          <p className={`text-xs mt-2.5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>بدون مفاتيح Stripe، الدفع بالبطاقة سيعمل كوضع تجريبي</p>
+                        </div>
+                      </div>
+
+                      {/* Recharge Limits */}
+                      <div>
+                        <p className={`text-xs font-bold uppercase tracking-wider mb-3 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>⚙️ حدود الشحن</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className={`rounded-xl border-2 p-4 ${darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
+                            <label className={`block text-xs font-medium mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>الحد الأدنى</label>
+                            <div className="flex items-center gap-2">
+                              <input type="number" min="1" value={settings.minRechargeAmount} onChange={(e) => setSettings({ ...settings, minRechargeAmount: Math.max(1, parseInt(e.target.value) || 1) })} className={`flex-1 px-3 py-2 rounded-lg border text-sm font-bold ${darkMode ? 'bg-slate-600 border-slate-500 text-white' : 'bg-white border-slate-200'} outline-none`} />
+                              <span className={`text-xs font-medium ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{settings.currency}</span>
+                            </div>
+                          </div>
+                          <div className={`rounded-xl border-2 p-4 ${darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
+                            <label className={`block text-xs font-medium mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>الحد الأقصى</label>
+                            <div className="flex items-center gap-2">
+                              <input type="number" min="100" value={settings.maxRechargeAmount} onChange={(e) => setSettings({ ...settings, maxRechargeAmount: Math.min(1000000, parseInt(e.target.value) || 50000) })} className={`flex-1 px-3 py-2 rounded-lg border text-sm font-bold ${darkMode ? 'bg-slate-600 border-slate-500 text-white' : 'bg-white border-slate-200'} outline-none`} />
+                              <span className={`text-xs font-medium ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{settings.currency}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <button onClick={() => updateSettings(settings)} disabled={settingsLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2">{settingsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}حفظ الإعدادات</button>
                   {/* Developer Password Change */}
                   <div className={`p-4 rounded-xl border-2 ${darkMode ? 'bg-slate-700 border-amber-500/30' : 'bg-amber-50 border-amber-200'}`}>
@@ -4054,8 +4279,21 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     {walletBalance >= settings.contactFee && <span className="text-xs text-emerald-500">✓ كافٍ</span>}
                   </div>
                 </button>
-                {['فودافون كاش', 'أورنج كاش', 'اتصالات كاش', 'تحويل بنكي'].map(method => (
-                  <button key={method} onClick={() => setPaymentMethod(method)} className={`w-full p-4 rounded-xl border-2 text-right transition-all ${paymentMethod === method ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : darkMode ? 'border-slate-600 hover:border-slate-500' : 'border-slate-200 hover:border-slate-300'}`}>{method}</button>
+                {paymentMethods.filter(m => m.id !== 'visa').map(method => (
+                  <button key={method.id} onClick={() => setPaymentMethod(method.id)} className={`w-full p-4 rounded-xl border-2 text-right transition-all ${paymentMethod === method.id ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : darkMode ? 'border-slate-600 hover:border-slate-500' : 'border-slate-200 hover:border-slate-300'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${method.color} flex items-center justify-center text-lg`}>{method.icon}</div>
+                        <div>
+                          <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{method.name}</p>
+                          {method.account && <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{method.accountLabel}: {method.account}</p>}
+                        </div>
+                      </div>
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${paymentMethod === method.id ? 'border-emerald-500 bg-emerald-500' : darkMode ? 'border-slate-500' : 'border-slate-300'}`}>
+                        {paymentMethod === method.id && <Check className="h-3 w-3 text-white" />}
+                      </div>
+                    </div>
+                  </button>
                 ))}
               </div>
               )}
@@ -4065,82 +4303,59 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
         </motion.div>
       )}</AnimatePresence>
 
-      {/* Wallet Modal */}
-      <AnimatePresence>{showWallet && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowWallet(false)}>
-          <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
-            {/* Header */}
-            <div className="relative overflow-hidden bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600 px-6 py-8">
-              <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2" />
-              <div className="absolute bottom-0 left-0 w-32 h-32 bg-white/10 rounded-full translate-y-1/2 -translate-x-1/2" />
-              <button onClick={() => setShowWallet(false)} className="absolute top-4 left-4 p-2 rounded-xl bg-white/20 hover:bg-white/30 transition-colors"><X className="h-5 w-5 text-white" /></button>
-              <div className="relative z-10 text-center">
-                <div className="mx-auto w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center mb-3"><Wallet className="h-8 w-8 text-white" /></div>
-                <h2 className="text-2xl font-bold text-white">محفظتي</h2>
-                <p className="text-white/70 mt-1 text-sm">إدارة رصيدك ومعاملاتك</p>
-              </div>
-            </div>
-            <div className="p-6">
-              {/* Balance Card */}
-              <div className={`p-6 rounded-2xl mb-6 bg-gradient-to-br ${darkMode ? 'from-slate-700 to-slate-800' : 'from-slate-50 to-slate-100'} border ${darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
-                <p className={`text-sm mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>رصيدك الحالي</p>
-                <p className="text-4xl font-bold text-emerald-500">{walletBalance.toLocaleString()} <span className="text-lg">{settings.currency}</span></p>
-              </div>
-
-              {/* Quick Recharge */}
-              <div className="mb-6">
-                <h3 className={`font-bold mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>⚡ شحن سريع</h3>
-                <div className="grid grid-cols-4 gap-2 mb-3">
-                  {[50, 100, 200, 500].map(amount => (
-                    <button key={amount} onClick={() => setRechargeAmount(String(amount))} className={`py-3 rounded-xl text-sm font-medium transition-all ${rechargeAmount === String(amount) ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/25' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>{amount}</button>
-                  ))}
-                </div>
-                <input type="number" value={rechargeAmount} onChange={(e) => setRechargeAmount(e.target.value)} placeholder="أو أدخل مبلغ آخر..." className={`w-full px-4 py-3 rounded-xl border-2 mb-3 transition-colors ${darkMode ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-500 focus:border-emerald-500' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-emerald-500'} outline-none`} />
-                <select value={rechargeMethod} onChange={(e) => setRechargeMethod(e.target.value)} className={`w-full px-4 py-3 rounded-xl border-2 mb-3 transition-colors ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200 text-slate-900'} outline-none`}>
-                  <option value="">اختر طريقة الشحن</option>
-                  <option value="vodafone_cash">فودافون كاش</option>
-                  <option value="orange_cash">أورنج كاش</option>
-                  <option value="etisalat_cash">اتصالات كاش</option>
-                  <option value="bank_transfer">تحويل بنكي</option>
-                  <option value="instapay">إنستاباي</option>
-                </select>
-                <input type="text" value={rechargeReference} onChange={(e) => setRechargeReference(e.target.value)} placeholder="رقم المرجع / رقم التحويل (اختياري)" className={`w-full px-4 py-3 rounded-xl border-2 mb-3 transition-colors ${darkMode ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-500' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400'} outline-none`} />
-                <button onClick={async () => {
-                  if (!rechargeAmount || !rechargeMethod || parseInt(rechargeAmount) <= 0) { addToast('أدخل المبلغ وطريقة الشحن', 'error'); return; }
-                  setRechargeSubmitting(true);
-                  try {
-                    const res = await fetch('/api/wallet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount: parseInt(rechargeAmount), method: rechargeMethod, reference: rechargeReference || undefined }) });
-                    const data = await res.json();
-                    if (res.ok) { addToast('تم تسجيل طلب الشحن — بانتظار تأكيد المطور ✅', 'success'); setRechargeAmount(''); setRechargeMethod(''); setRechargeReference(''); }
-                    else addToast(data.error || 'فشل طلب الشحن', 'error');
-                  } catch { addToast('حدث خطأ', 'error'); }
-                  finally { setRechargeSubmitting(false); }
-                }} disabled={rechargeSubmitting || !rechargeAmount || !rechargeMethod} className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium disabled:opacity-50 hover:shadow-lg hover:shadow-emerald-500/25 transition-all">{rechargeSubmitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : `شحن ${rechargeAmount || '0'} ${settings.currency}`}</button>
-              </div>
-
-              {/* Transactions */}
-              <div>
-                <h3 className={`font-bold mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>📋 آخر المعاملات</h3>
-                {walletTransactions.length === 0 && <p className={`text-center py-6 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>لا توجد معاملات بعد</p>}
-                <div className="space-y-2 max-h-60 overflow-y-auto">
-                  {walletTransactions.slice(0, 10).map(tx => (
-                    <div key={tx.id} className={`flex items-center justify-between p-3 rounded-xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50'}`}>
-                      <div>
-                        <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{tx.type === 'recharge' ? '💚 شحن' : tx.type === 'payment' ? '🔴 دفع' : tx.type === 'refund' ? '🟡 استرداد' : '⚙️ تعديل'}</p>
-                        <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{tx.description || tx.method || tx.type}</p>
-                      </div>
-                      <div className="text-left">
-                        <p className={`text-sm font-bold ${tx.type === 'payment' ? 'text-red-500' : 'text-emerald-500'}`}>{tx.type === 'payment' ? '-' : '+'}{tx.amount.toLocaleString()}</p>
-                        <p className={`text-xs ${tx.status === 'completed' ? 'text-emerald-500' : tx.status === 'pending' ? 'text-amber-500' : 'text-red-500'}`}>{tx.status === 'completed' ? 'مكتمل' : tx.status === 'pending' ? 'معلق' : 'فاشل'}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}</AnimatePresence>
+      {/* Wallet Modal - New Modern Design */}
+      <WalletModal
+        isOpen={showWallet}
+        onClose={() => setShowWallet(false)}
+        darkMode={darkMode}
+        walletBalance={walletBalance}
+        currency={settings.currency}
+        walletTransactions={walletTransactions}
+        paymentMethods={paymentMethods}
+        onRecharge={async (amount, method, reference) => {
+          try {
+            const res = await fetch('/api/wallet', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ amount, method, reference: reference || undefined }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+              addToast(data.autoConfirm ? 'تم شحن المحفظة بنجاح ✅' : 'تم تسجيل طلب الشحن — بانتظار تأكيد المطور ✅', 'success');
+              // Refresh wallet data
+              const wRes = await fetch('/api/wallet');
+              const wData = await wRes.json();
+              if (wRes.ok) {
+                setWalletBalance(wData.balance || 0);
+                setWalletTransactions(wData.transactions || []);
+              }
+              return true;
+            } else {
+              addToast(data.error || 'فشل طلب الشحن', 'error');
+              return false;
+            }
+          } catch {
+            addToast('حدث خطأ', 'error');
+            return false;
+          }
+        }}
+        onFetchWallet={async () => {
+          try {
+            const wRes = await fetch('/api/wallet');
+            const wData = await wRes.json();
+            if (wRes.ok) {
+              setWalletBalance(wData.balance || 0);
+              setWalletTransactions(wData.transactions || []);
+            }
+          } catch {}
+        }}
+        onOpenVisa={(amount) => {
+          setShowVisaPayment(true);
+          setVisaAmount(amount);
+        }}
+        autoConfirm={false}
+        addToast={addToast}
+      />
 
       {/* Forgot Password Modal */}
       <AnimatePresence>{showForgotPassword && (

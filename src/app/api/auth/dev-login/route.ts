@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
+import { checkRateLimit, recordFailedAttempt } from "@/lib/rate-limit";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
@@ -23,33 +24,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "كلمة المرور مطلوبة" }, { status: 400 });
     }
 
+    // 🔒 Rate limiting BEFORE password comparison
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+               request.headers.get("x-real-ip") || "unknown";
+    const allowed = await checkRateLimit("dev-login", "ip", ip, 5, 15 * 60);
+    if (!allowed) {
+      return NextResponse.json({ error: "محاولات كثيرة. حاول بعد 15 دقيقة" }, { status: 429 });
+    }
+
     // التحقق من كلمة مرور المطور فقط من Environment Variables
     if (password !== DEVELOPER_PASSWORD) {
+      await recordFailedAttempt("dev-login", "ip", ip, request);
       return NextResponse.json({ error: "كلمة مرور المطور غير صحيحة" }, { status: 401 });
     }
 
     // البحث عن حساب المطور في قاعدة البيانات
     let user: { id: string; name: string; email: string | null; role: string } | null = null;
-    
+
     try {
-      // 🔒 Rate limiting في الداتابيز (لو الداتابيز شغالة)
-      const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
-                 request.headers.get("x-real-ip") || "unknown";
-      
-      const since = new Date(Date.now() - 15 * 60 * 1000);
-      const count = await db.operationLog.count({
-        where: {
-          action: "rate-limit:dev-login",
-          entityType: "ip",
-          entityId: ip,
-          createdAt: { gte: since },
-        },
-      });
-
-      if (count >= 5) {
-        return NextResponse.json({ error: "محاولات كثيرة. حاول بعد 15 دقيقة" }, { status: 429 });
-      }
-
       user = await db.user.findUnique({
         where: { identifier: DEVELOPER_EMAIL },
       });
@@ -112,8 +104,8 @@ export async function POST(request: Request) {
     return response;
   } catch (error: unknown) {
     console.error("Dev login error:", error);
-    return NextResponse.json({ 
-      error: "حدث خطأ" 
+    return NextResponse.json({
+      error: "حدث خطأ"
     }, { status: 500 });
   }
 }

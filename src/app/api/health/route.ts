@@ -3,17 +3,12 @@ import { db } from "@/lib/db";
 
 export async function GET() {
   try {
-    // Test database connection
-    const apartmentCount = await db.apartment.count();
-    const userCount = await db.user.count();
-    const settingsCount = await db.settings.count();
+    // Test database connection — no data leakage
+    await db.$queryRaw`SELECT 1`;
 
     return NextResponse.json({
       status: "ok",
       database: "connected",
-      apartments: apartmentCount,
-      users: userCount,
-      settings: settingsCount,
       timestamp: new Date().toISOString(),
     });
   } catch (error: unknown) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { authenticateRequest } from '@/lib/auth';
 
 // System prompt for real estate assistant
 const SYSTEM_PROMPT = `أنت مساعد ذكي متخصص في العقارات والشقق في مصر. اسمك "منطقتي".
@@ -100,6 +101,9 @@ function getFallbackReply(message: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = authenticateRequest(request);
+  if (!auth) return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
+
   let body: any = null;
   
   try {
@@ -174,5 +178,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const auth = authenticateRequest(request);
+  if (!auth) return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
+
   return NextResponse.json({ success: true, message: 'Conversation cleared' });
 }

@@ -2,9 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { notifyApartmentsChanged } from "@/lib/realtime";
-
-const JWT_SECRET = process.env.JWT_SECRET || "";
-// 🔒 SECURITY: If JWT_SECRET is empty, all auth operations will fail (intentional)
+import { JWT_SECRET } from "@/lib/auth";
 
 async function getCurrentUser(request: Request) {
   const cookieHeader = request.headers.get("cookie");
@@ -87,7 +85,13 @@ export async function GET(request: Request) {
       ],
     });
 
-    return NextResponse.json(apartments);
+    // 🔒 Strip PII (ownerPhone, ownerEmail) for non-developers
+    const sanitizedApartments = isDeveloper ? apartments : apartments.map((apt: any) => {
+      const { ownerPhone, ownerEmail, ...rest } = apt;
+      return rest;
+    });
+
+    return NextResponse.json(sanitizedApartments);
   } catch (error: any) {
     console.error("Get apartments error:", error);
     return NextResponse.json(

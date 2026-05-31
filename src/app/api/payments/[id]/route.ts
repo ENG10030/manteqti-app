@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || "";
+import { JWT_SECRET } from '@/lib/auth';
 
 export async function GET(
   request: NextRequest,
@@ -37,6 +36,11 @@ export async function GET(
 
     if (!payment) {
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
+    }
+
+    // 🔒 Ownership check: only the payment owner or a developer can view
+    if (payment.userId !== decoded.userId && decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
 
     return NextResponse.json({

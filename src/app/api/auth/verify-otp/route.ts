@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { sign } from 'jsonwebtoken';
 import { checkRateLimit, recordFailedAttempt } from '@/lib/rate-limit';
-
-const JWT_SECRET = process.env.JWT_SECRET || "";
+import { JWT_SECRET } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {

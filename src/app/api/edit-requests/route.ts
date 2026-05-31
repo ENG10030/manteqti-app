@@ -3,8 +3,7 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { requireApprovedUser } from '@/lib/auth-middleware';
-
-const JWT_SECRET = process.env.JWT_SECRET || "";
+import { JWT_SECRET } from '@/lib/auth';
 
 // جلب طلبات التعديل
 export async function GET(request: NextRequest) {

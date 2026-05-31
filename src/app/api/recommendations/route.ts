@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { authenticateRequest } from '@/lib/auth';
 
 function generateFallbackAnalysis(
   apartments: any[],
@@ -48,6 +49,9 @@ function generateFallbackAnalysis(
 }
 
 export async function POST(request: NextRequest) {
+  const auth = authenticateRequest(request);
+  if (!auth) return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
+
   try {
     const { budget, bedrooms, type, area } = await request.json();
 

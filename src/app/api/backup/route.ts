@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { cookies } from "next/headers";
-
-const JWT_SECRET = process.env.JWT_SECRET || "";
+import { JWT_SECRET } from "@/lib/auth";
 
 async function verifyDeveloper(request: Request): Promise<boolean> {
   try {

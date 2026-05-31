@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authenticateRequest } from "@/lib/auth";
 
 interface ApartmentData {
   id: string;
@@ -86,6 +87,9 @@ function generateMockAnalysis(apartments: ApartmentData[]) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = authenticateRequest(request);
+  if (!auth) return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
+
   try {
     const body = await request.json();
     const { apartments } = body as { apartments: ApartmentData[] };

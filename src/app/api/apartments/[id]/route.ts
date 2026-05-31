@@ -3,9 +3,7 @@ import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { notifyApartmentsChanged } from "@/lib/realtime";
 import { sendApartmentApprovedEmail, sendApartmentRejectedEmail } from "@/lib/email";
-
-const JWT_SECRET = process.env.JWT_SECRET || "";
-// 🔒 SECURITY: If JWT_SECRET is empty, auth operations will fail (intentional)
+import { JWT_SECRET } from "@/lib/auth";
 
 async function getCurrentUser(request: Request) {
   const cookieHeader = request.headers.get("cookie");

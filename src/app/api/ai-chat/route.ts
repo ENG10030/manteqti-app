@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { authenticateRequest } from '@/lib/auth';
 
 // ردود ذكية مبرمجة للمساعد
 const smartResponses: { keywords: string[]; reply: string }[] = [
@@ -55,6 +56,9 @@ const defaultReply = `🏠 أهلاً بك في منطقتي!
 كيف يمكنني مساعدتك؟`;
 
 export async function POST(request: NextRequest) {
+  const auth = authenticateRequest(request);
+  if (!auth) return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
+
   try {
     const body = await request.json();
     const message = (body.message || body.text || '').toLowerCase().trim();
@@ -79,6 +83,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth = authenticateRequest(request);
+  if (!auth) return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
+
   return NextResponse.json({ status: 'ok' });
 }

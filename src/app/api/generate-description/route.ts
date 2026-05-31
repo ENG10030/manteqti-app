@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { authenticateRequest } from '@/lib/auth';
 
 function generateFallbackDescription(data: {
   type: string;
@@ -33,6 +34,9 @@ ${area} - موقع متميز قريب من جميع الخدمات والمرا
 }
 
 export async function POST(request: NextRequest) {
+  const auth = authenticateRequest(request);
+  if (!auth) return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
+
   try {
     const { type, area, bedrooms, bathrooms, features, price } = await request.json();
 
