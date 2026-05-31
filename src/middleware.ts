@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// Rate limiting بسيط
+// Rate limiting بسيط - NOTE: In-memory rate limiting in middleware has limited effectiveness
+// in Vercel serverless (each request may hit a different instance). This provides baseline
+// protection only. Critical endpoints (auth) use database-backed rate limiting instead.
 const rateLimit = new Map<string, { count: number; lastRequest: number }>();
 const RATE_LIMIT_WINDOW = 60 * 1000;
 const RATE_LIMIT_MAX = 100;

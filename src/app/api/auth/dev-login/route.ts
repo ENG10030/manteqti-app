@@ -3,37 +3,11 @@ import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
 import { User } from "@prisma/client";
+import { checkRateLimit, recordFailedAttempt, getClientIp } from "@/lib/rate-limit";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
 const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD;
-
-// Rate limiting in-memory map
-const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
-const MAX_ATTEMPTS = 5;
-const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const record = loginAttempts.get(ip);
-  
-  if (!record) {
-    loginAttempts.set(ip, { count: 1, lastAttempt: now });
-    return true;
-  }
-  
-  if (now - record.lastAttempt > WINDOW_MS) {
-    loginAttempts.set(ip, { count: 1, lastAttempt: now });
-    return true;
-  }
-  
-  if (record.count >= MAX_ATTEMPTS) {
-    return false;
-  }
-  
-  record.count++;
-  return true;
-}
 
 export async function POST(request: Request) {
   try {
@@ -43,11 +17,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "خطأ في إعدادات الخادم" }, { status: 500 });
     }
 
-    // Rate limiting
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
-               request.headers.get("x-real-ip") || "unknown";
+    // 🔒 Database-backed rate limiting (works across all serverless instances)
+    const ip = getClientIp(request);
     
-    if (!checkRateLimit(ip)) {
+    if (!(await checkRateLimit("dev-login", "ip", ip))) {
       return NextResponse.json({ error: "محاولات كثيرة. حاول بعد 15 دقيقة" }, { status: 429 });
     }
 
@@ -61,6 +34,8 @@ export async function POST(request: Request) {
 
     // التحقق من كلمة مرور المطور فقط من Environment Variables
     if (password !== DEVELOPER_PASSWORD) {
+      // 🔒 سجل المحاولة الفاشلة في الداتابيز
+      await recordFailedAttempt("dev-login", "ip", ip, request, "Wrong developer password");
       return NextResponse.json({ error: "كلمة مرور المطور غير صحيحة" }, { status: 401 });
     }
 

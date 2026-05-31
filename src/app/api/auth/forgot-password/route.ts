@@ -2,34 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import crypto from 'crypto';
 import { sendOTPEmail } from '@/lib/email';
-
-// Rate limiting map for forgot-password
-const otpAttempts = new Map<string, { count: number; lastAttempt: number }>();
-const MAX_OTP_ATTEMPTS = 3;
-const OTP_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
-
-function checkOtpRateLimit(email: string): boolean {
-  const key = email.toLowerCase().trim();
-  const now = Date.now();
-  const record = otpAttempts.get(key);
-  
-  if (!record) {
-    otpAttempts.set(key, { count: 1, lastAttempt: now });
-    return true;
-  }
-  
-  if (now - record.lastAttempt > OTP_WINDOW_MS) {
-    otpAttempts.set(key, { count: 1, lastAttempt: now });
-    return true;
-  }
-  
-  if (record.count >= MAX_OTP_ATTEMPTS) {
-    return false;
-  }
-  
-  record.count++;
-  return true;
-}
+import { checkRateLimit, recordFailedAttempt } from '@/lib/rate-limit';
 
 // إرسال طلب استعادة كلمة المرور - OTP-based flow
 export async function POST(request: NextRequest) {
@@ -43,8 +16,8 @@ export async function POST(request: NextRequest) {
 
     const normalizedEmail = email.toLowerCase().trim();
 
-    // 🔒 Rate limiting لمنع إساءة استخدام OTP
-    if (!checkOtpRateLimit(normalizedEmail)) {
+    // 🔒 Database-backed rate limiting (works across all serverless instances)
+    if (!(await checkRateLimit("forgot-password", "email", normalizedEmail))) {
       return NextResponse.json({ 
         error: 'طلبات كثيرة. حاول بعد 30 دقيقة' 
       }, { status: 429 });
@@ -62,6 +35,8 @@ export async function POST(request: NextRequest) {
 
     // لأسباب أمنية، لا نكشف إذا كان البريد موجود أم لا
     if (!user) {
+      // 🔒 سجل المحاولة حتى لو البريد مش موجود (لمنع enumeration)
+      await recordFailedAttempt("forgot-password", "email", normalizedEmail, request, "Email not found in system");
       return NextResponse.json({
         success: true,
         message: 'إذا كان البريد مسجل، ستصلك رسالة لاستعادة كلمة المرور'
