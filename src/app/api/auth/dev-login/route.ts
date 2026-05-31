@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
+const DEVELOPER_EMAIL = (process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com').toLowerCase();
 const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || 'admin123';
 
 // Rate limiting بالذاكرة
@@ -31,7 +31,6 @@ function recordDevFailedAttempt(ip: string): void {
 
 export async function POST(request: Request) {
   try {
-    // Rate limiting بالـ IP
     const ip = request.headers.get('x-forwarded-for')?.split(',')[0] ||
                request.headers.get('x-real-ip') || 'unknown';
 
@@ -42,7 +41,9 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { email, password } = body;
 
-    // === الأمان: مطلوب البريد وكلمة السر معاً ===
+    // ╔══════════════════════════════════════════════════════════╗
+    // ║  الأمان: البريد وكلمة السر مطلوبين - بدون استثناءات     ║
+    // ╚══════════════════════════════════════════════════════════╝
     if (!email || !password) {
       return NextResponse.json({ error: 'البريد وكلمة المرور مطلوبان' }, { status: 400 });
     }
@@ -52,79 +53,93 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 });
     }
 
-    const devEmail = DEVELOPER_EMAIL.toLowerCase();
-
-    // التحقق من البريد الإلكتروني
-    if (email.toLowerCase() !== devEmail) {
+    // ╔══════════════════════════════════════════════════════════╗
+    // ║  التحقق من البريد - لازم يطابق DEVELOPER_EMAIL بالظبط    ║
+    // ╚══════════════════════════════════════════════════════════╝
+    if (email.toLowerCase().trim() !== DEVELOPER_EMAIL) {
       recordDevFailedAttempt(ip);
       return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 });
     }
 
-    // البحث عن المطور في قاعدة البيانات
+    // ╔══════════════════════════════════════════════════════════╗
+    // ║  التحقق من كلمة السر - لازم تطابق DEVELOPER_PASSWORD    ║
+    // ║  أو كلمة السر المخزنة في الداتابيز                        ║
+    // ╚══════════════════════════════════════════════════════════╝
+    const isEnvPassword = password === DEVELOPER_PASSWORD;
+
     let user: any = null;
     try {
       user = await db.user.findUnique({
-        where: { identifier: devEmail }
+        where: { identifier: DEVELOPER_EMAIL }
       });
     } catch (dbError: any) {
       console.error('DB Error in dev-login:', dbError?.message);
     }
 
     if (user) {
-      // المستخدم موجود - لازم نتحقق من كلمة السر
-      const isEnvPassword = password === DEVELOPER_PASSWORD;
-      const isDbPasswordValid = await bcrypt.compare(password, user.password);
+      let isDbPasswordValid = false;
+      try {
+        isDbPasswordValid = await bcrypt.compare(password, user.password);
+      } catch (bcryptErr) {
+        console.error('Bcrypt error:', bcryptErr);
+      }
 
+      // لو كلمة السر غلط في كلتا الطريقتين = رفض
       if (!isEnvPassword && !isDbPasswordValid) {
         recordDevFailedAttempt(ip);
         return NextResponse.json({ error: 'كلمة المرور غير صحيحة' }, { status: 401 });
       }
 
-      // تحديث كلمة السر في الداتابيز لو كانت مختلفة
+      // ╔══════════════════════════════════════════════════════╗
+      // ║  حساب المطور لا يمكن حظره أبداً                       ║
+      // ║  إلغاء أي حظر + تأكد من الحالة الصحيحة                ║
+      // ╚══════════════════════════════════════════════════════╝
+      const updates: any = {
+        role: 'DEVELOPER',
+        isApproved: true,
+        isBlocked: false,
+        blockedAt: null,
+        blockReason: null,
+        emailVerified: true,
+      };
+
+      // مزامنة كلمة السر في الداتابيز لو اختلفت
       if (isEnvPassword && !isDbPasswordValid) {
-        const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
-        user = await db.user.update({
-          where: { id: user.id },
-          data: {
-            password: hashedPassword,
-            role: 'DEVELOPER',
-            isApproved: true,
-            emailVerified: true
-          }
-        });
+        updates.password = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
       }
 
-      // تحديث الدور لو مش DEVELOPER
-      if (user.role !== 'DEVELOPER') {
-        user = await db.user.update({
-          where: { id: user.id },
-          data: { role: 'DEVELOPER', isApproved: true, emailVerified: true }
-        });
-      }
+      user = await db.user.update({
+        where: { id: user.id },
+        data: updates,
+      });
+
     } else {
-      // إنشاء المطور تلقائياً
+      // ╔══════════════════════════════════════════════════════╗
+      // ║  إنشاء المطور تلقائياً لو مش موجود                      ║
+      // ╚══════════════════════════════════════════════════════╝
       const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
       try {
         user = await db.user.create({
           data: {
-            email: devEmail,
-            identifier: devEmail,
+            email: DEVELOPER_EMAIL,
+            identifier: DEVELOPER_EMAIL,
             name: 'المطور - أحمد',
             phone: '+201234567890',
             password: hashedPassword,
             role: 'DEVELOPER',
             isApproved: true,
+            isBlocked: false,
             emailVerified: true,
           }
         });
       } catch (createError: any) {
-        console.error('Create user error:', createError?.message);
+        // محاولة ثانية لو فيه conflict
         try {
           user = await db.user.findFirst({
             where: {
               OR: [
-                { identifier: devEmail },
-                { email: devEmail }
+                { identifier: DEVELOPER_EMAIL },
+                { email: DEVELOPER_EMAIL }
               ]
             }
           });
@@ -133,10 +148,13 @@ export async function POST(request: Request) {
             user = await db.user.update({
               where: { id: user.id },
               data: {
-                identifier: devEmail,
-                email: devEmail,
+                identifier: DEVELOPER_EMAIL,
+                email: DEVELOPER_EMAIL,
                 role: 'DEVELOPER',
                 isApproved: true,
+                isBlocked: false,
+                blockedAt: null,
+                blockReason: null,
                 emailVerified: true,
                 password: hashedPw,
               }
@@ -144,16 +162,11 @@ export async function POST(request: Request) {
           }
         } catch (retryError: any) {
           console.error('Retry error:', retryError?.message);
-          return NextResponse.json({
-            error: 'خطأ في قاعدة البيانات',
-            details: process.env.NODE_ENV !== 'production' ? retryError?.message : undefined
-          }, { status: 500 });
+          return NextResponse.json({ error: 'خطأ في قاعدة البيانات' }, { status: 500 });
         }
 
         if (!user) {
-          return NextResponse.json({
-            error: 'لم يتم إنشاء حساب المطور',
-          }, { status: 500 });
+          return NextResponse.json({ error: 'لم يتم إنشاء حساب المطور' }, { status: 500 });
         }
       }
     }

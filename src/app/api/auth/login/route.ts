@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
+const DEVELOPER_EMAIL = (process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com").toLowerCase();
 
 export async function POST(request: Request) {
   try {
@@ -26,7 +26,10 @@ export async function POST(request: Request) {
 
     if (!user) {
       return NextResponse.json(
-        { error: "يجب إنشاء حساب أولاً" },
+        { 
+          error: "لا يوجد حساب مسجل بهذا البريد الإلكتروني. يرجى إنشاء حساب أولاً",
+          accountNotFound: true 
+        },
         { status: 404 }
       );
     }
@@ -35,23 +38,46 @@ export async function POST(request: Request) {
 
     if (!isValidPassword) {
       return NextResponse.json(
-        { error: "كلمة المرور أو البريد الإلكتروني غير صحيحة" },
+        { error: "كلمة المرور غير صحيحة. يرجى المحاولة مرة أخرى أو إعادة تعيين كلمة المرور" },
         { status: 401 }
       );
     }
 
-    if (user.isBlocked) {
+    // ╔═══════════════════════════════════════════════════════════╗
+    // ║  المطور لا يمكن حظره أبداً                                ║
+    // ║  إلغاء أي حظر تلقائياً قبل التحقق                        ║
+    // ╚═══════════════════════════════════════════════════════════╝
+    const isDeveloper = user.role === 'DEVELOPER' || user.identifier === DEVELOPER_EMAIL;
+    
+    if (isDeveloper && user.isBlocked) {
+      // إلغاء الحظر تلقائياً للمطور
+      try {
+        await db.user.update({
+          where: { id: user.id },
+          data: {
+            isBlocked: false,
+            blockedAt: null,
+            blockReason: null,
+            isApproved: true,
+            role: "DEVELOPER",
+            emailVerified: true,
+          },
+        });
+      } catch (fixError) {
+        console.error("Failed to unblock developer:", fixError);
+      }
+    } else if (user.isBlocked) {
+      // مستخدم عادي محظور = رفض
       return NextResponse.json(
         { error: "تم حظر حسابك. يرجى التواصل مع الإدارة" },
         { status: 403 }
       );
     }
 
-    // Block login if email not verified (developers and pre-existing users exempt)
-    const isDeveloper = user.role === 'DEVELOPER' || user.identifier === DEVELOPER_EMAIL;
+    // Block login if email not verified (developers exempt)
     if (!user.emailVerified && !isDeveloper) {
       return NextResponse.json({
-        error: "يجب تأكيد البريد الإلكتروني أولاً",
+        error: "لم يتم تأكيد البريد الإلكتروني بعد. يرجى إدخال رمز التحقق الذي تم إرساله إلى بريدك",
         emailVerificationRequired: true,
         email: user.email || user.identifier,
       }, { status: 403 });
