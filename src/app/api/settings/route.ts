@@ -50,6 +50,50 @@ function toNum(value: unknown): number {
 }
 
 // ==========================================
+// 🔧 AUTO-HEAL: Add missing columns to DB
+// This replaces the old sync-schema endpoint
+// ==========================================
+const REQUIRED_COLUMNS: Record<string, { column: string; type: string; default: string }> = {
+  vodafoneCashNumber:   { column: "vodafone_cash_number",   type: "TEXT",     default: "''" },
+  orangeCashNumber:     { column: "orange_cash_number",     type: "TEXT",     default: "''" },
+  etisalatCashNumber:   { column: "etisalat_cash_number",   type: "TEXT",     default: "''" },
+  bankAccountName:      { column: "bank_account_name",      type: "TEXT",     default: "''" },
+  bankAccountNumber:    { column: "bank_account_number",    type: "TEXT",     default: "''" },
+  bankName:             { column: "bank_name",              type: "TEXT",     default: "''" },
+  instapayAccount:      { column: "instapay_account",        type: "TEXT",     default: "''" },
+  usdtTronAddress:      { column: "usdt_tron_address",       type: "TEXT",     default: "''" },
+  visaEnabled:          { column: "visa_enabled",           type: "BOOLEAN",  default: "false" },
+  visaPublicKey:        { column: "visa_public_key",         type: "TEXT",     default: "''" },
+  visaSecretKey:        { column: "visa_secret_key",         type: "TEXT",     default: "''" },
+  minRechargeAmount:    { column: "min_recharge_amount",     type: "INTEGER",  default: "10" },
+  maxRechargeAmount:    { column: "max_recharge_amount",     type: "INTEGER",  default: "50000" },
+  paymentAutoConfirm:   { column: "payment_auto_confirm",    type: "BOOLEAN",  default: "false" },
+  paymentSecurityPin:   { column: "payment_security_pin",    type: "TEXT",     default: "''" },
+};
+
+async function autoHealDatabase(): Promise<number> {
+  let added = 0;
+  for (const [field, info] of Object.entries(REQUIRED_COLUMNS)) {
+    try {
+      const check = await db.$queryRawUnsafe(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'settings' AND column_name = '${info.column}'`
+      ) as Array<{ column_name: string }>;
+
+      if (check.length === 0) {
+        await db.$executeRawUnsafe(
+          `ALTER TABLE settings ADD COLUMN ${info.column} ${info.type} DEFAULT ${info.default}`
+        );
+        added++;
+        console.log(`[Settings Auto-Heal] Added column: ${info.column}`);
+      }
+    } catch (err) {
+      console.error(`[Settings Auto-Heal] Failed to add ${info.column}:`, err);
+    }
+  }
+  return added;
+}
+
+// ==========================================
 // GET - Fetch settings (public, stripped)
 // ==========================================
 export async function GET() {
@@ -88,7 +132,7 @@ export async function GET() {
 }
 
 // ==========================================
-// PUT - Update settings (ROOT FIX: Prisma upsert)
+// PUT - Update settings (AUTO-HEAL built-in)
 // ==========================================
 export async function PUT(request: Request) {
   try {
@@ -130,10 +174,16 @@ export async function PUT(request: Request) {
     };
 
     // ============================================
-    // STRATEGY: Find existing row, then upsert
+    // 🔧 AUTO-HEAL: Add missing columns first
     // ============================================
-    
-    // Step 1: Find existing row
+    const healedColumns = await autoHealDatabase();
+    if (healedColumns > 0) {
+      console.log(`[Settings] Auto-healed ${healedColumns} missing columns`);
+    }
+
+    // ============================================
+    // STEP 1: Find or create the settings row
+    // ============================================
     let targetId: string | null = null;
     try {
       const existing = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
@@ -151,31 +201,20 @@ export async function PUT(request: Request) {
       console.error("[Settings] Find error:", findErr);
     }
 
-    // Step 2: Save using UPDATE or CREATE
+    // ============================================
+    // STEP 2: Save using UPDATE or CREATE
+    // ============================================
     let saved;
     if (targetId) {
       try {
         saved = await db.settings.update({ where: { id: targetId }, data: updateData });
       } catch (updateErr) {
-        console.error("[Settings] Update failed, trying raw SQL fallback:", updateErr);
-        // ============================================
-        // FALLBACK: Raw SQL with correct snake_case
-        // This handles the case where Prisma schema has fields
-        // but the DB columns don't exist yet
-        // ============================================
+        console.error("[Settings] Prisma update failed, trying raw SQL:", updateErr);
+
+        // FALLBACK: Raw SQL with snake_case column names
         try {
-          const c = "NULL";
-          const vcn = updateData.vodafoneCashNumber ? `'${updateData.vodafoneCashNumber.replace(/'/g, "''")}'` : c;
-          const ocn = updateData.orangeCashNumber ? `'${updateData.orangeCashNumber.replace(/'/g, "''")}'` : c;
-          const ecn = updateData.etisalatCashNumber ? `'${updateData.etisalatCashNumber.replace(/'/g, "''")}'` : c;
-          const ban = updateData.bankAccountName ? `'${updateData.bankAccountName.replace(/'/g, "''")}'` : c;
-          const bnu = updateData.bankAccountNumber ? `'${updateData.bankAccountNumber.replace(/'/g, "''")}'` : c;
-          const bna = updateData.bankName ? `'${updateData.bankName.replace(/'/g, "''")}'` : c;
-          const ina = updateData.instapayAccount ? `'${updateData.instapayAccount.replace(/'/g, "''")}'` : c;
-          const uta = updateData.usdtTronAddress ? `'${updateData.usdtTronAddress.replace(/'/g, "''")}'` : c;
-          const vpk = updateData.visaPublicKey ? `'${updateData.visaPublicKey.replace(/'/g, "''")}'` : c;
-          const vsk = updateData.visaSecretKey ? `'${updateData.visaSecretKey.replace(/'/g, "''")}'` : c;
-          const psp = updateData.paymentSecurityPin ? `'${updateData.paymentSecurityPin.replace(/'/g, "''")}'` : c;
+          const esc = (v: string) => v.replace(/'/g, "''");
+          const strOrNull = (v: string) => v ? `'${esc(v)}'` : "NULL";
 
           await db.$executeRawUnsafe(`
             UPDATE settings SET
@@ -190,41 +229,31 @@ export async function PUT(request: Request) {
               highlight_fee = ${updateData.highlightFee},
               priority_listing_fee = ${updateData.priorityListingFee},
               verified_listing_fee = ${updateData.verifiedListingFee},
-              currency = '${updateData.currency.replace(/'/g, "''")}',
+              currency = '${esc(updateData.currency)}',
               min_recharge_amount = ${updateData.minRechargeAmount},
-              max_recharge_amount = ${updateData.maxRechargeAmount}
+              max_recharge_amount = ${updateData.maxRechargeAmount},
+              vodafone_cash_number = ${strOrNull(updateData.vodafoneCashNumber)},
+              orange_cash_number = ${strOrNull(updateData.orangeCashNumber)},
+              etisalat_cash_number = ${strOrNull(updateData.etisalatCashNumber)},
+              bank_account_name = ${strOrNull(updateData.bankAccountName)},
+              bank_account_number = ${strOrNull(updateData.bankAccountNumber)},
+              bank_name = ${strOrNull(updateData.bankName)},
+              instapay_account = ${strOrNull(updateData.instapayAccount)},
+              usdt_tron_address = ${strOrNull(updateData.usdtTronAddress)},
+              visa_enabled = ${updateData.visaEnabled},
+              visa_public_key = ${strOrNull(updateData.visaPublicKey)},
+              visa_secret_key = ${strOrNull(updateData.visaSecretKey)},
+              payment_auto_confirm = ${updateData.paymentAutoConfirm},
+              payment_security_pin = ${strOrNull(updateData.paymentSecurityPin)}
             WHERE id = '${targetId}'
           `);
-
-          // Try to update payment columns separately (they might not exist)
-          const updatePaymentsSql = `
-            UPDATE settings SET
-              vodafone_cash_number = ${vcn},
-              orange_cash_number = ${ocn},
-              etisalat_cash_number = ${ecn},
-              bank_account_name = ${ban},
-              bank_account_number = ${bnu},
-              bank_name = ${bna},
-              instapay_account = ${ina},
-              usdt_tron_address = ${uta},
-              visa_enabled = ${updateData.visaEnabled},
-              visa_public_key = ${vpk},
-              visa_secret_key = ${vsk},
-              payment_auto_confirm = ${updateData.paymentAutoConfirm},
-              payment_security_pin = ${psp}
-            WHERE id = '${targetId}'
-          `;
-          try { await db.$executeRawUnsafe(updatePaymentsSql); } catch (colErr) {
-            console.error("[Settings] Payment columns update failed (columns may not exist):", colErr);
-          }
 
           saved = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
           console.log("[Settings] Saved via raw SQL fallback");
         } catch (sqlErr) {
           console.error("[Settings] Raw SQL also failed:", sqlErr);
-          return NextResponse.json({ 
-            error: "فشل تحديث الإعدادات — جرب زيارة /api/sync-schema أولاً",
-            hint: "run-sync-schema"
+          return NextResponse.json({
+            error: "فشل تحديث الإعدادات",
           }, { status: 500 });
         }
       }
@@ -234,10 +263,52 @@ export async function PUT(request: Request) {
         saved = await db.settings.create({ data: updateData });
       } catch (createErr) {
         console.error("[Settings] Create failed:", createErr);
-        return NextResponse.json({ 
-          error: "فشل إنشاء الإعدادات — جرب زيارة /api/sync-schema أولاً",
-          hint: "run-sync-schema"
-        }, { status: 500 });
+
+        // FALLBACK: Raw SQL INSERT
+        try {
+          const esc = (v: string) => v.replace(/'/g, "''");
+          const strOrNull = (v: string) => v ? `'${esc(v)}'` : "NULL";
+
+          await db.$executeRawUnsafe(`
+            INSERT INTO settings (
+              id, contact_fee, regular_fee, featured_fee, premium_fee, vip_fee,
+              sale_display_fee, rent_display_fee, other_services_fee,
+              highlight_fee, priority_listing_fee, verified_listing_fee,
+              currency, min_recharge_amount, max_recharge_amount,
+              vodafone_cash_number, orange_cash_number, etisalat_cash_number,
+              bank_account_name, bank_account_number, bank_name, instapay_account,
+              usdt_tron_address, visa_enabled, visa_public_key, visa_secret_key,
+              payment_auto_confirm, payment_security_pin
+            ) VALUES (
+              gen_random_uuid(),
+              ${updateData.contactFee}, ${updateData.regularFee}, ${updateData.featuredFee},
+              ${updateData.premiumFee}, ${updateData.vipFee}, ${updateData.saleDisplayFee},
+              ${updateData.rentDisplayFee}, ${updateData.otherServicesFee},
+              ${updateData.highlightFee}, ${updateData.priorityListingFee},
+              ${updateData.verifiedListingFee}, '${esc(updateData.currency)}',
+              ${updateData.minRechargeAmount}, ${updateData.maxRechargeAmount},
+              ${strOrNull(updateData.vodafoneCashNumber)},
+              ${strOrNull(updateData.orangeCashNumber)},
+              ${strOrNull(updateData.etisalatCashNumber)},
+              ${strOrNull(updateData.bankAccountName)},
+              ${strOrNull(updateData.bankAccountNumber)},
+              ${strOrNull(updateData.bankName)},
+              ${strOrNull(updateData.instapayAccount)},
+              ${strOrNull(updateData.usdtTronAddress)},
+              ${updateData.visaEnabled}, ${strOrNull(updateData.visaPublicKey)},
+              ${strOrNull(updateData.visaSecretKey)}, ${updateData.paymentAutoConfirm},
+              ${strOrNull(updateData.paymentSecurityPin)}
+            )
+          `);
+
+          saved = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
+          console.log("[Settings] Created via raw SQL fallback");
+        } catch (sqlErr2) {
+          console.error("[Settings] Raw SQL INSERT also failed:", sqlErr2);
+          return NextResponse.json({
+            error: "فشل إنشاء الإعدادات",
+          }, { status: 500 });
+        }
       }
     }
 
