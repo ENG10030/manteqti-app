@@ -754,39 +754,41 @@ export default function App() {
     });
   };
 
-  // Fetch settings
-  const fetchSettings = async () => {
+  // Fetch settings — merges server data with local state (preserves unsaved edits)
+  const fetchSettings = async (force = false) => {
     try {
       const res = await fetch('/api/settings');
       const data = await res.json();
       if (res.ok) {
         const s = data.settings || data;
-        setSettings({ 
-          contactFee: s.contactFee ?? 50, 
-          regularFee: s.regularFee ?? 30,
-          featuredFee: s.featuredFee ?? 100, 
-          premiumFee: s.premiumFee ?? 200, 
-          vipFee: s.vipFee ?? 300,
-          saleDisplayFee: s.saleDisplayFee ?? 100,
-          rentDisplayFee: s.rentDisplayFee ?? 75,
-          otherServicesFee: s.otherServicesFee ?? 50,
-          highlightFee: s.highlightFee ?? 150,
-          priorityListingFee: s.priorityListingFee ?? 200,
-          verifiedListingFee: s.verifiedListingFee ?? 250,
-          currency: s.currency ?? 'ج.م',
-          vodafoneCashNumber: s.vodafoneCashNumber ?? '',
-          orangeCashNumber: s.orangeCashNumber ?? '',
-          etisalatCashNumber: s.etisalatCashNumber ?? '',
-          bankAccountName: s.bankAccountName ?? '',
-          bankAccountNumber: s.bankAccountNumber ?? '',
-          bankName: s.bankName ?? '',
-          instapayAccount: s.instapayAccount ?? '',
-          visaEnabled: s.visaEnabled ?? false,
-          visaPublicKey: s.visaPublicKey ?? '',
-          visaSecretKey: s.visaSecretKey ?? '',
-          minRechargeAmount: s.minRechargeAmount ?? 10,
-          maxRechargeAmount: s.maxRechargeAmount ?? 50000,
-        });
+        setSettings(prev => ({
+          ...prev,
+          // Only overwrite from server if the field exists in the response
+          contactFee: typeof s.contactFee === 'number' ? s.contactFee : prev.contactFee,
+          regularFee: typeof s.regularFee === 'number' ? s.regularFee : prev.regularFee,
+          featuredFee: typeof s.featuredFee === 'number' ? s.featuredFee : prev.featuredFee,
+          premiumFee: typeof s.premiumFee === 'number' ? s.premiumFee : prev.premiumFee,
+          vipFee: typeof s.vipFee === 'number' ? s.vipFee : prev.vipFee,
+          saleDisplayFee: typeof s.saleDisplayFee === 'number' ? s.saleDisplayFee : prev.saleDisplayFee,
+          rentDisplayFee: typeof s.rentDisplayFee === 'number' ? s.rentDisplayFee : prev.rentDisplayFee,
+          otherServicesFee: typeof s.otherServicesFee === 'number' ? s.otherServicesFee : prev.otherServicesFee,
+          highlightFee: typeof s.highlightFee === 'number' ? s.highlightFee : prev.highlightFee,
+          priorityListingFee: typeof s.priorityListingFee === 'number' ? s.priorityListingFee : prev.priorityListingFee,
+          verifiedListingFee: typeof s.verifiedListingFee === 'number' ? s.verifiedListingFee : prev.verifiedListingFee,
+          currency: typeof s.currency === 'string' ? s.currency : prev.currency,
+          vodafoneCashNumber: typeof s.vodafoneCashNumber === 'string' ? s.vodafoneCashNumber : prev.vodafoneCashNumber,
+          orangeCashNumber: typeof s.orangeCashNumber === 'string' ? s.orangeCashNumber : prev.orangeCashNumber,
+          etisalatCashNumber: typeof s.etisalatCashNumber === 'string' ? s.etisalatCashNumber : prev.etisalatCashNumber,
+          bankAccountName: typeof s.bankAccountName === 'string' ? s.bankAccountName : prev.bankAccountName,
+          bankAccountNumber: typeof s.bankAccountNumber === 'string' ? s.bankAccountNumber : prev.bankAccountNumber,
+          bankName: typeof s.bankName === 'string' ? s.bankName : prev.bankName,
+          instapayAccount: typeof s.instapayAccount === 'string' ? s.instapayAccount : prev.instapayAccount,
+          visaEnabled: typeof s.visaEnabled === 'boolean' ? s.visaEnabled : prev.visaEnabled,
+          visaPublicKey: typeof s.visaPublicKey === 'string' ? s.visaPublicKey : prev.visaPublicKey,
+          visaSecretKey: typeof s.visaSecretKey === 'string' ? s.visaSecretKey : prev.visaSecretKey,
+          minRechargeAmount: typeof s.minRechargeAmount === 'number' ? s.minRechargeAmount : prev.minRechargeAmount,
+          maxRechargeAmount: typeof s.maxRechargeAmount === 'number' ? s.maxRechargeAmount : prev.maxRechargeAmount,
+        }));
         // Also fetch payment methods
         try { const pmRes = await fetch('/api/payment-methods'); const pmData = await pmRes.json(); if (pmRes.ok && Array.isArray(pmData.methods)) setPaymentMethods(pmData.methods); } catch {}
       }
@@ -822,7 +824,7 @@ export default function App() {
     return () => clearInterval(interval);
   }, [currentUser, isRealtimeConnected]);
 
-  // Update settings
+  // Update settings — sends to server and merges response with local state
   const updateSettings = async (newSettings: Partial<typeof settings>) => {
     setSettingsLoading(true);
     try {
@@ -833,34 +835,35 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok) {
-        // Use response data directly to avoid stale state
+        // Use response data — only overwrite fields that came back from server
         const savedSettings = data.settings || data;
-        setSettings({
-          contactFee: savedSettings.contactFee ?? settings.contactFee,
-          regularFee: savedSettings.regularFee ?? settings.regularFee,
-          featuredFee: savedSettings.featuredFee ?? settings.featuredFee,
-          premiumFee: savedSettings.premiumFee ?? settings.premiumFee,
-          vipFee: savedSettings.vipFee ?? settings.vipFee,
-          saleDisplayFee: savedSettings.saleDisplayFee ?? settings.saleDisplayFee,
-          rentDisplayFee: savedSettings.rentDisplayFee ?? settings.rentDisplayFee,
-          otherServicesFee: savedSettings.otherServicesFee ?? settings.otherServicesFee,
-          highlightFee: savedSettings.highlightFee ?? settings.highlightFee,
-          priorityListingFee: savedSettings.priorityListingFee ?? settings.priorityListingFee,
-          verifiedListingFee: savedSettings.verifiedListingFee ?? settings.verifiedListingFee,
-          currency: savedSettings.currency ?? settings.currency,
-          vodafoneCashNumber: savedSettings.vodafoneCashNumber ?? '',
-          orangeCashNumber: savedSettings.orangeCashNumber ?? '',
-          etisalatCashNumber: savedSettings.etisalatCashNumber ?? '',
-          bankAccountName: savedSettings.bankAccountName ?? '',
-          bankAccountNumber: savedSettings.bankAccountNumber ?? '',
-          bankName: savedSettings.bankName ?? '',
-          instapayAccount: savedSettings.instapayAccount ?? '',
-          visaEnabled: savedSettings.visaEnabled ?? false,
-          visaPublicKey: savedSettings.visaPublicKey ?? '',
-          visaSecretKey: savedSettings.visaSecretKey ?? '',
-          minRechargeAmount: savedSettings.minRechargeAmount ?? 10,
-          maxRechargeAmount: savedSettings.maxRechargeAmount ?? 50000,
-        });
+        setSettings(prev => ({
+          ...prev,
+          contactFee: typeof savedSettings.contactFee === 'number' ? savedSettings.contactFee : prev.contactFee,
+          regularFee: typeof savedSettings.regularFee === 'number' ? savedSettings.regularFee : prev.regularFee,
+          featuredFee: typeof savedSettings.featuredFee === 'number' ? savedSettings.featuredFee : prev.featuredFee,
+          premiumFee: typeof savedSettings.premiumFee === 'number' ? savedSettings.premiumFee : prev.premiumFee,
+          vipFee: typeof savedSettings.vipFee === 'number' ? savedSettings.vipFee : prev.vipFee,
+          saleDisplayFee: typeof savedSettings.saleDisplayFee === 'number' ? savedSettings.saleDisplayFee : prev.saleDisplayFee,
+          rentDisplayFee: typeof savedSettings.rentDisplayFee === 'number' ? savedSettings.rentDisplayFee : prev.rentDisplayFee,
+          otherServicesFee: typeof savedSettings.otherServicesFee === 'number' ? savedSettings.otherServicesFee : prev.otherServicesFee,
+          highlightFee: typeof savedSettings.highlightFee === 'number' ? savedSettings.highlightFee : prev.highlightFee,
+          priorityListingFee: typeof savedSettings.priorityListingFee === 'number' ? savedSettings.priorityListingFee : prev.priorityListingFee,
+          verifiedListingFee: typeof savedSettings.verifiedListingFee === 'number' ? savedSettings.verifiedListingFee : prev.verifiedListingFee,
+          currency: typeof savedSettings.currency === 'string' ? savedSettings.currency : prev.currency,
+          vodafoneCashNumber: typeof savedSettings.vodafoneCashNumber === 'string' ? savedSettings.vodafoneCashNumber : prev.vodafoneCashNumber,
+          orangeCashNumber: typeof savedSettings.orangeCashNumber === 'string' ? savedSettings.orangeCashNumber : prev.orangeCashNumber,
+          etisalatCashNumber: typeof savedSettings.etisalatCashNumber === 'string' ? savedSettings.etisalatCashNumber : prev.etisalatCashNumber,
+          bankAccountName: typeof savedSettings.bankAccountName === 'string' ? savedSettings.bankAccountName : prev.bankAccountName,
+          bankAccountNumber: typeof savedSettings.bankAccountNumber === 'string' ? savedSettings.bankAccountNumber : prev.bankAccountNumber,
+          bankName: typeof savedSettings.bankName === 'string' ? savedSettings.bankName : prev.bankName,
+          instapayAccount: typeof savedSettings.instapayAccount === 'string' ? savedSettings.instapayAccount : prev.instapayAccount,
+          visaEnabled: typeof savedSettings.visaEnabled === 'boolean' ? savedSettings.visaEnabled : prev.visaEnabled,
+          visaPublicKey: typeof savedSettings.visaPublicKey === 'string' ? savedSettings.visaPublicKey : prev.visaPublicKey,
+          visaSecretKey: typeof savedSettings.visaSecretKey === 'string' ? savedSettings.visaSecretKey : prev.visaSecretKey,
+          minRechargeAmount: typeof savedSettings.minRechargeAmount === 'number' ? savedSettings.minRechargeAmount : prev.minRechargeAmount,
+          maxRechargeAmount: typeof savedSettings.maxRechargeAmount === 'number' ? savedSettings.maxRechargeAmount : prev.maxRechargeAmount,
+        }));
         addToast('تم تحديث الإعدادات بنجاح ✅', 'success');
       } else {
         addToast(data.error || 'فشل تحديث الإعدادات', 'error');

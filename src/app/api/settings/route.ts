@@ -77,7 +77,8 @@ function validateSecurityPin(value: unknown): string {
   return value.replace(/\D/g, "").trim().slice(0, 6);
 }
 
-const DEFAULT_SETTINGS = {
+// Base settings - guaranteed to exist in any schema version
+const BASE_SETTINGS = {
   contactFee: 50,
   regularFee: 30,
   featuredFee: 100,
@@ -90,6 +91,10 @@ const DEFAULT_SETTINGS = {
   priorityListingFee: 200,
   verifiedListingFee: 250,
   currency: "ج.م",
+};
+
+// Extended settings - may not exist in older schema versions
+const EXTENDED_SETTINGS = {
   vodafoneCashNumber: "",
   orangeCashNumber: "",
   etisalatCashNumber: "",
@@ -104,13 +109,20 @@ const DEFAULT_SETTINGS = {
   maxRechargeAmount: 50000,
 };
 
+const DEFAULT_SETTINGS = { ...BASE_SETTINGS, ...EXTENDED_SETTINGS };
+
 // GET - جلب الإعدادات (public - accounts masked for non-developers)
 export async function GET() {
   try {
     let settings = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
 
     if (!settings) {
-      settings = await db.settings.create({ data: DEFAULT_SETTINGS });
+      // Try full settings first, fallback to base-only if schema is old
+      try {
+        settings = await db.settings.create({ data: DEFAULT_SETTINGS });
+      } catch {
+        settings = await db.settings.create({ data: BASE_SETTINGS });
+      }
     }
 
     const paymentMethods = buildPublicPaymentMethods(settings);
@@ -218,18 +230,53 @@ export async function PUT(request: Request) {
       minRechargeAmount: Math.max(1, validateFee(body.minRechargeAmount) || 10),
       maxRechargeAmount: Math.min(1000000, validateFee(body.maxRechargeAmount) || 50000),
     };
-    // Dynamically add optional fields if supported by schema
-    try { (validatedData as Record<string, unknown>).usdtTronAddress = validateTronAddress(body.usdtTronAddress); } catch {}
-    try { (validatedData as Record<string, unknown>).paymentAutoConfirm = body.paymentAutoConfirm === true; } catch {}
-    try { (validatedData as Record<string, unknown>).paymentSecurityPin = validateSecurityPin(body.paymentSecurityPin); } catch {}
 
     if (validatedData.minRechargeAmount > validatedData.maxRechargeAmount) {
       return NextResponse.json({ error: "الحد الأدنى يجب أن يكون أقل من الحد الأقصى" }, { status: 400 });
     }
 
-    // Delete ALL existing settings, then create ONE fresh row
-    await db.settings.deleteMany({});
-    const settings = await db.settings.create({ data: validatedData });
+    // Use upsert: update existing row or create new one
+    // This prevents stale rows from accumulating and causing wrong reads
+    const existing = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
+    let settings;
+
+    if (existing) {
+      // Update the existing row — only send fields that exist in the schema
+      try {
+        settings = await db.settings.update({
+          where: { id: existing.id },
+          data: validatedData,
+        });
+      } catch {
+        // Fallback: if extended fields fail, update base fields only
+        const baseData: Record<string, unknown> = {
+          contactFee: validatedData.contactFee,
+          regularFee: validatedData.regularFee,
+          featuredFee: validatedData.featuredFee,
+          premiumFee: validatedData.premiumFee,
+          vipFee: validatedData.vipFee,
+          saleDisplayFee: validatedData.saleDisplayFee,
+          rentDisplayFee: validatedData.rentDisplayFee,
+          otherServicesFee: validatedData.otherServicesFee,
+          highlightFee: validatedData.highlightFee,
+          priorityListingFee: validatedData.priorityListingFee,
+          verifiedListingFee: validatedData.verifiedListingFee,
+          currency: validatedData.currency,
+        };
+        settings = await db.settings.update({
+          where: { id: existing.id },
+          data: baseData,
+        });
+      }
+      // Clean up any duplicate settings rows (from old deleteMany pattern)
+      try { await db.settings.deleteMany({ where: { id: { not: existing.id } } }); } catch {}
+    } else {
+      try {
+        settings = await db.settings.create({ data: validatedData });
+      } catch {
+        settings = await db.settings.create({ data: BASE_SETTINGS });
+      }
+    }
 
     // Log
     const currentUserId = await getCurrentUserId(request);
