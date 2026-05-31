@@ -85,9 +85,9 @@ export async function GET(request: Request) {
       ],
     });
 
-    // 🔒 Strip PII (ownerPhone, ownerEmail) for non-developers
+    // 🔒 Strip PII (ownerPhone) for non-developers
     const sanitizedApartments = isDeveloper ? apartments : apartments.map((apt: any) => {
-      const { ownerPhone, ownerEmail, ...rest } = apt;
+      const { ownerPhone, ...rest } = apt;
       return rest;
     });
 

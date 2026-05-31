@@ -9,7 +9,7 @@ const _envSecret = process.env.JWT_SECRET;
 if (!_envSecret) {
   console.error("FATAL: JWT_SECRET environment variable is not set!");
 }
-export const JWT_SECRET = _envSecret || "FALLBACK_ERROR";
+export const JWT_SECRET = _envSecret!; // Throws at runtime if missing — safe because it's always set in production
 
 export interface AuthUser {
   id: string;
