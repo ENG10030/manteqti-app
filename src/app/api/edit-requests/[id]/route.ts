@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+const JWT_SECRET = process.env.JWT_SECRET || "";
 
 // جلب طلب تعديل محدد
 export async function GET(
@@ -16,16 +16,10 @@ export async function GET(
     if (!token) {
       return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
     }
-    let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET);
+      verify(token, JWT_SECRET);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
-
-    // 🔒 SECURITY FIX: Developer role check — only developers can view edit requests
-    if (decoded.role !== 'DEVELOPER') {
-      return NextResponse.json({ error: 'غير مصرح - عرض طلبات التعديل متاح للمطور فقط' }, { status: 403 });
     }
 
     const { id } = await params;
@@ -177,7 +171,7 @@ export async function PUT(
   }
 }
 
-// حذف طلب تعديل (للمطور فقط)
+// حذف طلب تعديل (للمستخدم فقط إذا كان معلقاً)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

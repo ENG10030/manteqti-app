@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { sign } from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+const JWT_SECRET = process.env.JWT_SECRET || "";
 
 // OTP attempt rate limiting (in-memory)
 const otpAttempts = new Map<string, { count: number; lockedUntil: number }>();
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
       { expiresIn: '7d' }
     );
 
-    const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
+    const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || '';
     const isDeveloper = updatedUser.role === 'DEVELOPER' || updatedUser.identifier === DEVELOPER_EMAIL;
 
     const response = NextResponse.json({

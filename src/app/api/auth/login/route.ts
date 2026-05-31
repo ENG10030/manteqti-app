@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+const JWT_SECRET = process.env.JWT_SECRET || "";
 const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
 
 export async function POST(request: Request) {

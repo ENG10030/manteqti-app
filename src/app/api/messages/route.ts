@@ -6,7 +6,7 @@ import { requireApprovedUser } from '@/lib/auth-middleware';
 import { sendNewMessageEmail } from '@/lib/email';
 import { notifyRealtime } from '@/lib/realtime';
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+const JWT_SECRET = process.env.JWT_SECRET || "";
 
 // Helper: get authenticated user from token
 async function getAuthUser(request: NextRequest) {

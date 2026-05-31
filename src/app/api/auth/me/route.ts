@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+const JWT_SECRET = process.env.JWT_SECRET || "";
 
 export async function GET(request: Request) {
   try {

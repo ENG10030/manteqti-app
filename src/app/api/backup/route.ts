@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { cookies } from "next/headers";
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+const JWT_SECRET = process.env.JWT_SECRET || "";
 
 async function verifyDeveloper(request: Request): Promise<boolean> {
   try {
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     }
 
     const [users, apartments, inquiries, payments, messages, likes, comments, blockedUsers, settings, editRequests, approvalLogs, operationLogs] = await Promise.all([
-      db.user.findMany({ orderBy: { createdAt: "asc" } }),
+      db.user.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, identifier: true, name: true, email: true, phone: true, role: true, isBlocked: true, blockedAt: true, blockReason: true, isApproved: true, emailVerified: true, otp: true, otpExpires: true, passwordResetToken: true, passwordResetExpires: true, createdAt: true, updatedAt: true } }),
       db.apartment.findMany({ orderBy: { createdAt: "asc" } }),
       db.inquiry.findMany({ orderBy: { createdAt: "asc" } }),
       db.payment.findMany({ orderBy: { createdAt: "asc" } }),
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     ]);
 
     const backup = {
-      version: "v66",
+      version: "v71",
       exportedAt: new Date().toISOString(),
       counts: {
         users: users.length,
@@ -106,13 +106,15 @@ export async function POST(request: NextRequest) {
         const existing = await db.user.findUnique({ where: { identifier: user.identifier } });
         if (existing) {
           // Update existing user but keep password if new one looks hashed
+        // 🔒 حماية: لا تسمح بتغيير role من خلال الـ backup
+        // Keep the existing role unless it's a new user
           await db.user.update({
             where: { id: existing.id },
             data: {
               name: user.name,
               email: user.email,
               phone: user.phone,
-              role: user.role,
+              // role: لا يتم تغييره عبر الـ backup
               isBlocked: user.isBlocked,
               isApproved: user.isApproved,
               emailVerified: user.emailVerified,

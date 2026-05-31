@@ -1,23 +1,23 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
-import bcrypt from 'bcryptjs';
 import { verify } from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import { Prisma } from '@prisma/client';
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
+const JWT_SECRET = process.env.JWT_SECRET;
 
-// 🔒 SECURITY FIX: Developer-only access to database initialization
-async function requireDeveloper(): Promise<boolean> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get('auth-token')?.value;
-  if (!token) return false;
-
+// التحقق من أن الطلب من مطور
+async function verifyDeveloper(): Promise<boolean> {
+  if (!JWT_SECRET) return false;
+  
   try {
-    const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
-    if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
-    return false;
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) return false;
+    
+    const decoded = verify(token, JWT_SECRET) as { role?: string };
+    return decoded.role === 'DEVELOPER';
   } catch {
     return false;
   }
@@ -25,35 +25,34 @@ async function requireDeveloper(): Promise<boolean> {
 
 export async function GET() {
   try {
-    // 🔒 SECURITY FIX: Require developer authentication before any DB operations
-    if (!(await requireDeveloper())) {
-      return NextResponse.json({ error: 'غير مصرح - تهيئة قاعدة البيانات متاحة للمطور فقط' }, { status: 403 });
+    // 🔒 الأمان: فقط المطور يمكنه تهيئة قاعدة البيانات
+    if (!(await verifyDeveloper())) {
+      return NextResponse.json({
+        error: 'غير مصرح - هذه العملية مخصصة للمطور فقط',
+      }, { status: 403 });
     }
 
-    // الخطوة 1: التحقق من اتصال قاعدة البيانات
+    // التحقق من اتصال قاعدة البيانات
     try {
       await db.$connect();
-    } catch (connError: any) {
+    } catch (connError: unknown) {
       return NextResponse.json({
         error: 'فشل الاتصال بقاعدة البيانات',
-        details: connError?.message || String(connError),
         hint: 'تأكد من تعيين DATABASE_URL في متغيرات بيئة Vercel',
         requiredFormat: 'postgresql://user:password@host:5432/database?sslmode=require'
       }, { status: 500 });
     }
 
+    const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
     const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD;
 
-    // خطأ: DEVELOPER_PASSWORD مطلوب — مش مسموح بالباسورد الافتراضية
-    if (!DEVELOPER_PASSWORD) {
+    if (!DEVELOPER_EMAIL || !DEVELOPER_PASSWORD) {
       return NextResponse.json({
-        error: 'لا يمكن تهيئة قاعدة البيانات: DEVELOPER_PASSWORD غير موجود',
-        hint: 'أضف DEVELOPER_PASSWORD في متغيرات بيئة Vercel (باسورد قوية)',
-        note: 'الباسورد الافتراضية تم إزالتها لأسباب أمنية'
+        error: 'متغيرات بيئة المطور غير مضبوطة (DEVELOPER_EMAIL, DEVELOPER_PASSWORD)',
       }, { status: 500 });
     }
 
-    // الخطوة 2: محاولة إنشاء المطور
+    // محاولة إنشاء المطور
     try {
       const existingAdmin = await db.user.findUnique({
         where: { identifier: DEVELOPER_EMAIL }
@@ -64,10 +63,11 @@ export async function GET() {
           success: true,
           message: 'قاعدة البيانات تمت تهيئتها مسبقاً ✅',
           admin: { email: existingAdmin.email, name: existingAdmin.name, role: existingAdmin.role }
+          // 🔒 لا نرجع كلمة السر أبداً
         });
       }
 
-      const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
+      const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 12);
       const admin = await db.user.create({
         data: {
           email: DEVELOPER_EMAIL,
@@ -81,7 +81,7 @@ export async function GET() {
         }
       });
 
-      // الخطوة 3: إنشاء الإعدادات
+      // إنشاء الإعدادات
       try {
         const existingSettings = await db.settings.findFirst();
         if (!existingSettings) {
@@ -102,18 +102,18 @@ export async function GET() {
             }
           });
         }
-      } catch (settingsError: any) {
-        console.error('Settings creation warning:', settingsError?.message);
+      } catch (settingsError: unknown) {
+        console.error('Settings creation warning:', settingsError instanceof Error ? settingsError.message : String(settingsError));
       }
 
       return NextResponse.json({
         success: true,
         message: 'تم تهيئة قاعدة البيانات بنجاح! ✅',
-        admin: { email: admin.email, name: admin.name, role: admin.role },
-        // NO password in response — security fix
+        admin: { email: admin.email, name: admin.name, role: admin.role }
+        // 🔒 لا نرجع كلمة السر أبداً
       });
 
-    } catch (dbError: any) {
+    } catch (dbError: unknown) {
       if (dbError instanceof Prisma.PrismaClientKnownRequestError) {
         if (dbError.code === 'P2021' || dbError.code === 'P2010' || 
             dbError.code === 'P1001' || dbError.code === 'P1008') {
@@ -127,16 +127,15 @@ export async function GET() {
 
       return NextResponse.json({
         error: 'خطأ في قاعدة البيانات',
-        details: dbError?.message || String(dbError),
-        prismaCode: dbError?.code || null,
+        details: dbError instanceof Error ? dbError.message : String(dbError),
+        prismaCode: dbError instanceof Prisma.PrismaClientKnownRequestError ? dbError.code : null,
         hint: 'تأكد أن الجداول موجودة وأن DATABASE_URL صحيح'
       }, { status: 500 });
     }
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     return NextResponse.json({
       error: 'خطأ غير متوقع',
-      details: error?.message || String(error)
     }, { status: 500 });
   } finally {
     await db.$disconnect();

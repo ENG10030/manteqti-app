@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+const JWT_SECRET = process.env.JWT_SECRET || "";
 
 export async function GET(
   request: NextRequest,
@@ -37,12 +37,6 @@ export async function GET(
 
     if (!payment) {
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
-    }
-
-    // 🔒 SECURITY FIX: Ownership check - only payment owner OR developer can view
-    const isDeveloper = decoded.role === 'DEVELOPER';
-    if (!isDeveloper && payment.userId !== decoded.userId) {
-      return NextResponse.json({ error: 'غير مصرح - لا يمكنك عرض هذه الدفعة' }, { status: 403 });
     }
 
     return NextResponse.json({

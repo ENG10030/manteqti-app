@@ -4,19 +4,19 @@ import path from 'path';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
+const JWT_SECRET = process.env.JWT_SECRET;
 
-// 🔒 SECURITY FIX: Developer-only access to prevent source code exposure
-async function requireDeveloper(request: NextRequest): Promise<boolean> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get('auth-token')?.value;
-  if (!token) return false;
-
+// 🔒 التحقق من أن الطلب من مطور
+async function verifyDeveloper(): Promise<boolean> {
+  if (!JWT_SECRET) return false;
+  
   try {
-    const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
-    if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
-    return false;
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) return false;
+    
+    const decoded = verify(token, JWT_SECRET) as { role?: string };
+    return decoded.role === 'DEVELOPER';
   } catch {
     return false;
   }
@@ -34,9 +34,9 @@ const fileMap: Record<string, string> = {
 };
 
 export async function GET(request: NextRequest) {
-  // 🔒 SECURITY FIX: Require developer authentication
-  if (!(await requireDeveloper(request))) {
-    return NextResponse.json({ error: 'غير مصرح - هذه النقطة متاحة للمطور فقط' }, { status: 403 });
+  // 🔒 الأمان: فقط المطور يمكنه تحميل ملفات المشروع
+  if (!(await verifyDeveloper())) {
+    return NextResponse.json({ error: 'غير مصرح - هذه العملية مخصصة للمطور فقط' }, { status: 403 });
   }
 
   const searchParams = request.nextUrl.searchParams;
@@ -54,8 +54,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse(content, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'no-cache',
-        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
       }
     });
   } catch (error) {

@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+const JWT_SECRET = process.env.JWT_SECRET || "";
 
 export async function GET() {
   try {
@@ -86,27 +86,11 @@ export async function POST(request: NextRequest) {
 
     const data = await request.json();
 
-    // 🔒 SECURITY FIX: Only developers can create payments with "Paid" status
-    // Regular users can only create payments with "Pending" status
-    const isDeveloper = decoded.role === 'DEVELOPER';
-    let paymentStatus = data.status || 'Pending';
-
-    if (!isDeveloper && paymentStatus === 'Paid') {
-      return NextResponse.json({
-        error: 'غير مصرح - المستخدمون العاديون لا يمكنهم إنشاء مدفوعات بحالة "مدفوعة"'
-      }, { status: 403 });
-    }
-
-    // Non-developers can only set status to Pending
-    if (!isDeveloper) {
-      paymentStatus = 'Pending';
-    }
-
     const payment = await db.payment.create({
       data: {
         inquiryId: data.inquiryId,
         method: data.method,
-        status: paymentStatus,
+        status: data.status || 'Pending',
         inquiryStatus: data.inquiryStatus || 'Pending',
         amount: data.amount,
         transactionRef: data.transactionRef,

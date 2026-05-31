@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+const JWT_SECRET = process.env.JWT_SECRET || "";
 const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
 
 async function isDeveloper(request: Request) {
@@ -111,9 +111,9 @@ export async function POST(request: Request) {
       // Prevent blocking a developer
       const targetUser = await db.user.findUnique({
         where: { id: userId },
-        select: { role: true, identifier: true },
+        select: { role: true },
       });
-      if (targetUser?.role === "DEVELOPER" || targetUser?.identifier === DEVELOPER_EMAIL) {
+      if (targetUser?.role === "DEVELOPER") {
         return NextResponse.json({ error: "لا يمكن حظر مطور" }, { status: 403 });
       }
 
@@ -185,6 +185,15 @@ export async function DELETE(request: Request) {
         { error: "معرف المستخدم مطلوب" },
         { status: 400 }
       );
+    }
+
+    // 🔒 حماية: التحقق من أن المستخدم المستهدف ليس مطوراً
+    const targetUser = await db.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+    if (targetUser?.role === "DEVELOPER") {
+      return NextResponse.json({ error: "لا يمكن تعديل حساب مطور" }, { status: 400 });
     }
 
     const user = await db.user.update({

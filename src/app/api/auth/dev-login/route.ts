@@ -2,53 +2,82 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
+import { User } from "@prisma/client";
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
-const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || "admin123";
+const JWT_SECRET = process.env.JWT_SECRET;
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
+const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD;
+
+// Rate limiting in-memory map
+const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
+const MAX_ATTEMPTS = 5;
+const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const record = loginAttempts.get(ip);
+  
+  if (!record) {
+    loginAttempts.set(ip, { count: 1, lastAttempt: now });
+    return true;
+  }
+  
+  if (now - record.lastAttempt > WINDOW_MS) {
+    loginAttempts.set(ip, { count: 1, lastAttempt: now });
+    return true;
+  }
+  
+  if (record.count >= MAX_ATTEMPTS) {
+    return false;
+  }
+  
+  record.count++;
+  return true;
+}
 
 export async function POST(request: Request) {
   try {
+    // التحقق من أن المتغيرات البيئية موجودة
+    if (!JWT_SECRET || !DEVELOPER_EMAIL || !DEVELOPER_PASSWORD) {
+      console.error("Missing required environment variables for dev login");
+      return NextResponse.json({ error: "خطأ في إعدادات الخادم" }, { status: 500 });
+    }
+
+    // Rate limiting
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
+               request.headers.get("x-real-ip") || "unknown";
+    
+    if (!checkRateLimit(ip)) {
+      return NextResponse.json({ error: "محاولات كثيرة. حاول بعد 15 دقيقة" }, { status: 429 });
+    }
+
     const body = await request.json();
     const { password } = body;
 
-    // التحقق من كلمة مرور المطور (من Environment Variables)
+    // كلمة المرور مطلوبة
     if (!password) {
       return NextResponse.json({ error: "كلمة المرور مطلوبة" }, { status: 400 });
     }
 
-    // الطريقة 1: مقارنة مباشرة مع DEVELOPER_PASSWORD من env
-    const isEnvPassword = password === DEVELOPER_PASSWORD;
+    // التحقق من كلمة مرور المطور فقط من Environment Variables
+    if (password !== DEVELOPER_PASSWORD) {
+      return NextResponse.json({ error: "كلمة مرور المطور غير صحيحة" }, { status: 401 });
+    }
 
     // البحث عن حساب المطور في قاعدة البيانات
-    let user = null;
+    let user: User | null = null;
     try {
       user = await db.user.findUnique({
         where: { identifier: DEVELOPER_EMAIL },
       });
-    } catch (dbError: any) {
-      console.error("DB find error:", dbError?.message);
-    }
-
-    // الطريقة 2: مقارنة مع كلمة السر المخزنة في الداتابيز
-    let isDbPassword = false;
-    if (user && user.password) {
-      try {
-        isDbPassword = await bcrypt.compare(password, user.password);
-      } catch (bcryptError: any) {
-        console.error("Bcrypt error:", bcryptError?.message);
-      }
-    }
-
-    // لا يتم القبول إلا إذا كلمة السر صحيحة من Env أو من الداتابيز
-    if (!isEnvPassword && !isDbPassword) {
-      return NextResponse.json({ error: "كلمة مرور المطور غير صحيحة" }, { status: 401 });
+    } catch (dbError: unknown) {
+      console.error("DB find error:", dbError instanceof Error ? dbError.message : String(dbError));
     }
 
     // لو المستخدم مش موجود، انشئه
     if (!user) {
       try {
-        const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
+        const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 12);
         user = await db.user.create({
           data: {
             name: "المطور",
@@ -60,25 +89,29 @@ export async function POST(request: Request) {
             emailVerified: true,
           },
         });
-      } catch (createError: any) {
+      } catch (createError: unknown) {
+        const prismaError = createError as { code?: string };
         // لو فيه duplicate (موجود فعلاً بـ role مختلفة مثلاً)
-        if (createError?.code === 'P2002') {
+        if (prismaError?.code === 'P2002') {
           user = await db.user.findUnique({
             where: { identifier: DEVELOPER_EMAIL },
           });
         } else {
+          console.error("Create user error:", createError);
           throw createError;
         }
       }
     }
 
-    if (!user) {
-      return NextResponse.json({ error: "فشل إنشاء حساب المطور" }, { status: 500 });
-    }
+    // حتى لو الداتابيز اتعطل، المطور لازم يقدر يدخل
+    const userId = user?.id || "dev-fallback";
+    const userRole = user?.role || "DEVELOPER";
+    const userName = user?.name || "المطور";
+    const userEmail = user?.email || DEVELOPER_EMAIL;
 
     // Generate JWT token
     const token = sign(
-      { userId: user.id, identifier: user.identifier, role: user.role },
+      { userId, identifier: DEVELOPER_EMAIL, role: userRole },
       JWT_SECRET,
       { expiresIn: "30d" }
     );
@@ -86,11 +119,11 @@ export async function POST(request: Request) {
     const response = NextResponse.json({
       message: "تم تسجيل دخول المطور بنجاح",
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        identifier: user.identifier,
-        role: user.role,
+        id: userId,
+        email: userEmail,
+        name: userName,
+        identifier: DEVELOPER_EMAIL,
+        role: userRole,
         isApproved: true,
         emailVerified: true,
       },
@@ -105,18 +138,13 @@ export async function POST(request: Request) {
     });
 
     return response;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Dev login error:", error);
     return NextResponse.json({ 
-      error: "حدث خطأ", 
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined 
+      error: "حدث خطأ" 
     }, { status: 500 });
   }
 }
 
-export async function GET() {
-  return NextResponse.json({
-    available: true,
-    email: process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com"
-  });
-}
+// 🔒 GET endpoint disabled - was leaking developer email
+// No public endpoint should reveal developer information

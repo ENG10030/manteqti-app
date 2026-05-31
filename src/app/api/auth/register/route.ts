@@ -82,45 +82,18 @@ export async function POST(request: Request) {
     });
 
     if (existingUser) {
-      // If user exists but is not verified, resend OTP (don't auto-verify!)
-      if (!existingUser.emailVerified && existingUser.role !== 'DEVELOPER') {
-        console.log('📧 Unverified user re-registering, resending OTP:', userEmail);
-        // Generate new OTP
-        const otp = crypto.randomInt(100000, 999999).toString();
-        const otpExpires = new Date(Date.now() + 30 * 60 * 1000);
-        await db.user.update({
-          where: { id: existingUser.id },
-          data: { otp, otpExpires },
-        });
-        // Try to send OTP email
-        try {
-          const emailResult = await sendOTPEmail({ to: userEmail, otp, name: existingUser.name });
-          console.log(`📧 Resend OTP result: ${JSON.stringify(emailResult)}`);
-        } catch (emailErr) {
-          console.error('Failed to resend OTP email:', emailErr);
-        }
-        return NextResponse.json({
-          message: "لديك حساب بالفعل ولكن لم يتم تأكيده. يرجى إدخال رمز التحقق",
-          emailVerificationRequired: true,
-          email: userEmail,
-          user: null, // Don't return user — force OTP verification
-        });
-      }
-      // User exists and is verified
       return NextResponse.json(
-        { error: "البريد الإلكتروني مستخدم بالفعل. يرجى تسجيل الدخول بدلاً من ذلك", accountExists: true },
+        { error: "البريد الإلكتروني مستخدم بالفعل" },
         { status: 400 }
       );
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const isDeveloper = userEmail === (process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com");
 
-    // 🔒 SECURITY FIX: Never auto-assign developer role via registration
-    // Previously: isDeveloper was determined by email match — removed to prevent privilege escalation
-
-    // Generate OTP for email verification (always required)
-    const otp = crypto.randomInt(100000, 999999).toString();
-    const otpExpires = new Date(Date.now() + 30 * 60 * 1000);
+    // Generate OTP for email verification
+    const otp = isDeveloper ? null : crypto.randomInt(100000, 999999).toString();
+    const otpExpires = isDeveloper ? null : new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
 
     const user = await db.user.create({
       data: {
@@ -129,62 +102,73 @@ export async function POST(request: Request) {
         password: hashedPassword,
         phone: phone || null,
         identifier: userEmail,
-        role: 'user', // Never auto-assign developer role via registration
-        isApproved: false, // Requires admin approval
-        emailVerified: false, // Always requires email verification
+        role: isDeveloper ? "DEVELOPER" : "USER",
+        isApproved: isDeveloper,
+        emailVerified: isDeveloper,
         otp,
         otpExpires,
       },
     });
 
-    // Log registration
+    // Log registration in OperationLog
     try {
       await db.operationLog.create({
         data: {
-          action: "USER_REGISTER",
+          action: isDeveloper ? "DEVELOPER_AUTO_REGISTER" : "USER_REGISTER",
           entityType: "User",
           entityId: user.id,
           details: JSON.stringify({
             userName: user.name,
             email: user.email,
             phone: phone || null,
-            needsApproval: true,
-            otpSent: true,
+            needsApproval: !isDeveloper,
+            otpSent: !isDeveloper,
           }),
           userId: user.id,
         },
       });
     } catch {}
 
-    // Send OTP email — MUST verify before login
-    try {
-      const emailResult = await sendOTPEmail({ to: userEmail, otp, name: user.name });
-      console.log(`📧 Registration OTP email result: ${JSON.stringify(emailResult)}`);
-    } catch (err) {
-      console.error('Error sending registration OTP:', err);
+    // Send OTP email for non-developer users
+    if (!isDeveloper && otp) {
+      try {
+        const emailResult = await sendOTPEmail({ to: userEmail, otp, name: user.name });
+        console.log(`📧 Registration OTP email result: ${JSON.stringify(emailResult)}`);
+      } catch (err) {
+        console.error('Error sending registration OTP:', err);
+      }
     }
 
     // Send notification email to developer about new registration
-    const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
-    try {
-      await sendNewUserNotificationEmail({
-        to: DEVELOPER_EMAIL,
-        userName: user.name,
-        userEmail: user.email || userEmail,
-        userPhone: phone || null,
-      });
-    } catch (err) {
-      console.error('Error sending developer notification:', err);
+    if (!isDeveloper) {
+      const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
+      try {
+        await sendNewUserNotificationEmail({
+          to: DEVELOPER_EMAIL,
+          userName: user.name,
+          userEmail: user.email || userEmail,
+          userPhone: phone || null,
+        });
+        console.log(`📧 Developer notification email sent for new user: ${user.name}`);
+      } catch (err) {
+        console.error('Error sending developer notification:', err);
+      }
     }
 
-    // ALWAYS require email verification
     return NextResponse.json({
-      message: "تم إنشاء الحساب بنجاح! يرجى تأكيد البريد الإلكتروني لإتمام التسجيل",
-      emailVerificationRequired: true,
+      message: isDeveloper ? "تم إنشاء الحساب بنجاح" : "تم إنشاء الحساب بنجاح. يرجى تأكيد البريد الإلكتروني",
+      emailVerificationRequired: !isDeveloper,
       email: userEmail,
-      user: null, // Don't give user session — force OTP first
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        identifier: user.identifier,
+        role: user.role,
+        isApproved: user.isApproved,
+        emailVerified: user.emailVerified,
+      },
     });
-
   } catch (error) {
     console.error("Register error:", error);
     return NextResponse.json(

@@ -3,6 +3,34 @@ import { db } from '@/lib/db';
 import crypto from 'crypto';
 import { sendOTPEmail } from '@/lib/email';
 
+// Rate limiting map for forgot-password
+const otpAttempts = new Map<string, { count: number; lastAttempt: number }>();
+const MAX_OTP_ATTEMPTS = 3;
+const OTP_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
+
+function checkOtpRateLimit(email: string): boolean {
+  const key = email.toLowerCase().trim();
+  const now = Date.now();
+  const record = otpAttempts.get(key);
+  
+  if (!record) {
+    otpAttempts.set(key, { count: 1, lastAttempt: now });
+    return true;
+  }
+  
+  if (now - record.lastAttempt > OTP_WINDOW_MS) {
+    otpAttempts.set(key, { count: 1, lastAttempt: now });
+    return true;
+  }
+  
+  if (record.count >= MAX_OTP_ATTEMPTS) {
+    return false;
+  }
+  
+  record.count++;
+  return true;
+}
+
 // إرسال طلب استعادة كلمة المرور - OTP-based flow
 export async function POST(request: NextRequest) {
   try {
@@ -15,10 +43,11 @@ export async function POST(request: NextRequest) {
 
     const normalizedEmail = email.toLowerCase().trim();
 
-    // 🔒 SECURITY FIX: حماية حساب المطور من هجمات إعادة تعيين كلمة المرور
-    const DEVELOPER_EMAIL = (process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com").toLowerCase();
-    if (normalizedEmail === DEVELOPER_EMAIL) {
-      return NextResponse.json({ error: 'لا يمكن إعادة تعيين كلمة مرور المطور من هنا' }, { status: 403 });
+    // 🔒 Rate limiting لمنع إساءة استخدام OTP
+    if (!checkOtpRateLimit(normalizedEmail)) {
+      return NextResponse.json({ 
+        error: 'طلبات كثيرة. حاول بعد 30 دقيقة' 
+      }, { status: 429 });
     }
 
     // البحث عن المستخدم بهذا البريد
@@ -39,19 +68,11 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 🔒 SECURITY FIX: أيضاً حماية المستخدم الذي لديه دور DEVELOPER
-    if (user.role === 'DEVELOPER' || user.identifier === DEVELOPER_EMAIL) {
-      return NextResponse.json({
-        success: true,
-        message: 'إذا كان البريد مسجل، ستصلك رسالة لاستعادة كلمة المرور'
-      });
-    }
-
     // إنشاء رمز OTP مكون من 6 أرقام
     const otp = crypto.randomInt(100000, 999999).toString();
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 دقيقة
 
-    // حفظ الرمز في حقل passwordResetToken (أعد استخدامه لتخزين OTP)
+    // حفظ الرمز في حقل passwordResetToken
     await db.user.update({
       where: { id: user.id },
       data: {
@@ -67,7 +88,7 @@ export async function POST(request: NextRequest) {
       const result = await sendOTPEmail({ to: emailTo, otp, name: user.name });
       emailSent = result.success;
       console.log(`📧 Reset password OTP email result: ${JSON.stringify(result)}`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error sending reset OTP email:', err);
     }
 
@@ -76,7 +97,6 @@ export async function POST(request: NextRequest) {
       message: emailSent 
         ? 'تم إرسال رمز الاستعادة إلى بريدك الإلكتروني ✅' 
         : 'إذا كان البريد مسجل، ستصلك رسالة لاستعادة كلمة المرور',
-      ...(process.env.NODE_ENV === 'development' && { otp })
     });
 
   } catch (error) {
