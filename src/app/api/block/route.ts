@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { JWT_SECRET } from "@/lib/auth";
+
+export const dynamic = "force-dynamic";
+
 const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
 
 async function isDeveloper(request: Request) {
@@ -12,7 +15,7 @@ async function isDeveloper(request: Request) {
   if (!token) return false;
 
   try {
-    const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
+    const decoded = verify(token, JWT_SECRET) as unknown as { userId: string; role?: string; identifier?: string };
     
     // التحقق من دور DEVELOPER أو بريد المطور
     if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;

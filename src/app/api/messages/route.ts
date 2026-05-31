@@ -7,13 +7,15 @@ import { sendNewMessageEmail } from '@/lib/email';
 import { notifyRealtime } from '@/lib/realtime';
 import { JWT_SECRET } from '@/lib/auth';
 
+export const dynamic = "force-dynamic";
+
 // Helper: get authenticated user from token
 async function getAuthUser(request: NextRequest) {
   const cookieStore = await cookies();
   const token = cookieStore.get('auth-token')?.value;
   if (!token) return null;
   try {
-    const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string };
+    const decoded = verify(token, JWT_SECRET) as unknown as { userId: string; role?: string };
     return decoded;
   } catch {
     return null;

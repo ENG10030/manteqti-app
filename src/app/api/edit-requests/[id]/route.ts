@@ -4,6 +4,8 @@ import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
+export const dynamic = "force-dynamic";
+
 // جلب طلب تعديل محدد
 export async function GET(
   request: NextRequest,

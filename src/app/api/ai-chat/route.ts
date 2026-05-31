@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/auth';
 
+export const dynamic = "force-dynamic";
+
 // ردود ذكية مبرمجة للمساعد
 const smartResponses: { keywords: string[]; reply: string }[] = [
   {

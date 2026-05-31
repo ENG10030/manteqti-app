@@ -5,6 +5,8 @@ import { verify } from 'jsonwebtoken';
 import { requireApprovedUser } from '@/lib/auth-middleware';
 import { JWT_SECRET, authenticateRequest } from '@/lib/auth';
 
+export const dynamic = "force-dynamic";
+
 // جلب كل الإعجابات أو إعجابات عقار معين
 export async function GET(request: NextRequest) {
   const auth = authenticateRequest(request);

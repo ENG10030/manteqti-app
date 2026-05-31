@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
+export const dynamic = "force-dynamic";
+
 // Cron job to auto-delete apartments after 48 hours in final status
 // This endpoint should be called by Vercel Cron or external scheduler
 

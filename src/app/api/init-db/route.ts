@@ -5,6 +5,8 @@ import { verify } from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { Prisma } from '@prisma/client';
 
+export const dynamic = "force-dynamic";
+
 const JWT_SECRET = process.env.JWT_SECRET;
 
 // التحقق من أن الطلب من مطور
@@ -16,7 +18,7 @@ async function verifyDeveloper(): Promise<boolean> {
     const token = cookieStore.get('auth-token')?.value;
     if (!token) return false;
     
-    const decoded = verify(token, JWT_SECRET) as { role?: string };
+    const decoded = verify(token, JWT_SECRET) as unknown as { role?: string };
     return decoded.role === 'DEVELOPER';
   } catch {
     return false;

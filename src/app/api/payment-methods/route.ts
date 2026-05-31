@@ -5,12 +5,14 @@ import { JWT_SECRET } from "@/lib/auth";
 import { checkRateLimit, recordFailedAttempt } from "@/lib/rate-limit";
 import crypto from "crypto";
 
+export const dynamic = "force-dynamic";
+
 // 🔐 Authenticate user
 function authenticate(request: NextRequest) {
   const token = request.cookies.get("auth-token")?.value;
   if (!token) return null;
   try {
-    return verify(token, JWT_SECRET) as { userId: string; role: string; identifier: string };
+    return verify(token, JWT_SECRET) as unknown as { userId: string; role: string; identifier: string };
   } catch {
     return null;
   }

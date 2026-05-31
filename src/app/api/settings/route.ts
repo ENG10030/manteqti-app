@@ -14,7 +14,7 @@ async function isDeveloper(request: Request): Promise<boolean> {
   const token = cookies.get("auth-token");
   if (!token) return false;
   try {
-    const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
+    const decoded = verify(token, JWT_SECRET) as unknown as { userId: string; role?: string; identifier?: string };
     if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
     const user = await db.user.findUnique({
       where: { id: decoded.userId },
@@ -32,7 +32,7 @@ async function getCurrentUserId(request: Request): Promise<string | null> {
   const token = cookies.get("auth-token");
   if (!token) return null;
   try {
-    const decoded = verify(token, JWT_SECRET) as { userId: string };
+    const decoded = verify(token, JWT_SECRET) as unknown as { userId: string };
     return decoded.userId;
   } catch {
     return null;

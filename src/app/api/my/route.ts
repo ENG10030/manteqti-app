@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { db } from "@/lib/db"
 
+export const dynamic = "force-dynamic";
+
 // جلب عقارات المستخدم الحالي
 export async function GET(request: NextRequest) {
   try {

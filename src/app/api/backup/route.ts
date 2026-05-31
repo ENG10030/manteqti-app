@@ -4,12 +4,14 @@ import { verify } from "jsonwebtoken";
 import { cookies } from "next/headers";
 import { JWT_SECRET } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 async function verifyDeveloper(request: Request): Promise<boolean> {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get("auth-token")?.value;
     if (!token) return false;
-    const decoded = verify(token, JWT_SECRET) as { role?: string };
+    const decoded = verify(token, JWT_SECRET) as unknown as { role?: string };
     return decoded.role === "DEVELOPER";
   } catch {
     return false;

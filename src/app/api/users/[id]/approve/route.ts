@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 // تأكيد أو رفض أو إلغاء تأكيد تسجيل مستخدم (للمطور فقط)
 export async function PUT(
   request: NextRequest,

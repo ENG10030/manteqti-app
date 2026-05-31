@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/auth';
 
+export const dynamic = "force-dynamic";
+
 const PLACEHOLDER_IMAGES = [
   'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&q=80',
   'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800&q=80',

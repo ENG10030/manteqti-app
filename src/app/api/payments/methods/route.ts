@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 // ==========================================
 // Payment Methods API — Public Endpoint
 // Returns available payment methods for the recharge modal

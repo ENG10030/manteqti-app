@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateRequest } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 interface ApartmentData {
   id: string;
   title: string;

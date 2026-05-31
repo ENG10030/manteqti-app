@@ -5,6 +5,8 @@ import { verify } from 'jsonwebtoken';
 import { requireApprovedUser } from '@/lib/auth-middleware';
 import { JWT_SECRET } from '@/lib/auth';
 
+export const dynamic = "force-dynamic";
+
 // جلب التعليقات
 export async function GET(request: NextRequest) {
   try {

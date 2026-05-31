@@ -4,6 +4,8 @@ import { verify } from "jsonwebtoken";
 import { notifyApartmentsChanged } from "@/lib/realtime";
 import { JWT_SECRET } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 async function getCurrentUser(request: Request) {
   const cookieHeader = request.headers.get("cookie");
   const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
@@ -12,7 +14,7 @@ async function getCurrentUser(request: Request) {
   if (!token) return null;
 
   try {
-    const decoded = verify(token, JWT_SECRET) as { userId: string };
+    const decoded = verify(token, JWT_SECRET) as unknown as { userId: string };
     return await db.user.findUnique({
       where: { id: decoded.userId },
     });

@@ -4,6 +4,8 @@ import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
+export const dynamic = "force-dynamic";
+
 
 
 // حذف إعجاب (بواسطة ID الإعجاب أو apartmentId + userId)

@@ -51,6 +51,7 @@
     "manteqti-vipfee-fix",
     "public",
     "tests",
-    "mini-services"
+    "mini-services",
+    "v71-secure"
   ]
 }

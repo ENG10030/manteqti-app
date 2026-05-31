@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ user: null }, { headers: noCacheHeaders });
     }
 
-    const decoded = verify(token, JWT_SECRET) as { userId: string; identifier?: string; role?: string };
+    const decoded = verify(token, JWT_SECRET) as unknown as { userId: string; identifier?: string; role?: string };
 
     const user = await db.user.findUnique({
       where: { id: decoded.userId },

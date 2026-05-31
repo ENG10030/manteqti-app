@@ -4,6 +4,8 @@ import { verify } from "jsonwebtoken";
 import { JWT_SECRET } from "@/lib/auth";
 import { getClientIp } from "@/lib/rate-limit";
 
+export const dynamic = "force-dynamic";
+
 const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
 
 // ==========================================
@@ -13,7 +15,7 @@ async function isDeveloper(request: NextRequest): Promise<{ userId: string; iden
   const token = request.cookies.get("auth-token")?.value;
   if (!token) return null;
   try {
-    const decoded = verify(token, JWT_SECRET) as {
+    const decoded = verify(token, JWT_SECRET) as unknown as {
       userId: string;
       role?: string;
       identifier?: string;
