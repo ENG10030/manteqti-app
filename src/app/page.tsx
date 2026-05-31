@@ -279,6 +279,11 @@ export default function App() {
   const [chatLoading, setChatLoading] = useState(false);
   const [aiDescLoading, setAiDescLoading] = useState(false);
   const [devPasswordChange, setDevPasswordChange] = useState({ current: '', new: '', confirm: '' });
+  const [showDevLogin, setShowDevLogin] = useState(false);
+  const [showDevPassword, setShowDevPassword] = useState(false);
+  const [devEmail, setDevEmail] = useState('');
+  const [devPassword, setDevPassword] = useState('');
+  const [devLoading, setDevLoading] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; type: 'danger' | 'warning' | 'info'; loading?: boolean; confirmText?: string; cancelText?: string; }>({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
   const [deleteOptionsDialog, setDeleteOptionsDialog] = useState<{ isOpen: boolean; userId: string; userName: string; loading: boolean; }>({ isOpen: false, userId: '', userName: '', loading: false });
@@ -1166,32 +1171,46 @@ export default function App() {
         setShowOtpVerification(true);
         setOtpEmail(data.email || authIdentifier.trim().toLowerCase());
         addToast('يجب تأكيد البريد الإلكتروني أولاً! تم إرسال رمز التحقق', 'info');
-      } else if (data.noAccount) {
-        addToast(data.error, 'error');
-        setAuthStep('register');
-      } else {
-        addToast(data.error || 'خطأ في تسجيل الدخول', 'error');
-      }
+      } else addToast(data.error || 'خطأ في تسجيل الدخول', 'error');
     } catch { addToast('حدث خطأ في الاتصال', 'error'); }
     finally { setAuthLoading(false); }
   };
 
-  const handleDevLogin = async () => {
-    setAuthLoading(true);
+  const handleDevLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDevLoading(true);
     try {
-      const res = await fetch('/api/auth/dev-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+      const res = await fetch('/api/auth/dev-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: devEmail, password: devPassword }) });
       const data = await res.json();
-      if (res.ok) {
-        setCurrentUser(data.user);
+      if (res.ok && data.user) {
+        try {
+          const meRes = await fetch('/api/auth/me');
+          const meData = await meRes.json();
+          if (meData.user) {
+            setCurrentUser({ id: meData.user.id, identifier: meData.user.identifier || devEmail, name: meData.user.name });
+          } else {
+            setCurrentUser({ id: data.user?.id || '', identifier: devEmail, name: data.user?.name || 'المطور' });
+          }
+        } catch {
+          setCurrentUser({ id: data.user?.id || '', identifier: devEmail, name: data.user?.name || 'المطور' });
+        }
         setIsDeveloper(true);
-        setShowAuth(false);
-        addToast('مرحباً بالمطور! 👑', 'success');
+        setShowDevLogin(false);
+        if (rememberMe) {
+          localStorage.setItem('manteqti_dev_email', devEmail);
+          localStorage.setItem('manteqti_dev_remember', 'true');
+        } else {
+          localStorage.removeItem('manteqti_dev_email');
+          localStorage.removeItem('manteqti_dev_remember');
+        }
+        setDevPassword('');
+        addToast('مرحباً بك في لوحة تحكم المطور!', 'success');
         fetchDevData();
       } else {
-        addToast(data.error || 'فشل تسجيل دخول المطور', 'error');
+        addToast(data.error || 'بيانات الدخول غير صحيحة', 'error');
       }
     } catch { addToast('حدث خطأ في الاتصال', 'error'); }
-    finally { setAuthLoading(false); }
+    finally { setDevLoading(false); }
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -2067,9 +2086,12 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                   <button onClick={handleLogout} className="p-3 rounded-xl bg-rose-500/10 text-rose-500"><LogOut className="h-5 w-5" /></button>
                 </div>
               ) : (
-                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setShowAuth(true)} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium shadow-lg">
-                  <User className="h-5 w-5" /><span>تسجيل الدخول</span>
-                </motion.button>
+                <div className="flex items-center gap-2">
+                  <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setShowAuth(true)} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium shadow-lg">
+                    <User className="h-5 w-5" /><span>تسجيل الدخول</span>
+                  </motion.button>
+                  <button onClick={() => setShowDevLogin(true)} className={`p-2.5 rounded-lg ${darkMode ? 'text-slate-500 hover:text-amber-400 hover:bg-slate-800' : 'text-slate-400 hover:text-amber-600 hover:bg-slate-100'}`} title="دخول المطور"><Lock className="h-4 w-4" /></button>
+                </div>
               )}
 
             </div>
@@ -2207,6 +2229,44 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
         onCancel={() => setDeleteOptionsDialog({ isOpen: false, userId: '', userName: '', loading: false })}
       />
 
+      {/* Dev Login Modal */}
+      <AnimatePresence>{showDevLogin && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowDevLogin(false)}>
+          <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-3xl overflow-hidden ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl border ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+            <div className="relative overflow-hidden bg-gradient-to-br from-amber-500 via-orange-500 to-red-500 px-6 py-8">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+              <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full translate-y-1/2 -translate-x-1/2" />
+              <button onClick={() => setShowDevLogin(false)} className="absolute top-4 left-4 p-2 rounded-xl bg-white/20 hover:bg-white/30 transition-colors"><X className="h-5 w-5 text-white" /></button>
+              <div className="relative z-10 text-center">
+                <div className="mx-auto w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center mb-4"><ShieldCheck className="h-8 w-8 text-white" /></div>
+                <h2 className="text-2xl font-bold text-white">لوحة تحكم المطور</h2>
+                <p className="text-white/70 mt-1 text-sm">الدخول بمفتاح المطور السري</p>
+              </div>
+            </div>
+            <div className="p-6">
+              <form onSubmit={handleDevLogin} className="space-y-4">
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}><Mail className="h-3.5 w-3.5 inline ml-1" />البريد الإلكتروني</label>
+                  <input type="email" value={devEmail} onChange={(e) => setDevEmail(e.target.value)} placeholder="dev@email.com" className={`w-full px-4 py-3.5 rounded-xl border-2 transition-colors ${darkMode ? 'bg-slate-700/50 border-slate-600 text-white placeholder-slate-500 focus:border-amber-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-amber-500'} outline-none`} required />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}><Lock className="h-3.5 w-3.5 inline ml-1" />كلمة المرور</label>
+                  <div className="relative">
+                    <input type={showDevPassword ? 'text' : 'password'} value={devPassword} onChange={(e) => setDevPassword(e.target.value)} placeholder="••••••••" className={`w-full px-4 py-3.5 rounded-xl border-2 transition-colors ${darkMode ? 'bg-slate-700/50 border-slate-600 text-white placeholder-slate-500 focus:border-amber-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-amber-500'} outline-none`} required />
+                    <button type="button" onClick={() => setShowDevPassword(!showDevPassword)} className={`absolute left-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors ${darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-slate-600'}`}>{showDevPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="devRememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500" />
+                  <label htmlFor="devRememberMe" className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>تذكرني</label>
+                </div>
+                <button type="submit" disabled={devLoading} className="w-full py-3.5 rounded-xl font-bold text-white text-lg bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-lg shadow-amber-500/25 transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50">{devLoading ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : '🛡️ دخول المطور'}</button>
+              </form>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}</AnimatePresence>
+
       {/* Toasts */}
       <div className="fixed top-4 left-4 z-[100] space-y-2">
         <AnimatePresence>{toasts.map(toast => (
@@ -2247,6 +2307,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 ) : (
   <>
     <button onClick={() => { setShowAuth(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white"><User className="h-5 w-5" />تسجيل الدخول</button>
+    <button onClick={() => { setShowDevLogin(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-amber-900/30 text-amber-400' : 'bg-amber-50 text-amber-600'}`}><Lock className="h-5 w-5" />دخول المطور</button>
   </>
 )}
                 <button onClick={() => setDarkMode(!darkMode)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-amber-400' : 'bg-slate-100 text-slate-700'}`}>{darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}{darkMode ? 'الوضع النهاري' : 'الوضع الليلي'}</button>
@@ -2671,20 +2732,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 )}
               </button>
             </form>
-
-            {/* Dev Login Button */}
-            {authStep === 'login' && (
-              <div className="px-8 pt-2">
-                <button
-                  type="button"
-                  onClick={handleDevLogin}
-                  disabled={authLoading}
-                  className="w-full py-2.5 rounded-xl font-medium text-sm flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white shadow-md hover:shadow-lg hover:scale-[1.01] transition-all duration-300 disabled:opacity-50"
-                >
-                  {authLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <><ShieldCheck className="h-4 w-4" /> دخول المطور 👑</>}
-                </button>
-              </div>
-            )}
 
             {/* Footer */}
             <div className={`px-8 pb-8 pt-2 text-center border-t ${darkMode ? 'border-slate-700' : 'border-slate-100'}`}>

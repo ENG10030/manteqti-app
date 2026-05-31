@@ -26,7 +26,7 @@ export async function POST(request: Request) {
 
     if (!user) {
       return NextResponse.json(
-        { error: "لا يوجد حساب مسجل بهذا البريد الإلكتروني. يرجى إنشاء حساب أولاً", noAccount: true },
+        { error: "يجب إنشاء حساب أولاً" },
         { status: 404 }
       );
     }
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
 
     if (!isValidPassword) {
       return NextResponse.json(
-        { error: "كلمة المرور غير صحيحة", wrongPassword: true },
+        { error: "كلمة المرور أو البريد الإلكتروني غير صحيحة" },
         { status: 401 }
       );
     }
