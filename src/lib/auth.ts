@@ -1,15 +1,12 @@
 import { db } from "./db";
 import { verify } from "jsonwebtoken";
 import { NextRequest } from "next/server";
-import CredentialsProvider from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
 
-// 🔐 JWT_SECRET مطلوب — بدونها النظام مش هيشتغل
-const _envSecret = process.env.JWT_SECRET;
-if (!_envSecret) {
-  console.error("FATAL: JWT_SECRET environment variable is not set!");
+// 🔐 JWT_SECRET — fail fast if missing
+export const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("FATAL: JWT_SECRET environment variable is not set!");
 }
-export const JWT_SECRET = _envSecret!; // Throws at runtime if missing — safe because it's always set in production
 
 export interface AuthUser {
   id: string;
@@ -20,72 +17,6 @@ export interface AuthUser {
   isBlocked: boolean;
   emailVerified: boolean;
 }
-
-// NextAuth Options
-export const authOptions = {
-  providers: [
-    CredentialsProvider({
-      name: "credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      // @ts-ignore - NextAuth typing issue
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          return null;
-        }
-
-        const user = await db.user.findUnique({
-          where: { identifier: credentials.email.toLowerCase() },
-        });
-
-        if (!user) return null;
-
-        const isValid = await bcrypt.compare(credentials.password, user.password);
-        if (!isValid) return null;
-
-        if (user.isBlocked) return null;
-
-        // Check email verification (developers bypass this check)
-        if (!user.emailVerified && user.role !== 'DEVELOPER') {
-          return null;
-        }
-
-        return {
-          id: user.id,
-          email: user.email || "",
-          name: user.name,
-          role: user.role,
-          emailVerified: user.emailVerified,
-        };
-      },
-    }),
-  ],
-  callbacks: {
-    async jwt({ token, user }: { token: any; user: any }) {
-      if (user) {
-        token.id = user.id;
-        token.role = user.role;
-      }
-      return token;
-    },
-    async session({ session, token }: { session: any; token: any }) {
-      if (session.user) {
-        session.user.id = token.id;
-        session.user.role = token.role;
-      }
-      return session;
-    },
-  },
-  pages: {
-    signIn: "/login",
-  },
-  session: {
-    strategy: "jwt" as const,
-  },
-  secret: process.env.NEXTAUTH_SECRET || JWT_SECRET,
-};
 
 // الحصول على المستخدم الحالي من الطلب
 export async function getCurrentUser(request: NextRequest): Promise<AuthUser | null> {
@@ -147,11 +78,11 @@ export function isDeveloperOrAdmin(user: { role: string }): boolean {
 // التحقق من تسجيل الدخول
 export async function requireAuth(request: NextRequest): Promise<AuthUser> {
   const user = await getCurrentUser(request);
-  
+
   if (!user) {
     throw new Error("يجب تسجيل الدخول");
   }
-  
+
   if (user.isBlocked) {
     throw new Error("تم حظر حسابك");
   }
@@ -160,17 +91,17 @@ export async function requireAuth(request: NextRequest): Promise<AuthUser> {
   if (!user.emailVerified && user.role !== 'DEVELOPER') {
     throw new Error("يجب تأكيد البريد الإلكتروني أولاً");
   }
-  
+
   return user;
 }
 
 // التحقق من صلاحيات المطور
 export async function requireDeveloper(request: NextRequest): Promise<AuthUser> {
   const user = await requireAuth(request);
-  
+
   if (user.role !== "DEVELOPER") {
     throw new Error("غير مصرح لك بهذا الإجراء");
   }
-  
+
   return user;
 }

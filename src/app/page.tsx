@@ -1256,7 +1256,7 @@ export default function App() {
     e.preventDefault();
     setAuthLoading(true);
     try {
-      const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), password: authPassword }) });
+      const res = await fetch('/api/auth/login', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), password: authPassword }) });
       const data = await res.json();
       if (res.ok) {
         if (data.pendingApproval) {
@@ -1286,11 +1286,11 @@ export default function App() {
     e.preventDefault();
     setDevLoading(true);
     try {
-      const res = await fetch('/api/auth/dev-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: devEmail, password: devPassword }) });
+      const res = await fetch('/api/auth/dev-login', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: devEmail, password: devPassword }) });
       const data = await res.json();
       if (res.ok && data.user) {
         try {
-          const meRes = await fetch('/api/auth/me');
+          const meRes = await fetch('/api/auth/me', { credentials: 'include' });
           const meData = await meRes.json();
           if (meData.user) {
             setCurrentUser({ id: meData.user.id, identifier: meData.user.identifier || devEmail, name: meData.user.name });
@@ -1323,7 +1323,7 @@ export default function App() {
     e.preventDefault();
     setAuthLoading(true);
     try {
-      const res = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), name: authName.trim(), password: authPassword }) });
+      const res = await fetch('/api/auth/register', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), name: authName.trim(), password: authPassword }) });
       const data = await res.json();
       if (res.ok) {
         if (data.emailVerificationRequired) {
@@ -1395,7 +1395,7 @@ export default function App() {
     } finally { setOtpResendLoading(false); }
   };
 
-  const handleLogout = async () => { try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {} setCurrentUser(null); setIsDeveloper(false); addToast('تم تسجيل الخروج', 'info'); };
+  const handleLogout = async () => { try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); } catch {} setCurrentUser(null); setIsDeveloper(false); addToast('تم تسجيل الخروج', 'info'); };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2137,7 +2137,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               <div className="flex gap-3 justify-center">
                 <button 
                   onClick={async () => {
-                    const res = await fetch('/api/auth/me');
+                    const res = await fetch('/api/auth/me', { credentials: 'include' });
                     const data = await res.json();
                     if (data.user?.isApproved) {
                       setCurrentUser(data.user);
@@ -2153,7 +2153,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 </button>
                 <button 
                   onClick={async () => {
-                    await fetch('/api/auth/logout', { method: 'POST' });
+                    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
                     setCurrentUser(null);
                     setIsDeveloper(false);
                   }}

@@ -76,7 +76,7 @@ export async function POST(request: Request) {
       const token = sign(
         { userId: user.id, identifier: user.identifier, role: user.role },
         JWT_SECRET,
-        { expiresIn: "7d" }
+        { expiresIn: "30d" }
       );
       const response = NextResponse.json({
         message: "حسابك قيد المراجعة. بانتظار موافقة الإدارة",
@@ -94,7 +94,7 @@ export async function POST(request: Request) {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
-        maxAge: 60 * 60 * 24 * 7,
+        maxAge: 60 * 60 * 24 * 30,
         path: "/",
       });
       return response;
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
     const token = sign(
       { userId: user.id, identifier: user.identifier, role: user.role },
       JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "30d" }
     );
 
     const response = NextResponse.json({
@@ -123,7 +123,7 @@ export async function POST(request: Request) {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: 60 * 60 * 24 * 30,
       path: "/",
     });
 
