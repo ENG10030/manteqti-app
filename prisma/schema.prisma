@@ -22,6 +22,7 @@ model User {
   blockedAt             DateTime?
   blockReason           String?
   isApproved            Boolean   @default(true)
+  walletBalance         Float     @default(0)
   passwordResetToken    String?
   passwordResetExpires  DateTime?
   otp                   String?
@@ -38,6 +39,7 @@ model User {
   messages      Message[]
   editRequests  PropertyEditRequest[]
   blockedUsers  BlockedUser[]  @relation("BlockedUserRelation")
+  walletTransactions WalletTransaction[]
 }
 
 model Apartment {
@@ -218,4 +220,19 @@ model ApprovalLog {
   reason        String?
   performedBy   String?
   createdAt     DateTime  @default(now())
+}
+
+model WalletTransaction {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String   // recharge, payment, refund, admin_adjustment
+  amount      Float
+  balance     Float    // الرصيد بعد العملية
+  method      String?  // vodafone_cash, orange_cash, etisalat_cash, bank_transfer
+  description String?
+  reference   String?  // رقم مرجعي للإيصال
+  status      String   @default("completed") // pending, completed, failed
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

@@ -76,7 +76,9 @@ const DEFAULT_SETTINGS = {
 // GET - جلب الإعدادات (public - all users see the same current settings)
 export async function GET() {
   try {
-    let settings = await db.settings.findFirst();
+    // 🔧 FIX: Use upsert to ensure exactly ONE settings row exists
+    // findFirst() can return different rows when multiple exist → settings "revert"
+    let settings = await db.settings.findFirst({ orderBy: { createdAt: 'desc' } });
 
     if (!settings) {
       settings = await db.settings.create({ data: DEFAULT_SETTINGS });
@@ -120,16 +122,10 @@ export async function PUT(request: Request) {
       currency: validateCurrency(body.currency),
     };
 
-    let settings = await db.settings.findFirst();
-
-    if (!settings) {
-      settings = await db.settings.create({ data: validatedData });
-    } else {
-      settings = await db.settings.update({
-        where: { id: settings.id },
-        data: validatedData,
-      });
-    }
+    // 🔧 ROOT CAUSE FIX: Delete ALL existing settings rows, then create ONE fresh row
+    // This prevents the "settings reverting" bug caused by multiple Settings rows in DB
+    await db.settings.deleteMany({});
+    const settings = await db.settings.create({ data: validatedData });
 
     // Log settings change
     const currentUserId = await getCurrentUserId(request);
