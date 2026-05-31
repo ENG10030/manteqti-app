@@ -4,6 +4,16 @@ import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
 import { checkRateLimit, recordFailedAttempt } from "@/lib/rate-limit";
 import { JWT_SECRET } from "@/lib/auth";
+import crypto from "crypto";
+
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(a, 'utf-8'), Buffer.from(b, 'utf-8'));
+  } catch {
+    return false;
+  }
+}
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +45,7 @@ export async function POST(request: Request) {
     }
 
     // التحقق من كلمة مرور المطور فقط من Environment Variables
-    if (password !== DEVELOPER_PASSWORD) {
+    if (!safeCompare(password, DEVELOPER_PASSWORD)) {
       await recordFailedAttempt("dev-login", "ip", ip, request);
       return NextResponse.json({ error: "كلمة مرور المطور غير صحيحة" }, { status: 401 });
     }
@@ -78,7 +88,7 @@ export async function POST(request: Request) {
     const token = sign(
       { userId, identifier: DEVELOPER_EMAIL, role: userRole, name: userName, email: userEmail, isApproved: true, emailVerified: true, isBlocked: false },
       JWT_SECRET,
-      { expiresIn: "30d" }
+      { expiresIn: "30d", algorithm: "HS256" }
     );
 
     const response = NextResponse.json({

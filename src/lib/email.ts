@@ -1,5 +1,9 @@
 import { Resend } from 'resend';
 
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
 let _resend: Resend | null = null;
 function getResend(): Resend {
   if (!_resend) {
@@ -63,7 +67,7 @@ export async function sendOTPEmail({ to, otp, name }: SendOTPParams) {
               <p>لوحة الشقق الذكية</p>
             </div>
             <div class="content">
-              <p class="greeting">${name ? `مرحباً <strong>${name}</strong>` : 'مرحباً'} 👋</p>
+              <p class="greeting">${name ? `مرحباً <strong>${escapeHtml(name)}</strong>` : 'مرحباً'} 👋</p>
               <p style="color: #475569; font-size: 15px;">استخدم الرمز التالي لتأكيد بريدك الإلكتروني:</p>
               <div class="otp-box">
                 <div class="otp-code">${otp}</div>
@@ -120,7 +124,7 @@ export async function sendWelcomeEmail({ to, name }: SendWelcomeParams) {
         <body>
           <div class="container">
             <div class="header">
-              <h1>🎉 مرحباً ${name}!</h1>
+              <h1>🎉 مرحباً ${escapeHtml(name)}!</h1>
               <p style="color: rgba(255,255,255,0.9); margin-top: 8px;">تم إنشاء حسابك بنجاح</p>
             </div>
             <div class="content">
@@ -183,10 +187,10 @@ export async function sendPaymentConfirmedEmail({ to, name, apartmentTitle, amou
               <p style="color: rgba(255,255,255,0.9); margin-top: 8px;">يمكنك الآن الوصول لبيانات التواصل</p>
             </div>
             <div class="content">
-              <p>مرحباً <strong>${name}</strong>،</p>
+              <p>مرحباً <strong>${escapeHtml(name)}</strong>،</p>
               <p>تم تأكيد دفعتك بنجاح. يمكنك الآن عرض بيانات التواصل للعقار المطلوب.</p>
               <div class="info-box">
-                ${apartmentTitle ? `<div class="info-row"><span class="info-label">العقار</span><span class="info-value">${apartmentTitle}</span></div>` : ''}
+                ${apartmentTitle ? `<div class="info-row"><span class="info-label">العقار</span><span class="info-value">${escapeHtml(apartmentTitle)}</span></div>` : ''}
                 <div class="info-row"><span class="info-label">المبلغ</span><span class="info-value">${amount.toLocaleString()} ج.م</span></div>
               </div>
               <p>سجل دخولك واستعرض بيانات التواصل مباشرة 🏠</p>
@@ -254,12 +258,12 @@ export async function sendApartmentApprovedEmail({ to, name, apartmentTitle, apa
               <p style="color: rgba(255,255,255,0.9); margin-top: 8px;">عقارك الآن متاح للمستخدمين</p>
             </div>
             <div class="content">
-              <p>مرحباً <strong>${name}</strong>،</p>
+              <p>مرحباً <strong>${escapeHtml(name)}</strong>،</p>
               <p>بشرى سارة! تمت الموافقة على إعلانك وظهر الآن في الموقع لجميع المستخدمين 🎉</p>
               <div class="info-box">
-                <div class="info-row"><span class="info-label">العقار</span><span class="info-value">${apartmentTitle}</span></div>
+                <div class="info-row"><span class="info-label">العقار</span><span class="info-value">${escapeHtml(apartmentTitle)}</span></div>
                 <div class="info-row"><span class="info-label">النوع</span><span class="info-value">${typeLabel}</span></div>
-                <div class="info-row"><span class="info-label">المنطقة</span><span class="info-value">${area}</span></div>
+                <div class="info-row"><span class="info-label">المنطقة</span><span class="info-value">${escapeHtml(area)}</span></div>
                 <div class="info-row"><span class="info-label">السعر</span><span class="info-value">${price.toLocaleString()} ج.م</span></div>
               </div>
               <p>يمكنك متابعة تفاعل المستخدمين من لوحة التحكم 📊</p>
@@ -310,9 +314,9 @@ export async function sendApartmentRejectedEmail({ to, name, apartmentTitle, rea
               <p style="color: rgba(255,255,255,0.9); margin-top: 8px;">لقد تم مراجعة ورفض إعلانك</p>
             </div>
             <div class="content">
-              <p>مرحباً <strong>${name}</strong>،</p>
-              <p>للأسف تم رفض إعلانك "<strong>${apartmentTitle}</strong>" بعد المراجعة.</p>
-              ${reason ? `<div class="info-box"><p style="margin:0;color:#991b1b;font-size:14px;">📝 <strong>سبب الرفض:</strong> ${reason}</p></div>` : ''}
+              <p>مرحباً <strong>${escapeHtml(name)}</strong>،</p>
+              <p>للأسف تم رفض إعلانك "<strong>${escapeHtml(apartmentTitle)}</strong>" بعد المراجعة.</p>
+              ${reason ? `<div class="info-box"><p style="margin:0;color:#991b1b;font-size:14px;">📝 <strong>سبب الرفض:</strong> ${escapeHtml(reason)}</p></div>` : ''}
               <p>يمكنك تعديل الإعلان وإعادة إرساله مرة أخرى. إذا كان لديك استفسار، تواصل معنا عبر الموقع 💬</p>
             </div>
             <div class="footer"><p>${APP_NAME} - لوحة الشقق الذكية</p></div>
@@ -362,7 +366,7 @@ export async function sendPasswordChangedEmail({ to, name }: SendPasswordChanged
               <p style="color: rgba(255,255,255,0.9); margin-top: 8px;">إشعار أمني من ${APP_NAME}</p>
             </div>
             <div class="content">
-              <p>مرحباً <strong>${name}</strong>،</p>
+              <p>مرحباً <strong>${escapeHtml(name)}</strong>،</p>
               <p>تم تغيير كلمة المرور لحسابك بنجاح.</p>
               <div class="alert-box">
                 <p>⚠️ إذا لم تقم بطلب هذا التغيير، يرجى تواصل معنا فوراً وتغيير كلمة المرور فوراً.</p>
@@ -426,9 +430,9 @@ export async function sendNewUserNotificationEmail({ to, userName, userEmail, us
               <p>مرحباً <strong>المطور</strong>،</p>
               <p>تم تسجيل مستخدم جديد في المنصة. إليك تفاصيل الحساب:</p>
               <div class="info-box">
-                <div class="info-row"><span class="info-label">الاسم</span><span class="info-value">${userName}</span></div>
-                <div class="info-row"><span class="info-label">البريد الإلكتروني</span><span class="info-value">${userEmail}</span></div>
-                ${userPhone ? `<div class="info-row"><span class="info-label">رقم الهاتف</span><span class="info-value">${userPhone}</span></div>` : ''}
+                <div class="info-row"><span class="info-label">الاسم</span><span class="info-value">${escapeHtml(userName)}</span></div>
+                <div class="info-row"><span class="info-label">البريد الإلكتروني</span><span class="info-value">${escapeHtml(userEmail)}</span></div>
+                ${userPhone ? `<div class="info-row"><span class="info-label">رقم الهاتف</span><span class="info-value">${escapeHtml(userPhone)}</span></div>` : ''}
               </div>
               <div class="action-box">
                 <p>📋 سجل دخولك لمراجعة وتأكيد الحساب من لوحة التحكم</p>
@@ -483,9 +487,9 @@ export async function sendNewMessageEmail({ to, name, senderName }: SendNewMessa
               <p style="color: rgba(255,255,255,0.9); margin-top: 8px;">لديك رسالة جديدة على ${APP_NAME}</p>
             </div>
             <div class="content">
-              <p>مرحباً <strong>${name}</strong>،</p>
+              <p>مرحباً <strong>${escapeHtml(name)}</strong>،</p>
               <div class="sender-box">
-                <p style="margin:0;color:#5b21b6;font-size:16px;">📨 لديك رسالة جديدة من <strong>${senderName}</strong></p>
+                <p style="margin:0;color:#5b21b6;font-size:16px;">📨 لديك رسالة جديدة من <strong>${escapeHtml(senderName)}</strong></p>
               </div>
               <p>سجل دخولك للاطلاع على الرسالة والرد 📱</p>
             </div>

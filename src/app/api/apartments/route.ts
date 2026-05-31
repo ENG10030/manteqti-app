@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { notifyApartmentsChanged } from "@/lib/realtime";
 import { JWT_SECRET } from "@/lib/auth";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -106,6 +107,13 @@ export async function GET(request: Request) {
 // POST - إضافة عقار جديد
 export async function POST(request: Request) {
   try {
+    // Rate limiting: 5 requests per 15 minutes per user
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const allowed = await checkRateLimit("create-apartment", "ip", ip, 5, 15 * 60);
+    if (!allowed) {
+      return NextResponse.json({ error: "طلبات كثيرة. حاول بعد 15 دقيقة" }, { status: 429 });
+    }
+
     const user = await getCurrentUser(request);
 
     if (!user) {

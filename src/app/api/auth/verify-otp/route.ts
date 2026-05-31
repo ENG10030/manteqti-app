@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     const token = sign(
       { userId: updatedUser.id, identifier: updatedUser.identifier, role: updatedUser.role, name: updatedUser.name, email: updatedUser.email, isApproved: updatedUser.isApproved, emailVerified: true, isBlocked: false },
       JWT_SECRET,
-      { expiresIn: '30d' }
+      { expiresIn: '30d', algorithm: 'HS256' }
     );
 
     const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || '';

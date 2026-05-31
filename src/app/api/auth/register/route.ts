@@ -5,6 +5,7 @@ import crypto from "crypto";
 import { sign } from "jsonwebtoken";
 import { sendOTPEmail, sendNewUserNotificationEmail } from "@/lib/email";
 import { JWT_SECRET } from "@/lib/auth";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,13 @@ function isValidEmail(email: string): boolean {
 
 export async function POST(request: Request) {
   try {
+    // Rate limiting: 3 requests per 15 minutes per IP
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const allowed = await checkRateLimit("register", "ip", ip, 3, 15 * 60);
+    if (!allowed) {
+      return NextResponse.json({ error: "طلبات كثيرة. حاول بعد 15 دقيقة" }, { status: 429 });
+    }
+
     const body = await request.json();
     const { name, email, identifier, password, phone } = body;
 
@@ -93,7 +101,7 @@ export async function POST(request: Request) {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const isDeveloper = userEmail === (process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com");
+    const isDeveloper = userEmail === process.env.DEVELOPER_EMAIL;
 
     // Generate OTP for email verification
     const otp = isDeveloper ? null : crypto.randomInt(100000, 999999).toString();
@@ -145,7 +153,11 @@ export async function POST(request: Request) {
 
     // Send notification email to developer about new registration
     if (!isDeveloper) {
-      const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
+      const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
+      if (!DEVELOPER_EMAIL) {
+        console.error('DEVELOPER_EMAIL not set, skipping notification');
+        return;
+      }
       try {
         await sendNewUserNotificationEmail({
           to: DEVELOPER_EMAIL,
@@ -180,7 +192,7 @@ export async function POST(request: Request) {
       const token = sign(
         { userId: user.id, identifier: user.identifier, role: user.role, name: user.name, email: user.email, isApproved: true, emailVerified: true, isBlocked: false },
         JWT_SECRET,
-        { expiresIn: "30d" }
+        { expiresIn: "30d", algorithm: "HS256" }
       );
       response.cookies.set("auth-token", token, {
         httpOnly: true,

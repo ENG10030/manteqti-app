@@ -76,7 +76,7 @@ export async function POST(request: Request) {
       const token = sign(
         { userId: user.id, identifier: user.identifier, role: user.role, name: user.name, email: user.email, isApproved: user.isApproved, emailVerified: user.emailVerified, isBlocked: user.isBlocked },
         JWT_SECRET,
-        { expiresIn: "30d" }
+        { expiresIn: "30d", algorithm: "HS256" }
       );
       const response = NextResponse.json({
         message: "حسابك قيد المراجعة. بانتظار موافقة الإدارة",
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
     const token = sign(
       { userId: user.id, identifier: user.identifier, role: user.role, name: user.name, email: user.email, isApproved: user.isApproved, emailVerified: user.emailVerified, isBlocked: user.isBlocked },
       JWT_SECRET,
-      { expiresIn: "30d" }
+      { expiresIn: "30d", algorithm: "HS256" }
     );
 
     const response = NextResponse.json({

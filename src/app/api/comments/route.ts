@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { requireApprovedUser } from '@/lib/auth-middleware';
 import { JWT_SECRET } from '@/lib/auth';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export const dynamic = "force-dynamic";
 
@@ -101,6 +102,13 @@ export async function GET(request: NextRequest) {
 // إضافة تعليق جديد
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting: 10 requests per 15 minutes per user
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const allowed = await checkRateLimit('create-comment', 'ip', ip, 10, 15 * 60);
+    if (!allowed) {
+      return NextResponse.json({ error: 'طلبات كثيرة. حاول بعد 15 دقيقة' }, { status: 429 });
+    }
+
     const { auth, errorResponse } = await requireApprovedUser(request);
     if (errorResponse || !auth) return errorResponse!;
 

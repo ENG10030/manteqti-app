@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { JWT_SECRET } from "@/lib/auth";
-import { checkRateLimit, recordFailedAttempt } from "@/lib/rate-limit";
-import crypto from "crypto";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -246,99 +245,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: validation.message, field: validation.field }, { status: 400 });
       }
       return NextResponse.json({ valid: true, last4: cardNumber.replace(/\s/g, "").slice(-4), brand: validation.brand });
-    }
-
-    if (action === "process") {
-      const validation = validateCard(cardNumber, cardExpiry, cardCvv, cardHolderName);
-      if (!validation.valid) {
-        await recordFailedAttempt("visa-payment", "userId", decoded.userId, request, `Card validation failed: ${validation.message}`);
-        return NextResponse.json({ error: validation.message, field: validation.field }, { status: 400 });
-      }
-
-      if (!settings?.visaEnabled) {
-        return NextResponse.json({ error: "الدفع بالبطاقة غير متاح حالياً" }, { status: 400 });
-      }
-
-      // Transaction ID verification to prevent double processing
-      if (transactionId) {
-        const existingTransaction = await db.walletTransaction.findFirst({
-          where: { userId: decoded.userId, reference: transactionId, method: "visa" },
-        });
-        if (existingTransaction) {
-          return NextResponse.json({
-            success: true,
-            message: "تم تنفيذ هذه المعاملة مسبقاً",
-            transaction: {
-              id: existingTransaction.id,
-              amount: existingTransaction.amount,
-              balance: existingTransaction.balance,
-              method: existingTransaction.method,
-              status: existingTransaction.status,
-              reference: existingTransaction.reference,
-              createdAt: existingTransaction.createdAt,
-            },
-            duplicate: true,
-          });
-        }
-      }
-
-      // Duplicate transaction check (same amount, same user, within 60 seconds)
-      const sixtySecondsAgo = new Date(Date.now() - 60 * 1000);
-      const recentDuplicate = await db.walletTransaction.findFirst({
-        where: { userId: decoded.userId, amount, method: "visa", status: "completed", createdAt: { gte: sixtySecondsAgo } },
-      });
-
-      if (recentDuplicate) {
-        return NextResponse.json({ error: "تم تنفيذ معاملة بنفس المبلغ مؤخراً، انتظر قليلاً" }, { status: 429 });
-      }
-
-      const txRef = `VISA-${Date.now()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
-      const maskedCard = `****${cardNumber.replace(/\s/g, "").slice(-4)}`;
-
-      const updatedUser = await db.user.update({
-        where: { id: decoded.userId },
-        data: { walletBalance: { increment: amount } },
-      });
-
-      const transaction = await db.walletTransaction.create({
-        data: {
-          userId: decoded.userId,
-          type: "recharge",
-          amount,
-          balance: updatedUser.walletBalance,
-          method: "visa",
-          description: `شحن محفظة ${amount} ج.م - بطاقة ${maskedCard} (${validation.brand})`,
-          reference: txRef,
-          status: "completed",
-        },
-      });
-
-      try {
-        await db.operationLog.create({
-          data: {
-            action: "WALLET_VISA_RECHARGE",
-            entityType: "WalletTransaction",
-            entityId: transaction.id,
-            userId: decoded.userId,
-            details: `شحن بطاقة ${maskedCard} مبلغ ${amount} ج.م`,
-            ipAddress: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown",
-          },
-        });
-      } catch {}
-
-      return NextResponse.json({
-        success: true,
-        message: "تم شحن المحفظة بنجاح ✅",
-        transaction: {
-          id: transaction.id,
-          amount: transaction.amount,
-          balance: transaction.balance,
-          method: transaction.method,
-          status: transaction.status,
-          reference: txRef,
-          createdAt: transaction.createdAt,
-        },
-      });
     }
 
     return NextResponse.json({ error: "إجراء غير صالح" }, { status: 400 });

@@ -6,6 +6,7 @@ import { requireApprovedUser } from '@/lib/auth-middleware';
 import { sendNewMessageEmail } from '@/lib/email';
 import { notifyRealtime } from '@/lib/realtime';
 import { JWT_SECRET } from '@/lib/auth';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +76,13 @@ export async function GET(request: NextRequest) {
 // إرسال رسالة جديدة
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting: 10 requests per 15 minutes per user
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const allowed = await checkRateLimit('send-message', 'ip', ip, 10, 15 * 60);
+    if (!allowed) {
+      return NextResponse.json({ error: 'طلبات كثيرة. حاول بعد 15 دقيقة' }, { status: 429 });
+    }
+
     const { auth, errorResponse } = await requireApprovedUser(request);
     if (errorResponse || !auth) return errorResponse!;
 

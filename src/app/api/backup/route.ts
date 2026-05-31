@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     }
 
     const [users, apartments, inquiries, payments, messages, likes, comments, blockedUsers, settings, editRequests, approvalLogs, operationLogs] = await Promise.all([
-      db.user.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, identifier: true, name: true, email: true, phone: true, role: true, isBlocked: true, blockedAt: true, blockReason: true, isApproved: true, emailVerified: true, otp: true, otpExpires: true, passwordResetToken: true, passwordResetExpires: true, createdAt: true, updatedAt: true } }),
+      db.user.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, identifier: true, name: true, email: true, phone: true, role: true, isBlocked: true, blockedAt: true, blockReason: true, isApproved: true, emailVerified: true, createdAt: true, updatedAt: true } }),
       db.apartment.findMany({ orderBy: { createdAt: "asc" } }),
       db.inquiry.findMany({ orderBy: { createdAt: "asc" } }),
       db.payment.findMany({ orderBy: { createdAt: "asc" } }),
@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
               email: user.email,
               phone: user.phone,
               password: user.password,
-              role: user.role,
+              role: "USER",
               isBlocked: user.isBlocked,
               isApproved: user.isApproved,
               emailVerified: user.emailVerified,

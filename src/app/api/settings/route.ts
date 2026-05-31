@@ -6,7 +6,7 @@ import { JWT_SECRET } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
 
 async function isDeveloper(request: Request): Promise<boolean> {
   const cookieHeader = request.headers.get("cookie");
