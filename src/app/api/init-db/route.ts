@@ -1,10 +1,35 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { cookies } from 'next/headers';
 import bcrypt from 'bcryptjs';
+import { verify } from 'jsonwebtoken';
 import { Prisma } from '@prisma/client';
+
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
+
+// 🔒 SECURITY FIX: Developer-only access to database initialization
+async function requireDeveloper(): Promise<boolean> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('auth-token')?.value;
+  if (!token) return false;
+
+  try {
+    const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
+    if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 export async function GET() {
   try {
+    // 🔒 SECURITY FIX: Require developer authentication before any DB operations
+    if (!(await requireDeveloper())) {
+      return NextResponse.json({ error: 'غير مصرح - تهيئة قاعدة البيانات متاحة للمطور فقط' }, { status: 403 });
+    }
+
     // الخطوة 1: التحقق من اتصال قاعدة البيانات
     try {
       await db.$connect();
@@ -17,8 +42,16 @@ export async function GET() {
       }, { status: 500 });
     }
 
-    const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
-    const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || 'admin123';
+    const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD;
+
+    // خطأ: DEVELOPER_PASSWORD مطلوب — مش مسموح بالباسورد الافتراضية
+    if (!DEVELOPER_PASSWORD) {
+      return NextResponse.json({
+        error: 'لا يمكن تهيئة قاعدة البيانات: DEVELOPER_PASSWORD غير موجود',
+        hint: 'أضف DEVELOPER_PASSWORD في متغيرات بيئة Vercel (باسورد قوية)',
+        note: 'الباسورد الافتراضية تم إزالتها لأسباب أمنية'
+      }, { status: 500 });
+    }
 
     // الخطوة 2: محاولة إنشاء المطور
     try {
@@ -70,7 +103,6 @@ export async function GET() {
           });
         }
       } catch (settingsError: any) {
-        // الإعدادات مش مهمة - المطور أهم
         console.error('Settings creation warning:', settingsError?.message);
       }
 
@@ -78,11 +110,10 @@ export async function GET() {
         success: true,
         message: 'تم تهيئة قاعدة البيانات بنجاح! ✅',
         admin: { email: admin.email, name: admin.name, role: admin.role },
-        loginCredentials: { email: DEVELOPER_EMAIL, password: DEVELOPER_PASSWORD }
+        // NO password in response — security fix
       });
 
     } catch (dbError: any) {
-      // لو الجدول مش موجود - نحتاج نعمل migration
       if (dbError instanceof Prisma.PrismaClientKnownRequestError) {
         if (dbError.code === 'P2021' || dbError.code === 'P2010' || 
             dbError.code === 'P1001' || dbError.code === 'P1008') {

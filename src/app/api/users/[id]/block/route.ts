@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { db } from "@/lib/db"
 
-const DEVELOPER_EMAIL = (process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com").toLowerCase()
-
 // حظر / إلغاء حظر المستخدم
 export async function POST(
   request: NextRequest,
@@ -13,7 +11,10 @@ export async function POST(
     const user = await getCurrentUser(request)
 
     if (!user || user.role !== "DEVELOPER") {
-      return NextResponse.json({ error: "غير مصرح لك بهذا الإجراء" }, { status: 403 })
+      return NextResponse.json(
+        { error: "غير مصرح لك بهذا الإجراء" },
+        { status: 403 }
+      )
     }
 
     const { id: userId } = await params
@@ -25,15 +26,17 @@ export async function POST(
     })
 
     if (!targetUser) {
-      return NextResponse.json({ error: "المستخدم غير موجود" }, { status: 404 })
+      return NextResponse.json(
+        { error: "المستخدم غير موجود" },
+        { status: 404 }
+      )
     }
 
-    // ╔══════════════════════════════════════════════════════╗
-    // ║  حماية مزدوجة: لا يمكن حظر المطور أبداً              ║
-    // ║  يتأكد من role + identifier                            ║
-    // ╚══════════════════════════════════════════════════════╝
-    if (targetUser.role === "DEVELOPER" || targetUser.identifier === DEVELOPER_EMAIL) {
-      return NextResponse.json({ error: "لا يمكن حظر مطور" }, { status: 403 })
+    if (targetUser.role === "DEVELOPER") {
+      return NextResponse.json(
+        { error: "لا يمكن حظر مطور" },
+        { status: 400 }
+      )
     }
 
     const finalAction = action || "block"
@@ -53,6 +56,7 @@ export async function POST(
         data: { status: "hidden" }
       })
 
+      // Log block
       try {
         await db.operationLog.create({
           data: {
@@ -65,7 +69,10 @@ export async function POST(
         });
       } catch {}
 
-      return NextResponse.json({ success: true, message: "تم حظر المستخدم وإخفاء جميع عقاراته" })
+      return NextResponse.json({
+        success: true,
+        message: "تم حظر المستخدم وإخفاء جميع عقاراته"
+      })
 
     } else if (finalAction === "unblock") {
       await db.user.update({
@@ -77,6 +84,7 @@ export async function POST(
         }
       })
 
+      // Log unblock
       try {
         await db.operationLog.create({
           data: {
@@ -89,15 +97,24 @@ export async function POST(
         });
       } catch {}
 
-      return NextResponse.json({ success: true, message: "تم إلغاء حظر المستخدم" })
+      return NextResponse.json({
+        success: true,
+        message: "تم إلغاء حظر المستخدم"
+      })
 
     } else {
-      return NextResponse.json({ error: "إجراء غير صالح" }, { status: 400 })
+      return NextResponse.json(
+        { error: "إجراء غير صالح" },
+        { status: 400 }
+      )
     }
 
   } catch (error) {
     console.error("Block user error:", error)
-    return NextResponse.json({ error: "حدث خطأ أثناء معالجة الطلب" }, { status: 500 })
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء معالجة الطلب" },
+      { status: 500 }
+    )
   }
 }
 
@@ -110,7 +127,10 @@ export async function GET(
     const user = await getCurrentUser(request)
 
     if (!user || user.role !== "DEVELOPER") {
-      return NextResponse.json({ error: "غير مصرح بك بهذا الإجراء" }, { status: 403 })
+      return NextResponse.json(
+        { error: "غير مصرح بك بهذا الإجراء" },
+        { status: 403 }
+      )
     }
 
     const { id: userId } = await params
@@ -120,7 +140,10 @@ export async function GET(
     })
 
     if (!userRecord) {
-      return NextResponse.json({ error: "المستخدم غير موجود" }, { status: 404 })
+      return NextResponse.json(
+        { error: "المستخدم غير موجود" },
+        { status: 404 }
+      )
     }
 
     const apartments = await db.apartment.findMany({
@@ -128,10 +151,16 @@ export async function GET(
       orderBy: { createdAt: "desc" }
     })
 
-    return NextResponse.json({ user: userRecord, apartments })
+    return NextResponse.json({
+      user: userRecord,
+      apartments
+    })
 
   } catch (error) {
     console.error("Get user error:", error)
-    return NextResponse.json({ error: "حدث خطأ أثناء جلب البيانات" }, { status: 500 })
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء جلب البيانات" },
+      { status: 500 }
+    )
   }
 }

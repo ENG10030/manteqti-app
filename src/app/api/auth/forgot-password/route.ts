@@ -15,6 +15,12 @@ export async function POST(request: NextRequest) {
 
     const normalizedEmail = email.toLowerCase().trim();
 
+    // 🔒 SECURITY FIX: حماية حساب المطور من هجمات إعادة تعيين كلمة المرور
+    const DEVELOPER_EMAIL = (process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com").toLowerCase();
+    if (normalizedEmail === DEVELOPER_EMAIL) {
+      return NextResponse.json({ error: 'لا يمكن إعادة تعيين كلمة مرور المطور من هنا' }, { status: 403 });
+    }
+
     // البحث عن المستخدم بهذا البريد
     const user = await db.user.findFirst({
       where: {
@@ -27,6 +33,14 @@ export async function POST(request: NextRequest) {
 
     // لأسباب أمنية، لا نكشف إذا كان البريد موجود أم لا
     if (!user) {
+      return NextResponse.json({
+        success: true,
+        message: 'إذا كان البريد مسجل، ستصلك رسالة لاستعادة كلمة المرور'
+      });
+    }
+
+    // 🔒 SECURITY FIX: أيضاً حماية المستخدم الذي لديه دور DEVELOPER
+    if (user.role === 'DEVELOPER' || user.identifier === DEVELOPER_EMAIL) {
       return NextResponse.json({
         success: true,
         message: 'إذا كان البريد مسجل، ستصلك رسالة لاستعادة كلمة المرور'

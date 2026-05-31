@@ -16,10 +16,16 @@ export async function GET(
     if (!token) {
       return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
     }
+    let decoded: any;
     try {
-      verify(token, JWT_SECRET);
+      decoded = verify(token, JWT_SECRET);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    // 🔒 SECURITY FIX: Developer role check — only developers can view edit requests
+    if (decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح - عرض طلبات التعديل متاح للمطور فقط' }, { status: 403 });
     }
 
     const { id } = await params;
@@ -171,7 +177,7 @@ export async function PUT(
   }
 }
 
-// حذف طلب تعديل (للمستخدم فقط إذا كان معلقاً)
+// حذف طلب تعديل (للمطور فقط)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

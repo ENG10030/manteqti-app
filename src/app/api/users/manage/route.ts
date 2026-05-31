@@ -4,8 +4,7 @@ import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
-const DEVELOPER_EMAIL = (process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com').toLowerCase();
-
+// Comprehensive user management (developer only)
 export async function POST(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -40,12 +39,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'المستخدم غير موجود' }, { status: 404 });
     }
 
-    // ╔══════════════════════════════════════════════════════╗
-    // ║  حماية مزدوجة: لا يمكن حظر/حذف المطور أبداً            ║
-    // ║  يتأكد من role + identifier                            ║
-    // ╚══════════════════════════════════════════════════════╝
-    if (targetUser.role === 'DEVELOPER' || targetUser.identifier === DEVELOPER_EMAIL) {
-      return NextResponse.json({ error: 'لا يمكن تنفيذ هذا الإجراء على مطور' }, { status: 403 });
+    if (targetUser.role === 'DEVELOPER') {
+      return NextResponse.json({ error: 'لا يمكن تنفيذ هذا الإجراء على مطور' }, { status: 400 });
     }
 
     switch (action) {
@@ -87,8 +82,8 @@ export async function POST(request: NextRequest) {
           where: { userId, status: 'Paid' },
           data: { status: 'Refunded', inquiryStatus: 'Revoked' },
         });
-        return NextResponse.json({
-          success: true,
+        return NextResponse.json({ 
+          success: true, 
           message: `تم إلغاء صلاحيات بيانات التواصل (${revoked.count} طلب)`,
         });
       }

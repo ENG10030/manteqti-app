@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-const DEVELOPER_EMAIL = (process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com").toLowerCase();
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
 
 async function isDeveloper(request: Request) {
   const cookieHeader = request.headers.get("cookie");
@@ -14,6 +14,8 @@ async function isDeveloper(request: Request) {
 
   try {
     const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
+    
+    // التحقق من دور DEVELOPER أو بريد المطور
     if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
 
     const user = await db.user.findUnique({
@@ -22,23 +24,6 @@ async function isDeveloper(request: Request) {
     });
 
     return user?.role === "DEVELOPER" || user?.identifier === DEVELOPER_EMAIL;
-  } catch {
-    return false;
-  }
-}
-
-// ╔═══════════════════════════════════════════════════════════╗
-// ║  دالة: فحص هل المستخدم المستهدف مطور (مزدوج)              ║
-// ║  تتأكد من الـ role والـ identifier                         ║
-// ╚═══════════════════════════════════════════════════════════╝
-async function isTargetDeveloper(userId: string): Promise<boolean> {
-  try {
-    const target = await db.user.findUnique({
-      where: { id: userId },
-      select: { role: true, identifier: true },
-    });
-    if (!target) return false;
-    return target.role === "DEVELOPER" || target.identifier === DEVELOPER_EMAIL;
   } catch {
     return false;
   }
@@ -54,6 +39,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const getAll = searchParams.get("all");
 
+    // إذا كان all=true، جلب جميع المستخدمين
     if (getAll === "true") {
       const users = await db.user.findMany({
         where: { role: { not: "DEVELOPER" } },
@@ -66,22 +52,27 @@ export async function GET(request: Request) {
           blockedAt: true,
           blockReason: true,
           createdAt: true,
-          _count: { select: { apartments: true } },
+          _count: {
+            select: { apartments: true },
+          },
         },
         orderBy: { createdAt: "desc" },
       });
       return NextResponse.json({ users });
     }
 
+    // وإلا جلب المحظورين فقط
     const blockedUsers = await db.user.findMany({
-      where: { isBlocked: true, role: { not: "DEVELOPER" }, identifier: { not: DEVELOPER_EMAIL } },
+      where: { isBlocked: true },
       select: {
         id: true,
         name: true,
         email: true,
         blockedAt: true,
         blockReason: true,
-        _count: { select: { apartments: true } },
+        _count: {
+          select: { apartments: true },
+        },
       },
       orderBy: { blockedAt: "desc" },
     });
@@ -89,7 +80,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ blockedUsers });
   } catch (error) {
     console.error("Get blocked users error:", error);
-    return NextResponse.json({ error: "حدث خطأ أثناء جلب البيانات" }, { status: 500 });
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء جلب البيانات" },
+      { status: 500 }
+    );
   }
 }
 
@@ -104,17 +98,22 @@ export async function POST(request: Request) {
     const { userId, action, reason } = body;
 
     if (!userId) {
-      return NextResponse.json({ error: "معرف المستخدم مطلوب" }, { status: 400 });
+      return NextResponse.json(
+        { error: "معرف المستخدم مطلوب" },
+        { status: 400 }
+      );
     }
 
+    // إذا لم يتم تحديد action، يكون الإجراء الافتراضي هو الحظر
     const finalAction = action || "block";
 
     if (finalAction === "block") {
-      // ╔══════════════════════════════════════════════════════╗
-      // ║  حماية مزدوجة: لا يمكن حظر المطور أبداً              ║
-      // ║  يتأكد من الـ role والـ identifier                      ║
-      // ╚══════════════════════════════════════════════════════╝
-      if (await isTargetDeveloper(userId)) {
+      // Prevent blocking a developer
+      const targetUser = await db.user.findUnique({
+        where: { id: userId },
+        select: { role: true, identifier: true },
+      });
+      if (targetUser?.role === "DEVELOPER" || targetUser?.identifier === DEVELOPER_EMAIL) {
         return NextResponse.json({ error: "لا يمكن حظر مطور" }, { status: 403 });
       }
 
@@ -127,6 +126,7 @@ export async function POST(request: Request) {
         },
       });
 
+      // تحديث حالة عقارات المستخدم إلى مخفية
       await db.apartment.updateMany({
         where: { createdBy: userId },
         data: { status: "hidden" },
@@ -147,6 +147,7 @@ export async function POST(request: Request) {
         },
       });
 
+      // إعادة عقارات المستخدم للمراجعة
       await db.apartment.updateMany({
         where: { createdBy: userId, status: "hidden" },
         data: { status: "pending" },
@@ -162,7 +163,10 @@ export async function POST(request: Request) {
     }
   } catch (error) {
     console.error("Block/unblock error:", error);
-    return NextResponse.json({ error: "حدث خطأ أثناء تنفيذ العملية" }, { status: 500 });
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء تنفيذ العملية" },
+      { status: 500 }
+    );
   }
 }
 
@@ -177,7 +181,10 @@ export async function DELETE(request: Request) {
     const userId = searchParams.get("userId");
 
     if (!userId) {
-      return NextResponse.json({ error: "معرف المستخدم مطلوب" }, { status: 400 });
+      return NextResponse.json(
+        { error: "معرف المستخدم مطلوب" },
+        { status: 400 }
+      );
     }
 
     const user = await db.user.update({
@@ -189,6 +196,7 @@ export async function DELETE(request: Request) {
       },
     });
 
+    // إعادة عقارات المستخدم للمراجعة
     await db.apartment.updateMany({
       where: { createdBy: userId, status: "hidden" },
       data: { status: "pending" },
@@ -201,6 +209,9 @@ export async function DELETE(request: Request) {
     });
   } catch (error) {
     console.error("Unblock error:", error);
-    return NextResponse.json({ error: "حدث خطأ أثناء إلغاء الحظر" }, { status: 500 });
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء إلغاء الحظر" },
+      { status: 500 }
+    );
   }
 }

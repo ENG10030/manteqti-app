@@ -39,6 +39,12 @@ export async function GET(
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
     }
 
+    // 🔒 SECURITY FIX: Ownership check - only payment owner OR developer can view
+    const isDeveloper = decoded.role === 'DEVELOPER';
+    if (!isDeveloper && payment.userId !== decoded.userId) {
+      return NextResponse.json({ error: 'غير مصرح - لا يمكنك عرض هذه الدفعة' }, { status: 403 });
+    }
+
     return NextResponse.json({
       id: payment.id,
       inquiryId: payment.inquiryId,

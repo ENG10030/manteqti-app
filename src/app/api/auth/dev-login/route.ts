@@ -1,266 +1,122 @@
-import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import bcrypt from "bcryptjs";
+import { sign } from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-const DEVELOPER_EMAIL = (process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com').toLowerCase();
-const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || 'admin123';
-
-// Rate limiting بالذاكرة
-const devLoginAttempts = new Map<string, { count: number; lastAttempt: number }>();
-const MAX_DEV_ATTEMPTS = 10;
-const DEV_LOCKOUT_TIME = 30 * 60 * 1000;
-
-function isDevRateLimited(ip: string): boolean {
-  const record = devLoginAttempts.get(ip);
-  if (!record) return false;
-  if (Date.now() - record.lastAttempt > DEV_LOCKOUT_TIME) {
-    devLoginAttempts.delete(ip);
-    return false;
-  }
-  return record.count >= MAX_DEV_ATTEMPTS;
-}
-
-function recordDevFailedAttempt(ip: string): void {
-  const record = devLoginAttempts.get(ip) || { count: 0, lastAttempt: 0 };
-  record.count++;
-  record.lastAttempt = Date.now();
-  devLoginAttempts.set(ip, record);
-}
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
+const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || "admin123";
 
 export async function POST(request: Request) {
   try {
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0] ||
-               request.headers.get('x-real-ip') || 'unknown';
-
-    if (isDevRateLimited(ip)) {
-      return NextResponse.json({ error: 'محاولات كثيرة. حاول بعد 30 دقيقة' }, { status: 429 });
-    }
-
     const body = await request.json();
-    const { email, password } = body;
+    const { password } = body;
 
-    // ╔══════════════════════════════════════════════════════════╗
-    // ║  الأمان: البريد وكلمة السر مطلوبين - بدون استثناءات     ║
-    // ╚══════════════════════════════════════════════════════════╝
-    if (!email || !password) {
-      return NextResponse.json({ error: 'البريد وكلمة المرور مطلوبان' }, { status: 400 });
+    // التحقق من كلمة مرور المطور (من Environment Variables)
+    if (!password) {
+      return NextResponse.json({ error: "كلمة المرور مطلوبة" }, { status: 400 });
     }
 
-    if (password.length < 4) {
-      recordDevFailedAttempt(ip);
-      return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 });
-    }
-
-    // ╔══════════════════════════════════════════════════════════╗
-    // ║  التحقق من البريد - لازم يطابق DEVELOPER_EMAIL بالظبط    ║
-    // ╚══════════════════════════════════════════════════════════╝
-    if (email.toLowerCase().trim() !== DEVELOPER_EMAIL) {
-      recordDevFailedAttempt(ip);
-      return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 });
-    }
-
-    // ╔══════════════════════════════════════════════════════════╗
-    // ║  التحقق من كلمة السر من Env أولاً (بدون داتابيز)          ║
-    // ║  لو كلمة السر غلط = رفض فوراً بدون ما نلمس الداتابيز     ║
-    // ╚══════════════════════════════════════════════════════════╝
+    // الطريقة 1: مقارنة مباشرة مع DEVELOPER_PASSWORD من env
     const isEnvPassword = password === DEVELOPER_PASSWORD;
 
-    if (!isEnvPassword) {
-      // كلمة السر مش مطابقة لـ Env - نجرب الداتابيز
-      let user: any = null;
-      try {
-        user = await db.user.findUnique({
-          where: { identifier: DEVELOPER_EMAIL }
-        });
-      } catch (dbError: any) {
-        console.error('DB find error:', dbError?.message);
-        // الداتابيز مش شغالة وكلمة السر غلط = رفض
-        recordDevFailedAttempt(ip);
-        return NextResponse.json({ error: 'كلمة المرور غير صحيحة' }, { status: 401 });
-      }
-
-      if (user) {
-        try {
-          const isDbPasswordValid = await bcrypt.compare(password, user.password);
-          if (!isDbPasswordValid) {
-            recordDevFailedAttempt(ip);
-            return NextResponse.json({ error: 'كلمة المرور غير صحيحة' }, { status: 401 });
-          }
-        } catch (bcryptErr) {
-          console.error('Bcrypt error:', bcryptErr);
-          recordDevFailedAttempt(ip);
-          return NextResponse.json({ error: 'كلمة المرور غير صحيحة' }, { status: 401 });
-        }
-      } else {
-        // كلمة السر مش مطابقة ولا فيه مستخدم في الداتابيز
-        recordDevFailedAttempt(ip);
-        return NextResponse.json({ error: 'كلمة المرور غير صحيحة' }, { status: 401 });
-      }
-    }
-
-    // ╔══════════════════════════════════════════════════════════╗
-    // ║  كلمة السر صحيحة - الآن نحاول نلاقي/ننشئ المستخدم        ║
-    // ╚══════════════════════════════════════════════════════════╝
-    let user: any = null;
-    let dbOk = true;
-
+    // البحث عن حساب المطور في قاعدة البيانات
+    let user = null;
     try {
       user = await db.user.findUnique({
-        where: { identifier: DEVELOPER_EMAIL }
+        where: { identifier: DEVELOPER_EMAIL },
       });
     } catch (dbError: any) {
-      console.error('DB Error (findUser):', dbError?.message);
-      dbOk = false;
+      console.error("DB find error:", dbError?.message);
     }
 
-    if (user) {
-      // ╔══════════════════════════════════════════════════════╗
-      // ║  المستخدم موجود - إلغاء أي حظر + مزامنة كلمة السر    ║
-      // ╚══════════════════════════════════════════════════════╝
+    // الطريقة 2: مقارنة مع كلمة السر المخزنة في الداتابيز
+    let isDbPassword = false;
+    if (user && user.password) {
       try {
-        const updates: any = {
-          role: 'DEVELOPER',
-          isApproved: true,
-          isBlocked: false,
-          blockedAt: null,
-          blockReason: null,
-          emailVerified: true,
-        };
-
-        // مزامنة كلمة السر لو اختلفت
-        let isDbPwValid = false;
-        try { isDbPwValid = await bcrypt.compare(DEVELOPER_PASSWORD, user.password); } catch {}
-        if (!isDbPwValid) {
-          updates.password = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
-        }
-
-        user = await db.user.update({
-          where: { id: user.id },
-          data: updates,
-        });
-      } catch (updateError: any) {
-        console.error('DB Error (updateUser):', updateError?.message);
-        // لو التحديث فشل، نكمل بالبيانات القديمة
+        isDbPassword = await bcrypt.compare(password, user.password);
+      } catch (bcryptError: any) {
+        console.error("Bcrypt error:", bcryptError?.message);
       }
+    }
 
-    } else if (dbOk) {
-      // ╔══════════════════════════════════════════════════════╗
-      // ║  الداتابيز شغالة بس المستخدم مش موجود = إنشئه          ║
-      // ╚══════════════════════════════════════════════════════╝
-      const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
+    // لا يتم القبول إلا إذا كلمة السر صحيحة من Env أو من الداتابيز
+    if (!isEnvPassword && !isDbPassword) {
+      return NextResponse.json({ error: "كلمة مرور المطور غير صحيحة" }, { status: 401 });
+    }
+
+    // لو المستخدم مش موجود، انشئه
+    if (!user) {
       try {
+        const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
         user = await db.user.create({
           data: {
+            name: "المطور",
             email: DEVELOPER_EMAIL,
             identifier: DEVELOPER_EMAIL,
-            name: 'المطور - أحمد',
-            phone: '+201234567890',
             password: hashedPassword,
-            role: 'DEVELOPER',
+            role: "DEVELOPER",
             isApproved: true,
-            isBlocked: false,
             emailVerified: true,
-          }
+          },
         });
       } catch (createError: any) {
-        console.error('DB Error (createUser):', createError?.message);
-        // محاولة ثانية
-        try {
-          user = await db.user.findFirst({
-            where: { OR: [{ identifier: DEVELOPER_EMAIL }, { email: DEVELOPER_EMAIL }] }
+        // لو فيه duplicate (موجود فعلاً بـ role مختلفة مثلاً)
+        if (createError?.code === 'P2002') {
+          user = await db.user.findUnique({
+            where: { identifier: DEVELOPER_EMAIL },
           });
-          if (user) {
-            user = await db.user.update({
-              where: { id: user.id },
-              data: {
-                identifier: DEVELOPER_EMAIL,
-                email: DEVELOPER_EMAIL,
-                role: 'DEVELOPER',
-                isApproved: true,
-                isBlocked: false,
-                blockedAt: null,
-                blockReason: null,
-                emailVerified: true,
-                password: hashedPassword,
-              }
-            });
-          }
-        } catch (retryError: any) {
-          console.error('DB Error (retry):', retryError?.message);
+        } else {
+          throw createError;
         }
       }
     }
 
-    // ╔══════════════════════════════════════════════════════════╗
-    // ║  لو الداتابيز كلها مش شغالة - سجل دخول بدون داتابيز     ║
-    // ║  باستخدام token مؤقت (مع إشعار إن الداتابيز مش متاحة)    ║
-    // ╚══════════════════════════════════════════════════════════╝
     if (!user) {
-      console.log('Dev login: DB unavailable, using offline mode');
-      
-      const token = jwt.sign(
-        { 
-          userId: 'developer-offline', 
-          identifier: DEVELOPER_EMAIL, 
-          role: 'DEVELOPER' 
-        },
-        JWT_SECRET,
-        { expiresIn: '1d' }
-      );
-
-      const response = NextResponse.json({
-        success: true,
-        message: 'تم تسجيل دخول المطور (وضع مؤقت - الداتابيز غير متاحة)',
-        user: { 
-          id: 'developer-offline', 
-          identifier: DEVELOPER_EMAIL, 
-          name: 'المطور - أحمد', 
-          role: 'DEVELOPER' 
-        },
-        warning: 'database_unavailable',
-      });
-
-      response.cookies.set('auth-token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 24,
-        path: '/',
-      });
-
-      return response;
+      return NextResponse.json({ error: "فشل إنشاء حساب المطور" }, { status: 500 });
     }
 
-    // مسح محاولات الدخول الفاشلة
-    devLoginAttempts.delete(ip);
-
-    // إنشاء JWT token
-    const token = jwt.sign(
-      { userId: user.id, identifier: user.identifier, role: 'DEVELOPER' },
+    // Generate JWT token
+    const token = sign(
+      { userId: user.id, identifier: user.identifier, role: user.role },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: "30d" }
     );
 
     const response = NextResponse.json({
-      success: true,
-      message: 'تم تسجيل دخول المطور بنجاح',
-      user: { id: user.id, identifier: user.identifier, name: user.name, role: user.role },
+      message: "تم تسجيل دخول المطور بنجاح",
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        identifier: user.identifier,
+        role: user.role,
+        isApproved: true,
+        emailVerified: true,
+      },
     });
 
-    response.cookies.set('auth-token', token, {
+    response.cookies.set("auth-token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7,
-      path: '/',
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 30,
+      path: "/",
     });
 
     return response;
-
   } catch (error: any) {
-    console.error('Dev login error:', error);
-    return NextResponse.json({ error: 'حدث خطأ في الدخول' }, { status: 500 });
+    console.error("Dev login error:", error);
+    return NextResponse.json({ 
+      error: "حدث خطأ", 
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined 
+    }, { status: 500 });
   }
+}
+
+export async function GET() {
+  return NextResponse.json({
+    available: true,
+    email: process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com"
+  });
 }

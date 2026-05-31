@@ -36,6 +36,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'البريد الإلكتروني غير مسجل' }, { status: 400 });
     }
 
+    // 🔒 SECURITY FIX: حماية حساب المطور من إعادة تعيين كلمة المرور
+    const DEVELOPER_EMAIL = (process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com").toLowerCase();
+    if (user.identifier === DEVELOPER_EMAIL || user.role === "DEVELOPER") {
+      return NextResponse.json({ error: 'لا يمكن إعادة تعيين كلمة مرور المطور' }, { status: 403 });
+    }
+
     // Verify OTP
     if (user.passwordResetToken !== otp) {
       return NextResponse.json({ error: 'رمز الاستعادة غير صحيح' }, { status: 400 });
