@@ -74,7 +74,7 @@ export async function POST(request: Request) {
     // Check if user is approved (developers are always approved)
     if (!user.isApproved && !isDeveloper) {
       const token = sign(
-        { userId: user.id, identifier: user.identifier, role: user.role },
+        { userId: user.id, identifier: user.identifier, role: user.role, name: user.name, email: user.email, isApproved: user.isApproved, emailVerified: user.emailVerified, isBlocked: user.isBlocked },
         JWT_SECRET,
         { expiresIn: "30d" }
       );
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
     }
 
     const token = sign(
-      { userId: user.id, identifier: user.identifier, role: user.role },
+      { userId: user.id, identifier: user.identifier, role: user.role, name: user.name, email: user.email, isApproved: user.isApproved, emailVerified: user.emailVerified, isBlocked: user.isBlocked },
       JWT_SECRET,
       { expiresIn: "30d" }
     );

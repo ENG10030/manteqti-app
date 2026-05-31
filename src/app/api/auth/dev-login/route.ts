@@ -74,9 +74,9 @@ export async function POST(request: Request) {
     const userName = user?.name || "المطور";
     const userEmail = user?.email || DEVELOPER_EMAIL;
 
-    // Generate JWT token
+    // Generate JWT token — contains ALL user data so /api/auth/me doesn't need DB
     const token = sign(
-      { userId, identifier: DEVELOPER_EMAIL, role: userRole },
+      { userId, identifier: DEVELOPER_EMAIL, role: userRole, name: userName, email: userEmail, isApproved: true, emailVerified: true, isBlocked: false },
       JWT_SECRET,
       { expiresIn: "30d" }
     );

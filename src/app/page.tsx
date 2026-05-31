@@ -549,7 +549,22 @@ export default function App() {
     let cancelled = false;
     
     const init = async () => {
-      // Step 1: Fetch auth
+      // Step 1: Restore session from localStorage FIRST (instant, no network)
+      try {
+        const savedUser = localStorage.getItem('manteqti_user');
+        if (savedUser) {
+          const parsed = JSON.parse(savedUser);
+          if (parsed && parsed.id && !parsed.isBlocked) {
+            setCurrentUser(parsed);
+            currentUserRef.current = parsed;
+            const isDev = parsed.identifier === DEVELOPER_EMAIL;
+            setIsDeveloper(isDev);
+            isDeveloperRef.current = isDev;
+          }
+        }
+      } catch {}
+
+      // Step 2: Verify session from server (no DB needed — reads JWT directly)
       try {
         const authRes = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
         const authData = await authRes.json();
@@ -557,10 +572,15 @@ export default function App() {
         if (authData.user) {
           setCurrentUser(authData.user);
           currentUserRef.current = authData.user;
+          // Save to localStorage as backup for next refresh
+          try { localStorage.setItem('manteqti_user', JSON.stringify(authData.user)); } catch {}
           if (authData.user.isBlocked) setIsBlocked(true);
           const isDev = authData.user.identifier === DEVELOPER_EMAIL;
           setIsDeveloper(isDev);
           isDeveloperRef.current = isDev;
+        } else {
+          // Server says no user — clear localStorage backup
+          try { localStorage.removeItem('manteqti_user'); } catch {}
         }
       } catch {}
 
@@ -1260,11 +1280,13 @@ export default function App() {
       const data = await res.json();
       if (res.ok) {
         if (data.pendingApproval) {
-          setCurrentUser(data.user); setShowAuth(false);
+          setCurrentUser(data.user); currentUserRef.current = data.user; setShowAuth(false);
+          try { localStorage.setItem('manteqti_user', JSON.stringify(data.user)); } catch {}
           if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
           addToast('حسابك قيد المراجعة. بانتظار موافقة الإدارة ⏳', 'info');
         } else {
-          setCurrentUser(data.user); setShowAuth(false);
+          setCurrentUser(data.user); currentUserRef.current = data.user; setShowAuth(false);
+          try { localStorage.setItem('manteqti_user', JSON.stringify(data.user)); } catch {}
           if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
           addToast(`مرحباً ${data.user.name}!`, 'success');
         }
@@ -1289,17 +1311,9 @@ export default function App() {
       const res = await fetch('/api/auth/dev-login', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: devEmail, password: devPassword }) });
       const data = await res.json();
       if (res.ok && data.user) {
-        try {
-          const meRes = await fetch('/api/auth/me', { credentials: 'include' });
-          const meData = await meRes.json();
-          if (meData.user) {
-            setCurrentUser({ id: meData.user.id, identifier: meData.user.identifier || devEmail, name: meData.user.name });
-          } else {
-            setCurrentUser({ id: data.user?.id || '', identifier: devEmail, name: data.user?.name || 'المطور' });
-          }
-        } catch {
-          setCurrentUser({ id: data.user?.id || '', identifier: devEmail, name: data.user?.name || 'المطور' });
-        }
+        setCurrentUser(data.user);
+        currentUserRef.current = data.user;
+        try { localStorage.setItem('manteqti_user', JSON.stringify(data.user)); } catch {}
         setIsDeveloper(true);
         setShowDevLogin(false);
         if (rememberMe) {
@@ -1395,7 +1409,7 @@ export default function App() {
     } finally { setOtpResendLoading(false); }
   };
 
-  const handleLogout = async () => { try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); } catch {} setCurrentUser(null); setIsDeveloper(false); addToast('تم تسجيل الخروج', 'info'); };
+  const handleLogout = async () => { try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); } catch {} setCurrentUser(null); currentUserRef.current = null; setIsDeveloper(false); try { localStorage.removeItem('manteqti_user'); } catch {} addToast('تم تسجيل الخروج', 'info'); };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
