@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getAuthContext, requireDeveloper } from '@/lib/auth-middleware';
 
+// Valid inquiryStatus values whitelist
+const VALID_INQUIRY_STATUSES = ['Pending', 'Paid', 'Refunded', 'Contacted', 'Agreement Reached', 'Contract Signed', 'Revoked', 'Cancelled'];
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -25,7 +28,6 @@ export async function GET(
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
     }
 
-    // Authorization: must be the payment owner or a developer
     if (auth!.role !== 'DEVELOPER') {
       if (payment.userId !== auth!.userId) {
         return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
@@ -74,18 +76,23 @@ export async function PUT(
     const { id } = await params;
     const data = await request.json();
 
-    // Validate status values
     const validStatuses = ['Pending', 'Paid', 'Failed', 'Refunded', 'Cancelled'];
     if (data.status && !validStatuses.includes(data.status)) {
       return NextResponse.json({ error: 'Invalid status value' }, { status: 400 });
     }
 
+    // HIGH FIX: Validate inquiryStatus against whitelist
+    if (data.inquiryStatus && !VALID_INQUIRY_STATUSES.includes(data.inquiryStatus)) {
+      return NextResponse.json({ error: 'Invalid inquiryStatus value' }, { status: 400 });
+    }
+
+    const updateData: Record<string, string> = {};
+    if (data.status) updateData.status = data.status;
+    if (data.inquiryStatus) updateData.inquiryStatus = data.inquiryStatus;
+
     const payment = await db.payment.update({
       where: { id },
-      data: {
-        status: data.status,
-        inquiryStatus: data.inquiryStatus
-      }
+      data: updateData,
     });
 
     return NextResponse.json({
@@ -115,12 +122,18 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid status value' }, { status: 400 });
     }
 
+    // HIGH FIX: Validate inquiryStatus against whitelist
+    if (data.inquiryStatus && !VALID_INQUIRY_STATUSES.includes(data.inquiryStatus)) {
+      return NextResponse.json({ error: 'Invalid inquiryStatus value' }, { status: 400 });
+    }
+
+    const updateData: Record<string, string> = {};
+    if (data.status) updateData.status = data.status;
+    if (data.inquiryStatus) updateData.inquiryStatus = data.inquiryStatus;
+
     const payment = await db.payment.update({
       where: { id },
-      data: {
-        status: data.status,
-        inquiryStatus: data.inquiryStatus
-      }
+      data: updateData,
     });
 
     return NextResponse.json({

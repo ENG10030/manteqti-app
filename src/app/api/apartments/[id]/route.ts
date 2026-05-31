@@ -16,32 +16,26 @@ async function getCurrentUser(request: Request) {
 
   try {
     const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as unknown as { userId: string };
-    return await db.user.findUnique({
-      where: { id: decoded.userId },
-    });
+    return await db.user.findUnique({ where: { id: decoded.userId } });
   } catch {
     return null;
   }
 }
 
-// GET - جلب عقار واحد (يتطلب تسجيل دخول)
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // 🔒 التحقق من تسجيل الدخول — الزائر لا يمكنه رؤية بيانات العقار
     const user = await getCurrentUser(request);
     if (!user) {
       return NextResponse.json({ error: "يجب تسجيل الدخول لعرض بيانات العقار", code: "AUTH_REQUIRED" }, { status: 401 });
     }
-
     if (user.isBlocked) {
       return NextResponse.json({ error: "تم حظر حسابك", code: "BLOCKED" }, { status: 403 });
     }
 
     const { id } = await params;
-
     const apartment = await db.apartment.findUnique({
       where: { id },
       include: {
@@ -56,17 +50,11 @@ export async function GET(
       },
     });
 
-    if (!apartment) {
-      return NextResponse.json({ error: "العقار غير موجود" }, { status: 404 });
-    }
-
+    if (!apartment) return NextResponse.json({ error: "العقار غير موجود" }, { status: 404 });
     return NextResponse.json({ apartment });
   } catch (error) {
     console.error("Get apartment error:", error);
-    return NextResponse.json(
-      { error: "حدث خطأ أثناء جلب العقار" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "حدث خطأ أثناء جلب العقار" }, { status: 500 });
   }
 }
 
@@ -77,32 +65,20 @@ export async function PUT(
 ) {
   try {
     const user = await getCurrentUser(request);
-    if (!user) {
-      return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
-    }
+    if (!user) return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
 
     const { id } = await params;
     const body = await request.json();
 
-    const apartment = await db.apartment.findUnique({
-      where: { id },
-    });
-
-    if (!apartment) {
-      return NextResponse.json({ error: "العقار غير موجود" }, { status: 404 });
-    }
-
+    const apartment = await db.apartment.findUnique({ where: { id } });
+    if (!apartment) return NextResponse.json({ error: "العقار غير موجود" }, { status: 404 });
     if (apartment.createdBy !== user.id && user.role !== "DEVELOPER") {
       return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
     }
 
-    // Prevent non-developers from setting privileged fields
-    if (user.role !== 'DEVELOPER') {
-      delete body.isFeatured;
-      delete body.isVip;
-      delete body.status;
-    }
-
+    // HIGH FIX: Explicit whitelist — only allow specific fields for non-developers
+    const isDev = user.role === 'DEVELOPER';
+    
     const updatedApartment = await db.apartment.update({
       where: { id },
       data: {
@@ -118,26 +94,21 @@ export async function PUT(
         images: body.images,
         ownerPhone: body.ownerPhone,
         mapLink: body.mapLink,
-        status: body.status,
-        statusChangedAt: body.statusChangedAt ? new Date(body.statusChangedAt) : undefined,
-        isFeatured: body.isFeatured,
-        isVip: body.isVip,
+        // Only developers can change status, isFeatured, isVip
+        ...(isDev ? {
+          status: body.status,
+          statusChangedAt: body.statusChangedAt ? new Date(body.statusChangedAt) : undefined,
+          isFeatured: body.isFeatured,
+          isVip: body.isVip,
+        } : {}),
       },
     });
 
-    // Notify all connected clients
     notifyApartmentsChanged('updated', id);
-
-    return NextResponse.json({
-      message: "تم تحديث العقار بنجاح",
-      apartment: updatedApartment,
-    });
+    return NextResponse.json({ message: "تم تحديث العقار بنجاح", apartment: updatedApartment });
   } catch (error) {
     console.error("Update apartment error:", error);
-    return NextResponse.json(
-      { error: "حدث خطأ أثناء تحديث العقار" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "حدث خطأ أثناء تحديث العقار" }, { status: 500 });
   }
 }
 
@@ -156,97 +127,53 @@ export async function PATCH(
     const body = await request.json();
     const { action, isFeatured } = body;
 
-    const apartment = await db.apartment.findUnique({
-      where: { id },
-    });
-
-    if (!apartment) {
-      return NextResponse.json({ error: "العقار غير موجود" }, { status: 404 });
-    }
+    const apartment = await db.apartment.findUnique({ where: { id } });
+    if (!apartment) return NextResponse.json({ error: "العقار غير موجود" }, { status: 404 });
 
     let updateData: any = {};
+    if (action === "approve") updateData.status = "available";
+    else if (action === "reject") updateData.status = "rejected";
+    else if (action === "feature") updateData.isFeatured = isFeatured !== undefined ? isFeatured : true;
+    else if (isFeatured !== undefined) updateData.isFeatured = isFeatured;
 
-    if (action === "approve") {
-      updateData.status = "available";
-    } else if (action === "reject") {
-      updateData.status = "rejected";
-    } else if (action === "feature") {
-      updateData.isFeatured = isFeatured !== undefined ? isFeatured : true;
-    } else {
-      if (isFeatured !== undefined) updateData.isFeatured = isFeatured;
-    }
-
-    const updatedApartment = await db.apartment.update({
-      where: { id },
-      data: updateData,
-    });
-
-    // Notify all connected clients
+    const updatedApartment = await db.apartment.update({ where: { id }, data: updateData });
     notifyApartmentsChanged('approved', id);
 
-    // Send email notification to apartment owner
     if (apartment.createdBy) {
       const owner = await db.user.findUnique({ where: { id: apartment.createdBy }, select: { name: true, email: true } });
       if (owner?.email && process.env.RESEND_API_KEY) {
-        if (action === 'approve') {
-          sendApartmentApprovedEmail({ to: owner.email, name: owner.name, apartmentTitle: apartment.title, apartmentType: apartment.type, price: apartment.price, area: apartment.area });
-        } else if (action === 'reject') {
-          sendApartmentRejectedEmail({ to: owner.email, name: owner.name, apartmentTitle: apartment.title });
-        }
+        if (action === 'approve') sendApartmentApprovedEmail({ to: owner.email, name: owner.name, apartmentTitle: apartment.title, apartmentType: apartment.type, price: apartment.price, area: apartment.area });
+        else if (action === 'reject') sendApartmentRejectedEmail({ to: owner.email, name: owner.name, apartmentTitle: apartment.title });
       }
     }
 
-    return NextResponse.json({
-      message: "تم تحديث العقار بنجاح",
-      apartment: updatedApartment,
-    });
+    return NextResponse.json({ message: "تم تحديث العقار بنجاح", apartment: updatedApartment });
   } catch (error) {
     console.error("Patch apartment error:", error);
-    return NextResponse.json(
-      { error: "حدث خطأ أثناء تحديث العقار" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "حدث خطأ أثناء تحديث العقار" }, { status: 500 });
   }
 }
 
-// DELETE - حذف عقار
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await getCurrentUser(request);
-    if (!user) {
-      return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
-    }
+    if (!user) return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
 
     const { id } = await params;
-
-    const apartment = await db.apartment.findUnique({
-      where: { id },
-    });
-
-    if (!apartment) {
-      return NextResponse.json({ error: "العقار غير موجود" }, { status: 404 });
-    }
-
+    const apartment = await db.apartment.findUnique({ where: { id } });
+    if (!apartment) return NextResponse.json({ error: "العقار غير موجود" }, { status: 404 });
     if (apartment.createdBy !== user.id && user.role !== "DEVELOPER") {
       return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
     }
 
-    await db.apartment.delete({
-      where: { id },
-    });
-
-    // Notify all connected clients
+    await db.apartment.delete({ where: { id } });
     notifyApartmentsChanged('deleted', id);
-
     return NextResponse.json({ message: "تم حذف العقار بنجاح" });
   } catch (error) {
     console.error("Delete apartment error:", error);
-    return NextResponse.json(
-      { error: "حدث خطأ أثناء حذف العقار" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "حدث خطأ أثناء حذف العقار" }, { status: 500 });
   }
 }

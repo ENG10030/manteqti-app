@@ -9,13 +9,11 @@ export async function POST(request: NextRequest) {
     const { auth, errorResponse } = await requireDeveloper(request);
     if (errorResponse) return errorResponse;
 
-    // التحقق من اتصال قاعدة البيانات
     try {
       await db.$connect();
-    } catch (connError: any) {
+    } catch {
       return NextResponse.json({
         error: 'فشل الاتصال بقاعدة البيانات',
-        details: connError?.message || String(connError),
         hint: 'تأكد من تعيين DATABASE_URL في متغيرات بيئة Vercel'
       }, { status: 500 });
     }
@@ -24,21 +22,13 @@ export async function POST(request: NextRequest) {
     const developerEmail = process.env.DEVELOPER_EMAIL;
     
     if (!developerPassword) {
-      return NextResponse.json({
-        error: 'لم يتم تعيين كلمة مرور المطور',
-        hint: 'يجب تعيين DEVELOPER_PASSWORD في متغيرات البيئة'
-      }, { status: 500 });
+      return NextResponse.json({ error: 'لم يتم تعيين كلمة مرور المطور', hint: 'يجب تعيين DEVELOPER_PASSWORD' }, { status: 500 });
     }
     if (!developerEmail) {
-      return NextResponse.json({
-        error: 'لم يتم تعيين إيميل المطور',
-        hint: 'يجب تعيين DEVELOPER_EMAIL في متغيرات البيئة'
-      }, { status: 500 });
+      return NextResponse.json({ error: 'لم يتم تعيين إيميل المطور', hint: 'يجب تعيين DEVELOPER_EMAIL' }, { status: 500 });
     }
 
-    const existingAdmin = await db.user.findUnique({
-      where: { identifier: developerEmail }
-    });
+    const existingAdmin = await db.user.findUnique({ where: { identifier: developerEmail } });
 
     if (existingAdmin) {
       return NextResponse.json({
@@ -67,17 +57,9 @@ export async function POST(request: NextRequest) {
       if (!existingSettings) {
         await db.settings.create({
           data: {
-            contactFee: 50,
-            regularFee: 30,
-            featuredFee: 100,
-            premiumFee: 200,
-            vipFee: 300,
-            saleDisplayFee: 100,
-            rentDisplayFee: 75,
-            otherServicesFee: 50,
-            highlightFee: 150,
-            priorityListingFee: 200,
-            verifiedListingFee: 250,
+            contactFee: 50, regularFee: 30, featuredFee: 100, premiumFee: 200,
+            vipFee: 300, saleDisplayFee: 100, rentDisplayFee: 75, otherServicesFee: 50,
+            highlightFee: 150, priorityListingFee: 200, verifiedListingFee: 250,
             currency: 'ج.م',
           }
         });
@@ -93,20 +75,18 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error: any) {
+    // HIGH FIX: Don't expose Prisma error details to client
+    console.error('Init DB error:', error);
+    
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (['P2021', 'P2010', 'P1001', 'P1008'].includes(error.code)) {
         return NextResponse.json({
           error: 'الجداول غير موجودة في قاعدة البيانات',
-          details: `Prisma Error ${error.code}: ${error.message}`,
-          hint: 'يجب تشغيل: npx prisma db push --schema prisma/schema.prisma'
+          hint: 'يجب تشغيل: npx prisma db push'
         }, { status: 500 });
       }
     }
 
-    return NextResponse.json({
-      error: 'خطأ في قاعدة البيانات',
-      details: error?.message || String(error),
-      prismaCode: error?.code || null,
-    }, { status: 500 });
+    return NextResponse.json({ error: 'خطأ في قاعدة البيانات' }, { status: 500 });
   }
 }

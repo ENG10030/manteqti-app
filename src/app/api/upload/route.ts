@@ -1,18 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { uploadImage, uploadVideo, ALLOWED_IMAGE_TYPES, ALLOWED_VIDEO_TYPES, MAX_FILE_SIZE } from '@/lib/cloudinary';
-import { cookies } from 'next/headers';
-import { verify } from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+import { JWT_SECRET } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
-    // التحقق من تسجيل الدخول
+    // CRITICAL FIX: Actually verify the JWT token (was reading but never verifying before!)
+    const { cookies } = await import('next/headers');
+    const { verify } = await import('jsonwebtoken');
+    
     const cookieStore = await cookies();
     const token = cookieStore.get('auth-token')?.value;
 
     if (!token) {
       return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+
+    // CRITICAL FIX: Verify token — no hardcoded fallback secret
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+    } catch {
+      return NextResponse.json({ error: 'انتهت صلاحية الجلسة' }, { status: 401 });
+    }
+
+    if (!decoded.userId) {
+      return NextResponse.json({ error: 'رمز غير صالح' }, { status: 401 });
     }
 
     const formData = await request.formData();
@@ -23,7 +35,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'لم يتم إرسال ملف' }, { status: 400 });
     }
 
-    // التحقق من نوع الملف
     const allowedTypes = type === 'video' ? ALLOWED_VIDEO_TYPES : ALLOWED_IMAGE_TYPES;
     if (!allowedTypes.includes(file.type)) {
       return NextResponse.json({
@@ -31,17 +42,14 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // التحقق من حجم الملف
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json({
         error: 'حجم الملف أكبر من الحد المسموح (50MB)'
       }, { status: 400 });
     }
 
-    // قراءة الملف
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // رفع الملف
     let result: { url: string; publicId: string };
     if (type === 'video') {
       result = await uploadVideo(buffer);
@@ -58,9 +66,9 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Upload error:', error);
+    // FIX: Don't expose internal error details
     return NextResponse.json({
-      error: 'حدث خطأ أثناء رفع الملف',
-      details: error instanceof Error ? error.message : String(error)
+      error: 'حدث خطأ أثناء رفع الملف'
     }, { status: 500 });
   }
 }

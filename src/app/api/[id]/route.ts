@@ -28,18 +28,13 @@ export async function GET(
 
     const apartment = await db.apartment.findUnique({
       where: { id },
-      include: {
-        inquiries: {
-          orderBy: { createdAt: 'desc' },
-        },
-      },
+      include: { inquiries: { orderBy: { createdAt: 'desc' } } },
     });
 
     if (!apartment) {
       return NextResponse.json({ error: 'العقار غير موجود' }, { status: 404 });
     }
 
-    // Filter out PII from inquiries for unauthenticated users
     if (!auth) {
       const filteredApartment = {
         ...apartment,
@@ -70,7 +65,6 @@ export async function PUT(
     if (!auth) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
 
     const { id } = await params;
-
     const authorized = await isOwnerOrDeveloper(request, id);
     if (!authorized) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
@@ -86,19 +80,16 @@ export async function PUT(
     let updateData: Record<string, unknown> = {};
 
     if (body.action === 'approve') {
-      updateData = {
-        status: 'available',
-        approvedBy: auth.userId,
-        approvedAt: new Date(),
-      };
+      updateData = { status: 'available', approvedBy: auth.userId, approvedAt: new Date() };
     } else if (body.action === 'reject') {
       updateData = { status: 'rejected' };
     } else {
+      // HIGH FIX: Explicit whitelist of allowed fields (prevent mass assignment)
+      const isDev = auth.role === 'DEVELOPER';
       updateData = {
         title: body.title,
         description: body.description,
         type: body.type,
-        status: body.status,
         price: body.price,
         area: body.area,
         bedrooms: body.bedrooms,
@@ -108,16 +99,12 @@ export async function PUT(
         images: body.images,
         videos: body.videos,
         amenities: body.amenities,
-        isFeatured: body.isFeatured,
-        isVip: body.isVip,
+        // Only developers can set these fields
+        ...(isDev ? { status: body.status, isFeatured: body.isFeatured, isVip: body.isVip } : {}),
       };
     }
 
-    const apartment = await db.apartment.update({
-      where: { id },
-      data: updateData,
-    });
-
+    const apartment = await db.apartment.update({ where: { id }, data: updateData });
     return NextResponse.json({ success: true, apartment });
   } catch (error) {
     console.error('Error updating apartment:', error);
@@ -135,11 +122,8 @@ export async function DELETE(
     if (!auth) return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
 
     const { id } = await params;
-
     const authorized = await isOwnerOrDeveloper(request, id);
-    if (!authorized) {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
-    }
+    if (!authorized) return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
 
     await db.payment.deleteMany({ where: { inquiry: { apartmentId: id } } });
     await db.inquiry.deleteMany({ where: { apartmentId: id } });
@@ -164,16 +148,11 @@ export async function PATCH(
     const body = await request.json();
 
     const updateData: Record<string, unknown> = {};
-    
     if (body.status !== undefined) updateData.status = body.status;
     if (body.isFeatured !== undefined) updateData.isFeatured = body.isFeatured;
     if (body.isVip !== undefined) updateData.isVip = body.isVip;
 
-    const apartment = await db.apartment.update({
-      where: { id },
-      data: updateData,
-    });
-
+    const apartment = await db.apartment.update({ where: { id }, data: updateData });
     return NextResponse.json({ success: true, apartment });
   } catch (error) {
     console.error('Error patching apartment:', error);

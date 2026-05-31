@@ -30,12 +30,10 @@ export async function GET(request: Request) {
     if (type && type !== "all") {
       where.type = type;
     }
-
     if (area && area !== "all") {
       where.area = area;
     }
 
-    // FIX: Use subquery instead of fetching ALL blocked users
     if (!isDeveloper) {
       try {
         const blockedUserIds = (await db.user.findMany({
@@ -54,7 +52,8 @@ export async function GET(request: Request) {
       where,
       include: {
         user: {
-          select: { id: true, name: true, email: true },
+          // MEDIUM FIX: Don't expose email publicly
+          select: { id: true, name: true },
         },
       },
       orderBy: [
@@ -81,8 +80,6 @@ export async function POST(request: Request) {
     if (!auth) {
       return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
     }
-
-    // getAuthContext already checks isBlocked
     if (!auth.isApproved && auth.role !== 'DEVELOPER') {
       return NextResponse.json(
         { error: "حسابك قيد المراجعة. بانتظار موافقة الإدارة", pendingApproval: true },
@@ -92,36 +89,33 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const {
-      title,
-      description,
-      price,
-      area,
-      bedrooms,
-      bathrooms,
-      floor,
-      apartmentSize,
-      ownerPhone,
-      mapLink,
-      type,
-      images,
-      videos,
+      title, description, price, area, bedrooms, bathrooms,
+      floor, apartmentSize, ownerPhone, mapLink, type, images, videos,
     } = body;
 
     if (!title || !price || !area || !ownerPhone) {
-      return NextResponse.json(
-        { error: "البيانات الأساسية مطلوبة" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "البيانات الأساسية مطلوبة" }, { status: 400 });
+    }
+
+    // MEDIUM FIX: Input validation
+    if (typeof title !== 'string' || title.trim().length < 3 || title.length > 200) {
+      return NextResponse.json({ error: "العنوان يجب أن يكون بين 3 و 200 حرف" }, { status: 400 });
+    }
+    if (typeof price !== 'number' && typeof price !== 'string') {
+      return NextResponse.json({ error: "السعر غير صالح" }, { status: 400 });
+    }
+    if (typeof ownerPhone !== 'string' || !/^01[0125][0-9]{8}$/.test(ownerPhone)) {
+      return NextResponse.json({ error: "رقم الهاتف غير صالح" }, { status: 400 });
     }
 
     const aptStatus = auth.role === "DEVELOPER" ? "available" : "pending";
 
     const apartment = await db.apartment.create({
       data: {
-        title,
-        description: description || "",
+        title: title.trim(),
+        description: (description || "").trim().slice(0, 5000),
         price: parseInt(price),
-        area,
+        area: area.trim().slice(0, 100),
         bedrooms: parseInt(bedrooms) || 1,
         bathrooms: parseInt(bathrooms) || 1,
         floor: floor ? parseInt(floor) : null,
@@ -138,17 +132,11 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({
-      message:
-        auth.role === "DEVELOPER"
-          ? "تم إضافة العقار بنجاح"
-          : "تم إضافة العقار وهو في انتظار المراجعة",
+      message: auth.role === "DEVELOPER" ? "تم إضافة العقار بنجاح" : "تم إضافة العقار وهو في انتظار المراجعة",
       apartment,
     });
   } catch (error) {
     console.error("Create apartment error:", error);
-    return NextResponse.json(
-      { error: "حدث خطأ أثناء إضافة العقار" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "حدث خطأ أثناء إضافة العقار" }, { status: 500 });
   }
 }

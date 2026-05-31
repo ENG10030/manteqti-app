@@ -6,6 +6,11 @@ import { JWT_SECRET } from '@/lib/auth';
 
 export const dynamic = "force-dynamic";
 
+function sanitizeString(str: unknown): string {
+  if (typeof str !== 'string') return '';
+  return str.replace(/[<>&"']/g, '').trim().slice(0, 500);
+}
+
 // Comprehensive user management (developer only)
 export async function POST(request: NextRequest) {
   try {
@@ -47,18 +52,12 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case 'block': {
+        const sanitizedReason = sanitizeString(reason) || 'تم الحظر من قبل الإدارة';
         await db.user.update({
           where: { id: userId },
-          data: {
-            isBlocked: true,
-            blockedAt: new Date(),
-            blockReason: reason || 'تم الحظر من قبل الإدارة',
-          },
+          data: { isBlocked: true, blockedAt: new Date(), blockReason: sanitizedReason },
         });
-        await db.apartment.updateMany({
-          where: { createdBy: userId },
-          data: { status: 'hidden' },
-        });
+        await db.apartment.updateMany({ where: { createdBy: userId }, data: { status: 'hidden' } });
         await db.message.deleteMany({ where: { senderId: userId } });
         return NextResponse.json({ success: true, message: 'تم حظر المستخدم وإخفاء عقاراته' });
       }
@@ -68,68 +67,56 @@ export async function POST(request: NextRequest) {
           where: { id: userId },
           data: { isBlocked: false, blockedAt: null, blockReason: null },
         });
-        await db.apartment.updateMany({
-          where: { createdBy: userId, status: 'hidden' },
-          data: { status: 'pending' },
-        });
+        await db.apartment.updateMany({ where: { createdBy: userId, status: 'hidden' }, data: { status: 'pending' } });
         return NextResponse.json({ success: true, message: 'تم إلغاء حظر المستخدم' });
       }
 
       case 'revoke-contact': {
-        const revoked = await db.inquiry.updateMany({
-          where: { userId, lifecycleStatus: 'Contacted' },
-          data: { lifecycleStatus: 'Revoked' },
-        });
-        await db.payment.updateMany({
-          where: { userId, status: 'Paid' },
-          data: { status: 'Refunded', inquiryStatus: 'Revoked' },
-        });
-        return NextResponse.json({ 
-          success: true, 
-          message: `تم إلغاء صلاحيات بيانات التواصل (${revoked.count} طلب)`,
-        });
+        const revoked = await db.inquiry.updateMany({ where: { userId, lifecycleStatus: 'Contacted' }, data: { lifecycleStatus: 'Revoked' } });
+        await db.payment.updateMany({ where: { userId, status: 'Paid' }, data: { status: 'Refunded', inquiryStatus: 'Revoked' } });
+        return NextResponse.json({ success: true, message: `تم إلغاء صلاحيات بيانات التواصل (${revoked.count} طلب)` });
       }
 
       case 'hide-apartments': {
-        const result = await db.apartment.updateMany({
-          where: { createdBy: userId },
-          data: { status: 'hidden' },
-        });
+        const result = await db.apartment.updateMany({ where: { createdBy: userId }, data: { status: 'hidden' } });
         return NextResponse.json({ success: true, message: `تم إخفاء ${result.count} عقار` });
       }
 
       case 'show-apartments': {
-        const result = await db.apartment.updateMany({
-          where: { createdBy: userId, status: 'hidden' },
-          data: { status: 'pending' },
-        });
+        const result = await db.apartment.updateMany({ where: { createdBy: userId, status: 'hidden' }, data: { status: 'pending' } });
         return NextResponse.json({ success: true, message: `تم إعادة ${result.count} عقار للمراجعة` });
       }
 
       case 'delete': {
-        await db.message.deleteMany({ where: { senderId: userId } });
-        await db.like.deleteMany({ where: { userId } });
-        await db.comment.deleteMany({ where: { userId } });
-        await db.propertyEditRequest.deleteMany({ where: { userId } });
-        const userInquiries = await db.inquiry.findMany({ where: { userId }, select: { id: true } });
-        for (const inq of userInquiries) {
-          await db.payment.deleteMany({ where: { inquiryId: inq.id } });
-        }
-        await db.inquiry.deleteMany({ where: { userId } });
-        const userApartments = await db.apartment.findMany({ where: { createdBy: userId }, select: { id: true } });
-        for (const apt of userApartments) {
-          await db.like.deleteMany({ where: { apartmentId: apt.id } });
-          await db.comment.deleteMany({ where: { apartmentId: apt.id } });
-          await db.propertyEditRequest.deleteMany({ where: { apartmentId: apt.id } });
-          const aptInq = await db.inquiry.findMany({ where: { apartmentId: apt.id }, select: { id: true } });
-          for (const inq of aptInq) {
-            await db.payment.deleteMany({ where: { inquiryId: inq.id } });
+        // CRITICAL FIX: Wrap ALL cascade deletes in a transaction
+        await db.$transaction(async (tx) => {
+          await tx.message.deleteMany({ where: { senderId: userId } });
+          await tx.like.deleteMany({ where: { userId } });
+          await tx.comment.deleteMany({ where: { userId } });
+          await tx.propertyEditRequest.deleteMany({ where: { userId } });
+          
+          const userInquiries = await tx.inquiry.findMany({ where: { userId }, select: { id: true } });
+          if (userInquiries.length > 0) {
+            await tx.payment.deleteMany({ where: { inquiryId: { in: userInquiries.map(i => i.id) } } });
           }
-          await db.inquiry.deleteMany({ where: { apartmentId: apt.id } });
-        }
-        await db.apartment.deleteMany({ where: { createdBy: userId } });
-        await db.blockedUser.deleteMany({ where: { userId } });
-        await db.user.delete({ where: { id: userId } });
+          await tx.inquiry.deleteMany({ where: { userId } });
+          
+          const userApartments = await tx.apartment.findMany({ where: { createdBy: userId }, select: { id: true } });
+          for (const apt of userApartments) {
+            await tx.like.deleteMany({ where: { apartmentId: apt.id } });
+            await tx.comment.deleteMany({ where: { apartmentId: apt.id } });
+            await tx.propertyEditRequest.deleteMany({ where: { apartmentId: apt.id } });
+            const aptInq = await tx.inquiry.findMany({ where: { apartmentId: apt.id }, select: { id: true } });
+            if (aptInq.length > 0) {
+              await tx.payment.deleteMany({ where: { inquiryId: { in: aptInq.map(i => i.id) } } });
+            }
+            await tx.inquiry.deleteMany({ where: { apartmentId: apt.id } });
+          }
+          await tx.apartment.deleteMany({ where: { createdBy: userId } });
+          await tx.blockedUser.deleteMany({ where: { userId } });
+          await tx.user.delete({ where: { id: userId } });
+        });
+        
         return NextResponse.json({ success: true, message: 'تم حذف المستخدم وكل بياناته نهائياً' });
       }
 
