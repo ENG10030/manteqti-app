@@ -142,10 +142,10 @@ export async function POST(request: Request) {
       }
 
       // 4. Check Settings has data
-      const settingsCount = await db.$queryRaw<Array<{ count: bigint }>>`
-        SELECT COUNT(*)::bigint as "count" FROM "Settings"
+      const settingsCount = await db.$queryRaw<Array<{ count: number }>>`
+        SELECT COUNT(*)::int as "count" FROM "Settings"
       `;
-      if (settingsCount[0]?.count === 0n) {
+      if (settingsCount[0]?.count === 0) {
         await db.$executeRaw`
           INSERT INTO "Settings" ("id", "contactFee", "regularFee", "featuredFee", "premiumFee", "vipFee", "saleDisplayFee", "rentDisplayFee", "otherServicesFee", "highlightFee", "priorityListingFee", "verifiedListingFee", "currency")
           VALUES (gen_random_uuid()::text, 50, 30, 100, 200, 300, 100, 75, 50, 150, 200, 250, 'ج.م')
