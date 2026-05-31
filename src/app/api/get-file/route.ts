@@ -1,24 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
+import { db } from '@/lib/db';
 
-export const dynamic = "force-dynamic";
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
 
-const JWT_SECRET = process.env.JWT_SECRET;
-
-// 🔒 التحقق من أن الطلب من مطور
-async function verifyDeveloper(): Promise<boolean> {
-  if (!JWT_SECRET) return false;
-  
+async function isDeveloper(request: NextRequest): Promise<boolean> {
+  const token = request.cookies.get('auth-token')?.value;
+  if (!token) return false;
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) return false;
-    
-    const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as unknown as { role?: string };
-    return decoded.role === 'DEVELOPER';
+    const decoded = verify(token, JWT_SECRET) as { userId?: string; role?: string; identifier?: string };
+    if (decoded.role === 'DEVELOPER' || decoded.identifier === DEVELOPER_EMAIL) return true;
+    if (decoded.userId) {
+      const user = await db.user.findUnique({ where: { id: decoded.userId }, select: { role: true, identifier: true } });
+      return user?.role === 'DEVELOPER' || user?.identifier === DEVELOPER_EMAIL;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -31,14 +30,15 @@ const fileMap: Record<string, string> = {
   'payments': 'src/app/api/payments/route.ts',
   'payments-id': 'src/app/api/payments/[id]/route.ts',
   'schema': 'prisma/schema.prisma',
-  'page': 'src/app/page.tsx.backup',
+  'page': 'src/app/page.tsx.backup', // Original app code (not the download page)
   'fileupload': 'src/components/file-upload.tsx',
 };
 
 export async function GET(request: NextRequest) {
-  // 🔒 الأمان: فقط المطور يمكنه تحميل ملفات المشروع
-  if (!(await verifyDeveloper())) {
-    return NextResponse.json({ error: 'غير مصرح - هذه العملية مخصصة للمطور فقط' }, { status: 403 });
+  // Auth check: only developers can access source files
+  const dev = await isDeveloper(request);
+  if (!dev) {
+    return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
   }
 
   const searchParams = request.nextUrl.searchParams;
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
   const filePath = fileMap[fileKey];
 
   if (!filePath) {
-    return NextResponse.json({ error: 'File not found', available: Object.keys(fileMap) }, { status: 404 });
+    return NextResponse.json({ error: 'File not found' }, { status: 404 });
   }
 
   try {
@@ -56,10 +56,10 @@ export async function GET(request: NextRequest) {
     return new NextResponse(content, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Cache-Control': 'no-cache',
       }
     });
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to read file: ' + filePath }, { status: 500 });
+    return NextResponse.json({ error: 'File not found' }, { status: 404 });
   }
 }

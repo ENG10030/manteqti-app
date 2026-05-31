@@ -4,49 +4,56 @@ import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
-export const dynamic = "force-dynamic";
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
 
+async function authenticateRequest(request: NextRequest): Promise<{ userId: string; role?: string; identifier?: string } | null> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('auth-token')?.value;
+  if (!token) return null;
+  try {
+    return verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
+  } catch {
+    return null;
+  }
+}
 
+async function isDeveloper(request: NextRequest): Promise<boolean> {
+  const auth = await authenticateRequest(request);
+  if (!auth) return false;
+  if (auth.role === 'DEVELOPER' || auth.identifier === DEVELOPER_EMAIL) return true;
+  try {
+    const user = await db.user.findUnique({ where: { id: auth.userId }, select: { role: true, identifier: true } });
+    return user?.role === 'DEVELOPER' || user?.identifier === DEVELOPER_EMAIL;
+  } catch { return false; }
+}
+
+async function isOwnerOrDeveloper(request: NextRequest, apartmentId: string): Promise<boolean> {
+  const auth = await authenticateRequest(request);
+  if (!auth) return false;
+  // Check developer
+  if (auth.role === 'DEVELOPER' || auth.identifier === DEVELOPER_EMAIL) return true;
+  try {
+    const user = await db.user.findUnique({ where: { id: auth.userId }, select: { role: true, identifier: true } });
+    if (user?.role === 'DEVELOPER' || user?.identifier === DEVELOPER_EMAIL) return true;
+  } catch { /* continue */ }
+  // Check owner
+  try {
+    const apartment = await db.apartment.findUnique({ where: { id: apartmentId }, select: { userId: true } });
+    return apartment?.userId === auth.userId;
+  } catch { return false; }
+}
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // 🔒 التحقق من تسجيل الدخول — الزائر لا يمكنه رؤية بيانات العقار
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول لعرض بيانات العقار', code: 'AUTH_REQUIRED' }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
-
-    // 🔒 التحقق من أن المستخدم غير محظور
-    const userRecord = await db.user.findUnique({ where: { id: decoded.userId }, select: { id: true, isBlocked: true, role: true } });
-    if (!userRecord || userRecord.isBlocked) {
-      return NextResponse.json({ error: userRecord ? 'تم حظر حسابك' : 'المستخدم غير موجود' }, { status: userRecord ? 403 : 401 });
-    }
-
-    const isDeveloper = userRecord.role === 'DEVELOPER';
-
     const { id } = await params;
+    const auth = await authenticateRequest(request);
 
     const apartment = await db.apartment.findUnique({
       where: { id },
       include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            phone: isDeveloper ? true : false,
-            email: isDeveloper ? true : false,
-          },
-        },
         inquiries: {
           orderBy: { createdAt: 'desc' },
         },
@@ -57,17 +64,19 @@ export async function GET(
       return NextResponse.json({ error: 'العقار غير موجود' }, { status: 404 });
     }
 
-    // 🔒 PII Protection: إخفاء بيانات التواصل من المستخدمين العاديين
-    if (!isDeveloper) {
-      apartment.ownerPhone = '***';
-      apartment.mapLink = null;
-      if (apartment.inquiries) {
-        apartment.inquiries = apartment.inquiries.map((inq: any) => ({
-          ...inq,
-          email: undefined,
-          phone: undefined,
-        }));
-      }
+    // Filter out PII from inquiries for unauthenticated users
+    if (!auth) {
+      const filteredApartment = {
+        ...apartment,
+        inquiries: apartment.inquiries.map(inquiry => ({
+          id: inquiry.id,
+          name: inquiry.name,
+          message: inquiry.message,
+          createdAt: inquiry.createdAt,
+          // Exclude email and phone for unauthenticated users
+        })),
+      };
+      return NextResponse.json(filteredApartment);
     }
 
     return NextResponse.json(apartment);
@@ -82,25 +91,20 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
-    } catch {
+    const auth = await authenticateRequest(request);
+    if (!auth) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }
 
     const { id } = await params;
-    const body = await request.json();
 
-    // 🔒 فقط المطور يمكنه تحديث العقارات عبر هذا المسار
-    if (decoded.role !== 'DEVELOPER') {
+    // Authorization: must be owner or developer
+    const authorized = await isOwnerOrDeveloper(request, id);
+    if (!authorized) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
     }
+
+    const body = await request.json();
 
     const existingApartment = await db.apartment.findUnique({
       where: { id },
@@ -163,24 +167,18 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
+    const auth = await authenticateRequest(request);
+    if (!auth) {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
-    } catch {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-    }
-
-    // 🔒 فقط المطور يمكنه الحذف (DELETE)
-    if (decoded.role !== 'DEVELOPER') {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
     }
 
     const { id } = await params;
+
+    // Authorization: must be owner or developer
+    const authorized = await isOwnerOrDeveloper(request, id);
+    if (!authorized) {
+      return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
+    }
 
     await db.payment.deleteMany({ where: { inquiry: { apartmentId: id } } });
     await db.inquiry.deleteMany({ where: { apartmentId: id } });
@@ -198,22 +196,10 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // 🔒 التحقق من تسجيل الدخول
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
-    } catch {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-    }
-
-    // 🔒 فقط المطور يمكنه تعديل حالة العقار
-    if (decoded.role !== 'DEVELOPER') {
-      return NextResponse.json({ error: "غير مصرح - فقط المطور يمكنه تعديل حالة العقار" }, { status: 403 });
+    // PATCH requires DEVELOPER authentication
+    const dev = await isDeveloper(request);
+    if (!dev) {
+      return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
     }
 
     const { id } = await params;

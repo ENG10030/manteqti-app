@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, MapPin, Bed, Bath, Phone, ExternalLink, X,
-  CreditCard, MessageSquare, Loader2, Eye, EyeOff, Lock,
+  CreditCard, MessageSquare, Loader2, Eye, Lock,
   Sun, Moon, Check, AlertCircle, RefreshCw, Star,
   TrendingUp, Filter, Heart, User, MessageCircle, ThumbsUp,
   BarChart3, DollarSign, Settings, LogOut, Menu, AlertTriangle, 
@@ -12,20 +12,14 @@ import {
   ChevronLeft, ChevronRight, Plus, Trash2, ShieldCheck, Hourglass,
   Send, Bot, Home, Crown, Diamond, Ban, Brain, Search,
   VideoIcon, Activity, Wallet, Key, ArrowUp, Layers,
-  Download, Smartphone, Zap, Save, Mail, UserPlus, Upload,
+  Download, Smartphone, Zap, Save,
   Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
-import { WalletModal } from '@/components/wallet-modal';
 import { io } from 'socket.io-client';
 
 // Developer credentials
-const DEVELOPER_EMAIL = process.env.NEXT_PUBLIC_DEVELOPER_EMAIL || '';
-// Helper: detect developer by email OR role (role works even if NEXT_PUBLIC_DEVELOPER_EMAIL is not set)
-function checkIsDev(user: { identifier?: string; role?: string } | null | undefined): boolean {
-  if (!user) return false;
-  return user.identifier === DEVELOPER_EMAIL || user.role === 'DEVELOPER';
-}
+const DEVELOPER_EMAIL = process.env.NEXT_PUBLIC_DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
 
 // Contact fee now comes from settings (dynamic)
 
@@ -88,108 +82,7 @@ function processApartment(apt: any): Apartment {
   return { ...apt, images: parseJsonArray(apt.images), videos: parseJsonArray(apt.videos), amenities: parseJsonArray(apt.amenities) };
 }
 
-function getRelativeTime(dateStr: string): string {
-  try {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffSec = Math.floor(diffMs / 1000);
-    const diffMin = Math.floor(diffSec / 60);
-    const diffHour = Math.floor(diffMin / 60);
-    const diffDay = Math.floor(diffHour / 24);
-    const diffWeek = Math.floor(diffDay / 7);
-    if (diffSec < 60) return 'الآن';
-    if (diffMin < 60) return `منذ ${diffMin} دقائق`;
-    if (diffHour < 24) return `منذ ${diffHour} ساعات`;
-    if (diffDay < 7) return `منذ ${diffDay} أيام`;
-    if (diffWeek < 4) return `منذ ${diffWeek} أسابيع`;
-    return date.toLocaleDateString('ar-EG');
-  } catch {
-    return '';
-  }
-}
-
 const egyptianAreas = ['المعادي', 'مدينة نصر', 'الدقي', 'المهندسين', 'حلوان', 'عين شمس', 'مصر الجديدة', 'التجمع الخامس', 'الشيخ زايد', 'العباسية', 'المقطم', 'شبرا', 'الزمالك', 'التجمع الأول', 'القاهرة الجديدة', 'أكتوبر', 'العبور', 'الشروق', 'الرقابة', 'فيصل', 'جاردن سيتي', 'المعصرة', 'عابدين', 'الزهراء', 'حدائق القبة', 'مدينة السلام', '15 مايو', 'حلوان الجديدة', 'بدر', 'النزهة', 'المريوطية'];
-
-// Delete Options Dialog Component
-function DeleteOptionsDialog({ isOpen, userName, darkMode, onConfirm, onCancel, loading }: { isOpen: boolean; userName: string; darkMode: boolean; onConfirm: (options: { deleteApartments: boolean; deleteMessages: boolean; deletePayments: boolean; deleteInquiries: boolean; deleteAccount: boolean }) => void; onCancel: () => void; loading: boolean; }) {
-  const [options, setOptions] = useState({ deleteApartments: true, deleteMessages: true, deletePayments: true, deleteInquiries: true, deleteAccount: true });
-
-  const toggleAll = () => {
-    const newState = !options.deleteAccount;
-    setOptions({ deleteApartments: newState, deleteMessages: newState, deletePayments: newState, deleteInquiries: newState, deleteAccount: newState });
-  };
-
-  const toggleOption = (key: keyof typeof options) => {
-    const newOptions = { ...options, [key]: !options[key] };
-    // If unchecking deleteAccount, uncheck all
-    if (key === 'deleteAccount' && !options.deleteAccount) {
-      setOptions({ deleteApartments: true, deleteMessages: true, deletePayments: true, deleteInquiries: true, deleteAccount: true });
-    } else {
-      // If all sub-items unchecked, also uncheck deleteAccount
-      if (key !== 'deleteAccount') {
-        const { deleteAccount: _, ...subItems } = newOptions;
-        const allUnchecked = Object.values(subItems).every(v => !v);
-        if (allUnchecked) newOptions.deleteAccount = false;
-      }
-      setOptions(newOptions);
-    }
-  };
-
-  if (!isOpen) return null;
-  const items = [
-    { key: 'deleteApartments' as const, label: 'جميع عقاراته', icon: Building2, color: 'text-red-500' },
-    { key: 'deleteMessages' as const, label: 'جميع رسائله', icon: MessageSquare, color: 'text-orange-500' },
-    { key: 'deleteInquiries' as const, label: 'جميع استفساراته', icon: MessageCircle, color: 'text-amber-500' },
-    { key: 'deletePayments' as const, label: 'جميع مدفوعاته', icon: CreditCard, color: 'text-rose-500' },
-  ];
-
-  return (
-    <AnimatePresence>
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onCancel}>
-        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()}
-          className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
-          <div className="text-center mb-4">
-            <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-3 ${darkMode ? 'bg-red-900/50' : 'bg-red-100'}`}>
-              <Trash2 className="h-7 w-7 text-red-500" />
-            </div>
-            <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>حذف "{userName}"</h3>
-            <p className={`text-sm mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>اختر البيانات اللي تريد حذفها</p>
-          </div>
-
-          {/* Toggle All */}
-          <button onClick={toggleAll} className={`w-full flex items-center gap-3 p-3 rounded-xl mb-3 transition-all ${options.deleteAccount ? (darkMode ? 'bg-red-900/30 border border-red-700/50' : 'bg-red-50 border border-red-200') : (darkMode ? 'bg-slate-700 border border-slate-600' : 'bg-slate-50 border border-slate-200')}`}>
-            <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${options.deleteAccount ? 'bg-red-500 border-red-500' : (darkMode ? 'border-slate-500' : 'border-slate-300')}`}>
-              {options.deleteAccount && <Check className="h-3.5 w-3.5 text-white" />}
-            </div>
-            <Trash2 className={`h-5 w-5 ${options.deleteAccount ? 'text-red-500' : (darkMode ? 'text-slate-400' : 'text-slate-300')}`} />
-            <span className={`font-bold ${options.deleteAccount ? (darkMode ? 'text-red-400' : 'text-red-600') : (darkMode ? 'text-slate-400' : 'text-slate-400')}`}>حذف الحساب بالكامل</span>
-          </button>
-
-          {/* Individual Items */}
-          <div className={`space-y-2 mb-5 p-3 rounded-xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50'}`}>
-            {items.map(item => (
-              <button key={item.key} onClick={() => toggleOption(item.key)} className={`w-full flex items-center gap-3 p-2.5 rounded-lg transition-all ${options[item.key] ? (darkMode ? 'bg-slate-600/50' : 'bg-white shadow-sm') : ''}`}>
-                <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${options[item.key] ? 'bg-red-500 border-red-500' : (darkMode ? 'border-slate-500' : 'border-slate-300')}`}>
-                  {options[item.key] && <Check className="h-3.5 w-3.5 text-white" />}
-                </div>
-                <item.icon className={`h-4.5 w-4.5 ${options[item.key] ? item.color : (darkMode ? 'text-slate-500' : 'text-slate-300')}`} />
-                <span className={`text-sm ${options[item.key] ? (darkMode ? 'text-white' : 'text-slate-700') : (darkMode ? 'text-slate-500' : 'text-slate-400')}`}>{item.label}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="flex gap-3">
-            <button onClick={onCancel} disabled={loading} className={`flex-1 py-3 rounded-xl font-medium transition-all ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>إلغاء</button>
-            <button onClick={() => onConfirm(options)} disabled={loading || (!options.deleteApartments && !options.deleteMessages && !options.deletePayments && !options.deleteInquiries && !options.deleteAccount)} className={`flex-1 py-3 rounded-xl font-medium text-white transition-all bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 disabled:opacity-40`}>
-              {loading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'تنفيذ الحذف'}
-            </button>
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
-  );
-}
 
 // Confirm Dialog Component
 function ConfirmDialog({ isOpen, title, message, confirmText = 'تأكيد', cancelText = 'إلغاء', onConfirm, onCancel, type = 'warning', loading = false, darkMode }: { isOpen: boolean; title: string; message: string; confirmText?: string; cancelText?: string; onConfirm: () => void; onCancel: () => void; type?: 'danger' | 'warning' | 'info'; loading?: boolean; darkMode: boolean; }) {
@@ -239,6 +132,7 @@ export default function App() {
 
   // Modal states
   const [showAuth, setShowAuth] = useState(false);
+  const [showDevLogin, setShowDevLogin] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showDevPanel, setShowDevPanel] = useState(false);
@@ -281,34 +175,11 @@ export default function App() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showForgotNewPassword, setShowForgotNewPassword] = useState(false);
-  const [showForgotConfirmPassword, setShowForgotConfirmPassword] = useState(false);
-  const [showDevChangePasswords, setShowDevChangePasswords] = useState([false, false, false]); // [current, new, confirm]
-  const [forgotOtp, setForgotOtp] = useState('');
+  const [devEmail, setDevEmail] = useState('');
+  const [devPassword, setDevPassword] = useState('');
+  const [devLoading, setDevLoading] = useState(false);
   const [aptForm, setAptForm] = useState({ title: '', price: '', area: '', bedrooms: '1', bathrooms: '1', floor: '', apartmentSize: '', description: '', ownerPhone: '', mapLink: '', type: 'rent' as 'rent' | 'sale', listingType: 'regular' as 'regular' | 'featured' | 'vip' });
   const [aptSubmitting, setAptSubmitting] = useState(false);
-  const [walletBalance, setWalletBalance] = useState(0);
-  const [showWallet, setShowWallet] = useState(false);
-  const [walletTransactions, setWalletTransactions] = useState<Array<{id:string;type:string;amount:number;balance:number;method:string|null;description:string|null;reference:string|null;status:string;createdAt:string}>>([]);
-  const [rechargeAmount, setRechargeAmount] = useState('');
-  const [rechargeMethod, setRechargeMethod] = useState('');
-  const [rechargeReference, setRechargeReference] = useState('');
-  const [rechargeSubmitting, setRechargeSubmitting] = useState(false);
-  const [walletTab, setWalletTab] = useState<'recharge' | 'transactions'>('recharge');
-  // Payment methods (fetched from API)
-  const [paymentMethods, setPaymentMethods] = useState<Array<{id:string;name:string;nameEn:string;icon:string;enabled:boolean;account?:string;accountLabel?:string;instructions?:string;color:string;minAmount:number;maxAmount:number}>>([]);
-  // Visa card payment state
-  const [showVisaPayment, setShowVisaPayment] = useState(false);
-  const [visaAmount, setVisaAmount] = useState('');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvv, setCardCvv] = useState('');
-  const [cardHolderName, setCardHolderName] = useState('');
-  const [visaSubmitting, setVisaSubmitting] = useState(false);
-  const [visaStep, setVisaStep] = useState<'enter' | 'processing' | 'success'>('enter');
-  const [cardError, setCardError] = useState<{field?:string;message:string}>({message:''});
-  const [pendingRecharges, setPendingRecharges] = useState<Array<{id:string;userId:string;amount:number;method:string;reference:string|null;createdAt:string;user:{name:string;email:string;phone:string|null;identifier:string}}>>([]);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
   const [inquiryForm, setInquiryForm] = useState({ name: '', email: '', phone: '', message: '' });
@@ -327,14 +198,8 @@ export default function App() {
   const [chatLoading, setChatLoading] = useState(false);
   const [aiDescLoading, setAiDescLoading] = useState(false);
   const [devPasswordChange, setDevPasswordChange] = useState({ current: '', new: '', confirm: '' });
-  const [showDevLogin, setShowDevLogin] = useState(false);
-  const [showDevPassword, setShowDevPassword] = useState(false);
-  const [devEmail, setDevEmail] = useState('');
-  const [devPassword, setDevPassword] = useState('');
-  const [devLoading, setDevLoading] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; type: 'danger' | 'warning' | 'info'; loading?: boolean; confirmText?: string; cancelText?: string; }>({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
-  const [deleteOptionsDialog, setDeleteOptionsDialog] = useState<{ isOpen: boolean; userId: string; userName: string; loading: boolean; }>({ isOpen: false, userId: '', userName: '', loading: false });
   const [settings, setSettings] = useState<{ 
     contactFee: number; 
     regularFee: number;
@@ -348,19 +213,6 @@ export default function App() {
     priorityListingFee: number;
     verifiedListingFee: number;
     currency: string;
-    // Payment receiving accounts
-    vodafoneCashNumber: string;
-    orangeCashNumber: string;
-    etisalatCashNumber: string;
-    bankAccountName: string;
-    bankAccountNumber: string;
-    bankName: string;
-    instapayAccount: string;
-    visaEnabled: boolean;
-    visaPublicKey: string;
-    visaSecretKey: string;
-    minRechargeAmount: number;
-    maxRechargeAmount: number;
   }>({ 
     contactFee: 50, 
     regularFee: 30,
@@ -373,26 +225,13 @@ export default function App() {
     highlightFee: 150,
     priorityListingFee: 200,
     verifiedListingFee: 250,
-    currency: 'ج.م',
-    vodafoneCashNumber: '',
-    orangeCashNumber: '',
-    etisalatCashNumber: '',
-    bankAccountName: '',
-    bankAccountNumber: '',
-    bankName: '',
-    instapayAccount: '',
-    visaEnabled: false,
-    visaPublicKey: '',
-    visaSecretKey: '',
-    minRechargeAmount: 10,
-    maxRechargeAmount: 50000,
+    currency: 'ج.م'
   });
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'favorites' | 'payments' | 'messages' | 'userApprovals' | 'users' | 'blocked' | 'settings' | 'logs' | 'editRequests' | 'userLogs'>('stats');
   const [likes, setLikes] = useState<Array<{ id: string; apartmentId: string; userId: string; user: { id: string; name: string }; apartment: { id: string; title: string } | null; createdAt: string }>>([]);
-  const [comments, setComments] = useState<Array<{ id: string; apartmentId: string; userId: string; content: string; status: string; user: { id: string; name: string; identifier?: string }; apartment?: { id: string; title: string }; createdAt: string }>>([]);
-  const [apartmentComments, setApartmentComments] = useState<Array<{ id: string; apartmentId: string; userId: string; content: string; status: string; user: { id: string; name: string; identifier?: string }; createdAt: string }>>([]);
+  const [comments, setComments] = useState<Array<{ id: string; apartmentId: string; userId: string; content: string; status: string; user: { id: string; name: string }; createdAt: string }>>([]);
   const [newComment, setNewComment] = useState('');
   const [commentLoading, setCommentLoading] = useState(false);
 
@@ -400,30 +239,6 @@ export default function App() {
   const [editRequests, setEditRequests] = useState<PropertyEditRequest[]>([]);
   const [showEditRequestModal, setShowEditRequestModal] = useState(false);
   const [selectedApartmentForEdit, setSelectedApartmentForEdit] = useState<Apartment | null>(null);
-
-  // User Statistics for Developer Dashboard
-  const [userStats, setUserStats] = useState<{
-    totalUsers: number;
-    approvedUsers: number;
-    pendingApprovalUsers: number;
-    blockedUsers: number;
-    emailVerifiedUsers: number;
-    emailUnverifiedUsers: number;
-    todayUsers: number;
-    weekUsers: number;
-    monthUsers: number;
-  } | null>(null);
-  const [recentUsers, setRecentUsers] = useState<Array<{
-    id: string;
-    name: string;
-    email: string;
-    phone: string | null;
-    identifier: string;
-    isApproved: boolean;
-    isBlocked: boolean;
-    emailVerified: boolean;
-    createdAt: string;
-  }>>([]);
   const [editRequestForm, setEditRequestForm] = useState({
     newImages: [] as string[],
     newVideos: [] as string[],
@@ -520,9 +335,9 @@ export default function App() {
   // ========== fetchApartments (stable function, ref updated each render) ==========
   const fetchApartments = async (retryCount = 0, isInitial = false) => {
     try {
-      if (isInitial && retryCount === 0) setLoading(true);
+      if (isInitial) setLoading(true);
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       const res = await fetch('/api/apartments', { signal: controller.signal });
       clearTimeout(timeoutId);
       const data = await res.json();
@@ -532,19 +347,9 @@ export default function App() {
       setAllApartments(processedData);
       setError(null);
     } catch (err: any) {
-      if (isInitial && retryCount < 3) {
-        setTimeout(() => fetchApartments(retryCount + 1, true), 1500 * (retryCount + 1));
-      } else {
-        setApartments([]);
-        setAllApartments([]);
-      }
-    } finally {
-      if (isInitial && retryCount === 0) {
-        setLoading(false);
-        setInitialLoad(false);
-        initialLoadRef.current = false;
-      }
-    }
+      if (retryCount < 3) setTimeout(() => fetchApartments(retryCount + 1, isInitial), 1000 * (retryCount + 1));
+      else { setApartments([]); setAllApartments([]); }
+    } finally { if (isInitial) { setLoading(false); setInitialLoad(false); initialLoadRef.current = false; } }
   };
   // Keep ref in sync so socket/polling can call latest version
   useEffect(() => { fetchApartmentsRef.current = fetchApartments; });
@@ -554,38 +359,18 @@ export default function App() {
     let cancelled = false;
     
     const init = async () => {
-      // Step 1: Restore session from localStorage FIRST (instant, no network)
+      // Step 1: Fetch auth
       try {
-        const savedUser = localStorage.getItem('manteqti_user');
-        if (savedUser) {
-          const parsed = JSON.parse(savedUser);
-          if (parsed && parsed.id && !parsed.isBlocked) {
-            setCurrentUser(parsed);
-            currentUserRef.current = parsed;
-            const isDev = checkIsDev(parsed);
-            setIsDeveloper(isDev);
-            isDeveloperRef.current = isDev;
-          }
-        }
-      } catch {}
-
-      // Step 2: Verify session from server (no DB needed — reads JWT directly)
-      try {
-        const authRes = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
+        const authRes = await fetch('/api/auth/me');
         const authData = await authRes.json();
         if (cancelled) return;
         if (authData.user) {
           setCurrentUser(authData.user);
           currentUserRef.current = authData.user;
-          // Save to localStorage as backup for next refresh
-          try { localStorage.setItem('manteqti_user', JSON.stringify(authData.user)); } catch {}
           if (authData.user.isBlocked) setIsBlocked(true);
-          const isDev = checkIsDev(authData.user);
+          const isDev = authData.user.identifier === DEVELOPER_EMAIL || authData.user.role === 'DEVELOPER';
           setIsDeveloper(isDev);
           isDeveloperRef.current = isDev;
-        } else {
-          // Server says no user — clear localStorage backup
-          try { localStorage.removeItem('manteqti_user'); } catch {}
         }
       } catch {}
 
@@ -616,15 +401,6 @@ export default function App() {
           if (cancelled) return;
           if (Array.isArray(pendData)) {
             setMyPendingApartments(pendData.filter((apt: Apartment) => apt.createdBy === user.id));
-          }
-        } catch {}
-        // Wallet balance
-        try {
-          const walletRes = await fetch('/api/wallet');
-          const walletData = await walletRes.json();
-          if (cancelled) return;
-          if (walletRes.ok) {
-            setWalletBalance(walletData.balance || 0);
           }
         } catch {}
       }
@@ -675,18 +451,11 @@ export default function App() {
   const fetchDevData = async () => {
     if (!isDeveloper) return;
     try {
-      const [inqRes, payRes, pendRes, statsRes] = await Promise.all([
-        fetch('/api/inquiries'),
-        fetch('/api/payments'),
-        fetch('/api/users?pending=true'),
-        fetch('/api/users?stats=true'),
-      ]);
-      const [inqData, payData, pendData, statsData] = await Promise.all([inqRes.json(), payRes.json(), pendRes.json(), statsRes.json()]);
-      setInquiries(Array.isArray(inqData) ? inqData : []);
+      const [inqRes, payRes, pendRes] = await Promise.all([fetch('/api/inquiries'), fetch('/api/payments'), fetch('/api/users?pending=true')]);
+      const [inqData, payData, pendData] = await Promise.all([inqRes.json(), payRes.json(), pendRes.json()]);
+      setInquiries(Array.isArray(inqData) ? inqData : []); 
       setPayments(Array.isArray(payData) ? payData : []);
       if (pendData.users) setPendingUsers(pendData.users);
-      if (statsData.stats) setUserStats(statsData.stats);
-      if (Array.isArray(statsData.recentUsers)) setRecentUsers(statsData.recentUsers);
       fetchApprovalLogs();
     } catch {}
   };
@@ -715,26 +484,25 @@ export default function App() {
     } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
   };
 
-  const handleDeleteUser = async (userId: string, userName: string, options?: { deleteApartments: boolean; deleteMessages: boolean; deletePayments: boolean; deleteInquiries: boolean; deleteAccount: boolean }) => {
-    if (!options) {
-      // First call — show delete options dialog
-      setDeleteOptionsDialog({ isOpen: true, userId, userName, loading: false });
+  const handleDeleteUser = async (userId: string, userName: string, confirmed: boolean = false) => {
+    if (!confirmed) {
+      setConfirmDialog({ isOpen: true, title: '🗑️ حذف مستخدم', message: `هل أنت متأكد من حذف "${userName}" نهائياً؟\n\n⚠️ سيتم حذف:\n• جميع عقاراته\n• جميع رسائله\n• جميع مدفوعاته\n• جميع بياناته\n\nلا يمكن التراجع عن هذا الإجراء!`, confirmText: 'حذف نهائي', cancelText: 'إلغاء', onConfirm: () => handleDeleteUser(userId, userName, true), type: 'danger' });
       return;
     }
-    setDeleteOptionsDialog(prev => ({ ...prev, loading: true }));
+    setConfirmDialog(prev => ({ ...prev, loading: true }));
     try {
-      const res = await fetch(`/api/users/${userId}/delete`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ options }) });
+      const res = await fetch(`/api/users/${userId}/delete`, { method: 'DELETE' });
       if (res.ok) {
         const data = await res.json();
         fetchAllUsers(); fetchDevData(); fetchBlockedUsers();
         if (selectedUserDetail?.id === userId) { setSelectedUserDetail(null); setUserDetailData({ apartments: [], payments: [], inquiries: [] }); }
-        addToast(data.message || 'تم الحذف بنجاح ✅', 'success');
+        addToast(data.message || 'تم حذف المستخدم ✅', 'success');
       } else {
         const data = await res.json();
-        addToast(data.error || 'فشل الحذف', 'error');
+        addToast(data.error || 'فشل حذف المستخدم', 'error');
       }
     } catch { addToast('حدث خطأ', 'error'); }
-    finally { setDeleteOptionsDialog({ isOpen: false, userId: '', userName: '', loading: false }); }
+    finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
   };
 
   const handleDevSendMessage = async () => {
@@ -779,43 +547,27 @@ export default function App() {
     });
   };
 
-  // Fetch settings — merges server data with local state (preserves unsaved edits)
-  const fetchSettings = async (force = false) => {
+  // Fetch settings
+  const fetchSettings = async () => {
     try {
       const res = await fetch('/api/settings');
       const data = await res.json();
       if (res.ok) {
         const s = data.settings || data;
-        setSettings(prev => ({
-          ...prev,
-          // Only overwrite from server if the field exists in the response
-          contactFee: typeof s.contactFee === 'number' ? s.contactFee : prev.contactFee,
-          regularFee: typeof s.regularFee === 'number' ? s.regularFee : prev.regularFee,
-          featuredFee: typeof s.featuredFee === 'number' ? s.featuredFee : prev.featuredFee,
-          premiumFee: typeof s.premiumFee === 'number' ? s.premiumFee : prev.premiumFee,
-          vipFee: typeof s.vipFee === 'number' ? s.vipFee : prev.vipFee,
-          saleDisplayFee: typeof s.saleDisplayFee === 'number' ? s.saleDisplayFee : prev.saleDisplayFee,
-          rentDisplayFee: typeof s.rentDisplayFee === 'number' ? s.rentDisplayFee : prev.rentDisplayFee,
-          otherServicesFee: typeof s.otherServicesFee === 'number' ? s.otherServicesFee : prev.otherServicesFee,
-          highlightFee: typeof s.highlightFee === 'number' ? s.highlightFee : prev.highlightFee,
-          priorityListingFee: typeof s.priorityListingFee === 'number' ? s.priorityListingFee : prev.priorityListingFee,
-          verifiedListingFee: typeof s.verifiedListingFee === 'number' ? s.verifiedListingFee : prev.verifiedListingFee,
-          currency: typeof s.currency === 'string' ? s.currency : prev.currency,
-          vodafoneCashNumber: typeof s.vodafoneCashNumber === 'string' ? s.vodafoneCashNumber : prev.vodafoneCashNumber,
-          orangeCashNumber: typeof s.orangeCashNumber === 'string' ? s.orangeCashNumber : prev.orangeCashNumber,
-          etisalatCashNumber: typeof s.etisalatCashNumber === 'string' ? s.etisalatCashNumber : prev.etisalatCashNumber,
-          bankAccountName: typeof s.bankAccountName === 'string' ? s.bankAccountName : prev.bankAccountName,
-          bankAccountNumber: typeof s.bankAccountNumber === 'string' ? s.bankAccountNumber : prev.bankAccountNumber,
-          bankName: typeof s.bankName === 'string' ? s.bankName : prev.bankName,
-          instapayAccount: typeof s.instapayAccount === 'string' ? s.instapayAccount : prev.instapayAccount,
-          visaEnabled: typeof s.visaEnabled === 'boolean' ? s.visaEnabled : prev.visaEnabled,
-          visaPublicKey: typeof s.visaPublicKey === 'string' ? s.visaPublicKey : prev.visaPublicKey,
-          visaSecretKey: typeof s.visaSecretKey === 'string' ? s.visaSecretKey : prev.visaSecretKey,
-          minRechargeAmount: typeof s.minRechargeAmount === 'number' ? s.minRechargeAmount : prev.minRechargeAmount,
-          maxRechargeAmount: typeof s.maxRechargeAmount === 'number' ? s.maxRechargeAmount : prev.maxRechargeAmount,
-        }));
-        // Also fetch payment methods
-        try { const pmRes = await fetch('/api/payment-methods'); const pmData = await pmRes.json(); if (pmRes.ok && Array.isArray(pmData.methods)) setPaymentMethods(pmData.methods); } catch {}
+        setSettings({ 
+          contactFee: s.contactFee ?? 50, 
+          regularFee: s.regularFee ?? 30,
+          featuredFee: s.featuredFee ?? 100, 
+          premiumFee: s.premiumFee ?? 200, 
+          vipFee: s.vipFee ?? 300,
+          saleDisplayFee: s.saleDisplayFee ?? 100,
+          rentDisplayFee: s.rentDisplayFee ?? 75,
+          otherServicesFee: s.otherServicesFee ?? 50,
+          highlightFee: s.highlightFee ?? 150,
+          priorityListingFee: s.priorityListingFee ?? 200,
+          verifiedListingFee: s.verifiedListingFee ?? 250,
+          currency: s.currency ?? 'ج.م'
+        });
       }
     } catch {}
   };
@@ -829,66 +581,19 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Polling fallback for apartments (when Socket.io is not available)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (!isRealtimeConnected && !initialLoadRef.current) {
-        fetchApartmentsRef.current?.(0, false);
-      }
-    }, 15000); // every 15 seconds
-    return () => clearInterval(interval);
-  }, [isRealtimeConnected]);
-
-  // Polling fallback for messages
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (currentUser && !isRealtimeConnected) {
-        fetchMessagesRef.current?.();
-      }
-    }, 20000); // every 20 seconds
-    return () => clearInterval(interval);
-  }, [currentUser, isRealtimeConnected]);
-
-  // Update settings — sends to server and merges response with local state
+  // Update settings
   const updateSettings = async (newSettings: Partial<typeof settings>) => {
     setSettingsLoading(true);
     try {
       const res = await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSettings)
+        body: JSON.stringify({ ...settings, ...newSettings })
       });
       const data = await res.json();
       if (res.ok) {
-        // Use response data — only overwrite fields that came back from server
-        const savedSettings = data.settings || data;
-        setSettings(prev => ({
-          ...prev,
-          contactFee: typeof savedSettings.contactFee === 'number' ? savedSettings.contactFee : prev.contactFee,
-          regularFee: typeof savedSettings.regularFee === 'number' ? savedSettings.regularFee : prev.regularFee,
-          featuredFee: typeof savedSettings.featuredFee === 'number' ? savedSettings.featuredFee : prev.featuredFee,
-          premiumFee: typeof savedSettings.premiumFee === 'number' ? savedSettings.premiumFee : prev.premiumFee,
-          vipFee: typeof savedSettings.vipFee === 'number' ? savedSettings.vipFee : prev.vipFee,
-          saleDisplayFee: typeof savedSettings.saleDisplayFee === 'number' ? savedSettings.saleDisplayFee : prev.saleDisplayFee,
-          rentDisplayFee: typeof savedSettings.rentDisplayFee === 'number' ? savedSettings.rentDisplayFee : prev.rentDisplayFee,
-          otherServicesFee: typeof savedSettings.otherServicesFee === 'number' ? savedSettings.otherServicesFee : prev.otherServicesFee,
-          highlightFee: typeof savedSettings.highlightFee === 'number' ? savedSettings.highlightFee : prev.highlightFee,
-          priorityListingFee: typeof savedSettings.priorityListingFee === 'number' ? savedSettings.priorityListingFee : prev.priorityListingFee,
-          verifiedListingFee: typeof savedSettings.verifiedListingFee === 'number' ? savedSettings.verifiedListingFee : prev.verifiedListingFee,
-          currency: typeof savedSettings.currency === 'string' ? savedSettings.currency : prev.currency,
-          vodafoneCashNumber: typeof savedSettings.vodafoneCashNumber === 'string' ? savedSettings.vodafoneCashNumber : prev.vodafoneCashNumber,
-          orangeCashNumber: typeof savedSettings.orangeCashNumber === 'string' ? savedSettings.orangeCashNumber : prev.orangeCashNumber,
-          etisalatCashNumber: typeof savedSettings.etisalatCashNumber === 'string' ? savedSettings.etisalatCashNumber : prev.etisalatCashNumber,
-          bankAccountName: typeof savedSettings.bankAccountName === 'string' ? savedSettings.bankAccountName : prev.bankAccountName,
-          bankAccountNumber: typeof savedSettings.bankAccountNumber === 'string' ? savedSettings.bankAccountNumber : prev.bankAccountNumber,
-          bankName: typeof savedSettings.bankName === 'string' ? savedSettings.bankName : prev.bankName,
-          instapayAccount: typeof savedSettings.instapayAccount === 'string' ? savedSettings.instapayAccount : prev.instapayAccount,
-          visaEnabled: typeof savedSettings.visaEnabled === 'boolean' ? savedSettings.visaEnabled : prev.visaEnabled,
-          visaPublicKey: typeof savedSettings.visaPublicKey === 'string' ? savedSettings.visaPublicKey : prev.visaPublicKey,
-          visaSecretKey: typeof savedSettings.visaSecretKey === 'string' ? savedSettings.visaSecretKey : prev.visaSecretKey,
-          minRechargeAmount: typeof savedSettings.minRechargeAmount === 'number' ? savedSettings.minRechargeAmount : prev.minRechargeAmount,
-          maxRechargeAmount: typeof savedSettings.maxRechargeAmount === 'number' ? savedSettings.maxRechargeAmount : prev.maxRechargeAmount,
-        }));
+        // Re-fetch settings from DB to confirm saved values
+        await fetchSettings();
         addToast('تم تحديث الإعدادات بنجاح ✅', 'success');
       } else {
         addToast(data.error || 'فشل تحديث الإعدادات', 'error');
@@ -1166,20 +871,18 @@ export default function App() {
   };
 
   const fetchComments = async (apartmentId: string) => {
-    try {
-      // Fetch approved comments + user's own pending comments
-      const currentUserId = currentUser?.id || '';
-      const res = await fetch(`/api/comments?apartmentId=${apartmentId}&currentUserId=${currentUserId}`);
+    try { 
+      const res = await fetch(`/api/comments?apartmentId=${apartmentId}&status=approved`); 
       const data = await res.json();
-      setApartmentComments(Array.isArray(data) ? data : []);
+      setComments(Array.isArray(data) ? data : []); 
     } catch {}
   };
 
   const fetchAllComments = async () => {
-    try {
-      const res = await fetch('/api/comments');
+    try { 
+      const res = await fetch('/api/comments'); 
       const data = await res.json();
-      setComments(Array.isArray(data) ? data : []);
+      setComments(Array.isArray(data) ? data : []); 
     } catch {}
   };
 
@@ -1247,7 +950,9 @@ export default function App() {
       const remembered = localStorage.getItem('manteqti_remembered_identifier');
       const rememberMeFlag = localStorage.getItem('manteqti_remember_me');
       if (remembered && rememberMeFlag === 'true') { setAuthIdentifier(remembered); setRememberMe(true); }
-
+      const devEmailSaved = localStorage.getItem('manteqti_dev_email');
+      const devRemember = localStorage.getItem('manteqti_dev_remember');
+      if (devEmailSaved && devRemember === 'true') { setDevEmail(devEmailSaved); }
     } catch {}
   }, []);
 
@@ -1276,23 +981,65 @@ export default function App() {
   const pendingApartments = allApartments.filter(apt => apt.status === 'pending');
 
   // Handlers
+ const handleDevLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDevLoading(true);
+    try {
+      const res = await fetch('/api/auth/dev-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: devEmail, password: devPassword })
+      });
+      const data = await res.json();
+      
+      if (res.ok && data.success) {
+        // جلب بيانات المستخدم الكاملة من /api/auth/me (باستخدام الـ cookie)
+        try {
+          const meRes = await fetch('/api/auth/me');
+          const meData = await meRes.json();
+          if (meData.user) {
+            setCurrentUser({ id: meData.user.id, identifier: meData.user.identifier || devEmail, name: meData.user.name });
+          } else {
+            setCurrentUser({ id: data.user?.id || '', identifier: devEmail, name: data.user?.name || 'المطور' });
+          }
+        } catch {
+          setCurrentUser({ id: data.user?.id || '', identifier: devEmail, name: data.user?.name || 'المطور' });
+        }
+        setIsDeveloper(true);
+        setShowDevLogin(false);
+        if (rememberMe) {
+          localStorage.setItem('manteqti_dev_email', devEmail);
+          localStorage.setItem('manteqti_dev_remember', 'true');
+        } else {
+          localStorage.removeItem('manteqti_dev_email');
+          localStorage.removeItem('manteqti_dev_remember');
+        }
+        setDevPassword('');
+        addToast('مرحباً بك في لوحة تحكم المطور!', 'success');
+        fetchDevData();
+      } else {
+        addToast(data.error || 'بيانات الدخول غير صحيحة', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الاتصال', 'error');
+    }
+    setDevLoading(false);
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
     try {
-      const res = await fetch('/api/auth/login', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), password: authPassword }) });
+      const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), password: authPassword }) });
       const data = await res.json();
       if (res.ok) {
         if (data.pendingApproval) {
-          setCurrentUser(data.user); currentUserRef.current = data.user; setShowAuth(false);
-          try { localStorage.setItem('manteqti_user', JSON.stringify(data.user)); } catch {}
-          if (checkIsDev(data.user)) setIsDeveloper(true);
+          setCurrentUser(data.user); setShowAuth(false);
+          if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
           addToast('حسابك قيد المراجعة. بانتظار موافقة الإدارة ⏳', 'info');
         } else {
-          setCurrentUser(data.user); currentUserRef.current = data.user; setShowAuth(false);
-          try { localStorage.setItem('manteqti_user', JSON.stringify(data.user)); } catch {}
-          if (checkIsDev(data.user)) setIsDeveloper(true);
+          setCurrentUser(data.user); setShowAuth(false);
+          if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
           addToast(`مرحباً ${data.user.name}!`, 'success');
         }
         if (rememberMe) { localStorage.setItem('manteqti_remembered_identifier', authIdentifier.trim().toLowerCase()); localStorage.setItem('manteqti_remember_me', 'true'); }
@@ -1309,40 +1056,11 @@ export default function App() {
     finally { setAuthLoading(false); }
   };
 
-  const handleDevLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setDevLoading(true);
-    try {
-      const res = await fetch('/api/auth/dev-login', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: devEmail, password: devPassword }) });
-      const data = await res.json();
-      if (res.ok && data.user) {
-        setCurrentUser(data.user);
-        currentUserRef.current = data.user;
-        try { localStorage.setItem('manteqti_user', JSON.stringify(data.user)); } catch {}
-        setIsDeveloper(true);
-        setShowDevLogin(false);
-        if (rememberMe) {
-          localStorage.setItem('manteqti_dev_email', devEmail);
-          localStorage.setItem('manteqti_dev_remember', 'true');
-        } else {
-          localStorage.removeItem('manteqti_dev_email');
-          localStorage.removeItem('manteqti_dev_remember');
-        }
-        setDevPassword('');
-        addToast('مرحباً بك في لوحة تحكم المطور!', 'success');
-        fetchDevData();
-      } else {
-        addToast(data.error || 'بيانات الدخول غير صحيحة', 'error');
-      }
-    } catch { addToast('حدث خطأ في الاتصال', 'error'); }
-    finally { setDevLoading(false); }
-  };
-
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
     try {
-      const res = await fetch('/api/auth/register', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), name: authName.trim(), password: authPassword }) });
+      const res = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), name: authName.trim(), password: authPassword }) });
       const data = await res.json();
       if (res.ok) {
         if (data.emailVerificationRequired) {
@@ -1354,11 +1072,11 @@ export default function App() {
           // Check if user needs approval
           if (data.user && !data.user.isApproved) {
             setCurrentUser(data.user); setShowAuth(false);
-            if (checkIsDev(data.user)) setIsDeveloper(true);
+            if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
             addToast('تم إنشاء الحساب بنجاح! حسابك قيد المراجعة وسيتم إشعارك فور الموافقة ⏳', 'info');
           } else {
             setCurrentUser(data.user); setShowAuth(false);
-            if (checkIsDev(data.user)) setIsDeveloper(true);
+            if (data.user && data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
             addToast(`مرحباً ${data.user.name}!`, 'success');
           }
         }
@@ -1383,11 +1101,7 @@ export default function App() {
         setCurrentUser(data.user);
         setShowAuth(false);
         setOtpCode('');
-        if (data.needsApproval) {
-          addToast('تم تأكيد البريد الإلكتروني! بانتظار موافقة الإدارة ⏳', 'info');
-        } else {
-          addToast('تم تأكيد البريد الإلكتروني بنجاح! 🎉', 'success');
-        }
+        addToast('تم تأكيد البريد الإلكتروني بنجاح! 🎉', 'success');
       } else {
         addToast(data.error || 'رمز التأكيد غير صحيح', 'error');
       }
@@ -1414,16 +1128,15 @@ export default function App() {
     } finally { setOtpResendLoading(false); }
   };
 
-  const handleLogout = async () => { try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); } catch {} setCurrentUser(null); currentUserRef.current = null; setIsDeveloper(false); try { localStorage.removeItem('manteqti_user'); } catch {} addToast('تم تسجيل الخروج', 'info'); };
+  const handleLogout = async () => { try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {} setCurrentUser(null); setIsDeveloper(false); addToast('تم تسجيل الخروج', 'info'); };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setForgotLoading(true);
     try {
       const res = await fetch('/api/auth/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: forgotEmail }) });
-      const data = await res.json();
-      if (res.ok) { setForgotSuccess(true); addToast('تم إرسال رمز الاستعادة! أدخل الرمز لتغيير كلمة المرور', 'success'); }
-      else addToast(data.error || 'حدث خطأ', 'error');
+      if (res.ok) { setForgotSuccess(true); addToast('تم إرسال رابط استعادة كلمة المرور', 'success'); }
+      else addToast('حدث خطأ', 'error');
     } catch { addToast('حدث خطأ', 'error'); }
     finally { setForgotLoading(false); }
   };
@@ -1434,9 +1147,9 @@ export default function App() {
     if (newPassword.length < 6) { addToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'error'); return; }
     setResetLoading(true);
     try {
-      const res = await fetch('/api/auth/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: forgotEmail, otp: forgotOtp, newPassword, confirmPassword }) });
-      if (res.ok) { setShowResetPassword(false); setShowForgotPassword(false); setForgotSuccess(false); setForgotOtp(''); setNewPassword(''); setConfirmPassword(''); addToast('تم تغيير كلمة المرور بنجاح! يمكنك تسجيل الدخول الآن', 'success'); }
-      else { const data = await res.json(); addToast(data.error || 'حدث خطأ', 'error'); }
+      const res = await fetch('/api/auth/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: forgotEmail, newPassword }) });
+      if (res.ok) { setShowResetPassword(false); setShowForgotPassword(false); addToast('تم تغيير كلمة المرور بنجاح!', 'success'); }
+      else addToast('حدث خطأ', 'error');
     } catch { addToast('حدث خطأ', 'error'); }
     finally { setResetLoading(false); }
   };
@@ -1588,41 +1301,9 @@ export default function App() {
   };
 
   const handleUpdateStatus = async (id: string, newStatus: string, confirmed: boolean = false) => {
-    if (!confirmed) {
-      const statusLabels: Record<string, string> = { available: 'متاح', reserved: 'محجوز', sold: 'تم البيع', rented: 'تم التأجير', unavailable: 'غير متاح', preview: 'في معاينة', rejected: 'مرفوض', hidden: 'مخفي' };
-      const statusLabel = statusLabels[newStatus] || newStatus;
-      const autoDeleteStatuses = ['sold', 'unavailable', 'rented'];
-      const isAutoDelete = autoDeleteStatuses.includes(newStatus);
-      const message = isAutoDelete
-        ? `⚠️ تحذير مهم!\n\nهل تريد تغيير حالة العقار إلى "${statusLabel}"؟\n\n العقار سيتم حذفه تلقائياً بعد 48 ساعة من هذا التغيير.\n\nإذا كنت لا تريد حذفه، اختر حالة أخرى (مثل "متاح" أو "محجوز").`
-        : `هل تريد تغيير حالة العقار إلى "${statusLabel}"؟`;
-      setConfirmDialog({
-        isOpen: true,
-        title: isAutoDelete ? '⚠️ تحذير: حذف تلقائي بعد 48 ساعة' : 'تغيير حالة العقار',
-        message,
-        confirmText: isAutoDelete ? `تغيير إلى "${statusLabel}" (سيُحذف بعد 48 ساعة)` : 'تأكيد',
-        cancelText: 'إلغاء',
-        onConfirm: () => handleUpdateStatus(id, newStatus, true),
-        type: isAutoDelete ? 'danger' : 'warning',
-      });
-      return;
-    }
+    if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'تغيير حالة العقار', message: `هل تريد تغيير الحالة؟`, confirmText: 'تأكيد', cancelText: 'إلغاء', onConfirm: () => handleUpdateStatus(id, newStatus, true), type: 'warning' }); return; }
     setConfirmDialog(prev => ({ ...prev, loading: true }));
-    try {
-      const body: any = { status: newStatus };
-      const autoDeleteStatuses = ['sold', 'unavailable', 'rented'];
-      if (autoDeleteStatuses.includes(newStatus)) {
-        body.statusChangedAt = new Date().toISOString();
-      }
-      await fetch(`/api/apartments/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      fetchApartments();
-      const autoDeleteStatuses2 = ['sold', 'unavailable', 'rented'];
-      if (autoDeleteStatuses2.includes(newStatus)) {
-        addToast('⚠️ تم تغيير الحالة — سيتم حذف العقار تلقائياً بعد 48 ساعة', 'info');
-      } else {
-        addToast('تم تغيير حالة العقار', 'success');
-      }
-    }
+    try { await fetch(`/api/apartments/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) }); fetchApartments(); addToast('تم تغيير حالة العقار', 'success'); }
     finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
   };
 
@@ -1991,7 +1672,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     try {
       const res = await fetch('/api/comments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apartmentId, userId: currentUser?.id || 'developer', content: newComment, status: isDeveloper ? 'approved' : 'pending' }) });
       const data = await res.json();
-      if (data.success) { setNewComment(''); fetchComments(apartmentId); addToast(isDeveloper ? 'تم نشر التعليق' : 'تم إرسال التعليق للمراجعة', 'success'); }
+      if (data.success) { setNewComment(''); if (isDeveloper) fetchComments(apartmentId); addToast(isDeveloper ? 'تم نشر التعليق' : 'تم إرسال التعليق للمراجعة', 'success'); }
     } catch { addToast('حدث خطأ', 'error'); }
     finally { setCommentLoading(false); }
   };
@@ -2156,11 +1837,11 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               <div className="flex gap-3 justify-center">
                 <button 
                   onClick={async () => {
-                    const res = await fetch('/api/auth/me', { credentials: 'include' });
+                    const res = await fetch('/api/auth/me');
                     const data = await res.json();
                     if (data.user?.isApproved) {
                       setCurrentUser(data.user);
-                      setIsDeveloper(checkIsDev(data.user));
+                      setIsDeveloper(data.user.identifier === DEVELOPER_EMAIL);
                       addToast('تم تأكيد حسابك! 🎉', 'success');
                     } else {
                       addToast('حسابك لا يزال قيد المراجعة', 'info');
@@ -2172,7 +1853,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 </button>
                 <button 
                   onClick={async () => {
-                    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+                    await fetch('/api/auth/logout', { method: 'POST' });
                     setCurrentUser(null);
                     setIsDeveloper(false);
                   }}
@@ -2240,18 +1921,15 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     {myPendingApartments.length > 0 && <span className="absolute -top-1 -left-1 w-5 h-5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center">{myPendingApartments.length}</span>}
                   </button>
                   <button onClick={() => { fetchUserPayments(); setShowMyPayments(true); }} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-100 hover:bg-slate-200'} transition-all`} title="المدفوعات"><CreditCard className="h-4 w-4" /></button>
-                  <button onClick={async () => { setShowWallet(true); try { const res = await fetch('/api/wallet'); const data = await res.json(); if (res.ok) { setWalletBalance(data.balance || 0); setWalletTransactions(data.transactions || []); } } catch {} }} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-100 hover:bg-slate-200'} transition-all relative`} title="محفظتي"><Wallet className="h-4 w-4" /><span className="text-[10px] font-bold text-emerald-500">{walletBalance > 0 ? walletBalance : ''}</span></button>
                   <button onClick={handleLogout} className="p-3 rounded-xl bg-rose-500/10 text-rose-500"><LogOut className="h-5 w-5" /></button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
-                  <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setShowAuth(true)} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium shadow-lg">
-                    <User className="h-5 w-5" /><span>تسجيل الدخول</span>
-                  </motion.button>
-                  <button onClick={() => setShowDevLogin(true)} className={`p-2.5 rounded-lg ${darkMode ? 'text-slate-500 hover:text-amber-400 hover:bg-slate-800' : 'text-slate-400 hover:text-amber-600 hover:bg-slate-100'}`} title="دخول المطور"><Lock className="h-4 w-4" /></button>
-                </div>
+                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setShowAuth(true)} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium shadow-lg">
+                  <User className="h-5 w-5" /><span>تسجيل الدخول</span>
+                </motion.button>
               )}
 
+              <button onClick={() => setShowDevLogin(true)} className={`p-2 rounded-lg text-xs ${darkMode ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'}`}><Lock className="h-4 w-4" /></button>
             </div>
 
             <button onClick={() => setShowMobileMenu(!showMobileMenu)} className={`md:hidden p-3 rounded-xl ${darkMode ? 'bg-slate-800' : 'bg-slate-100'}`}><Menu className="h-6 w-6" /></button>
@@ -2349,7 +2027,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       </div>
                     </div>
                     <div className="flex gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                      <button onClick={() => { if (!currentUser && !isDeveloper) { setShowAuth(true); setAuthStep('login'); addToast('يجب تسجيل الدخول لعرض التفاصيل', 'info'); return; } setSelectedApartment(apartment); fetchComments(apartment.id); setCurrentImageIndex(0); fetch(`/api/apartments/${apartment.id}/details`, { method: 'GET' }).catch(() => {}); }} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-violet-700 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:scale-[1.02] transition-all duration-300 group relative overflow-hidden">
+                      <button onClick={() => { if (!currentUser) { addToast('يجب تسجيل الدخول لعرض التفاصيل', 'error'); setShowAuth(true); return; } setSelectedApartment(apartment); fetchComments(apartment.id); setCurrentImageIndex(0); fetch(`/api/apartments/${apartment.id}/details`, { method: 'GET' }).catch(() => {}); }} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-violet-700 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:scale-[1.02] transition-all duration-300 group relative overflow-hidden">
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
                         <Eye className="h-4 w-4 group-hover:scale-110 transition-transform" />
                         <span>عرض التفاصيل</span>
@@ -2376,54 +2054,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Confirm Dialog */}
       <ConfirmDialog {...confirmDialog} darkMode={darkMode} onCancel={() => setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' })} />
-
-      {/* Delete Options Dialog */}
-      <DeleteOptionsDialog
-        isOpen={deleteOptionsDialog.isOpen}
-        userName={deleteOptionsDialog.userName}
-        darkMode={darkMode}
-        loading={deleteOptionsDialog.loading}
-        onConfirm={(options) => handleDeleteUser(deleteOptionsDialog.userId, deleteOptionsDialog.userName, options)}
-        onCancel={() => setDeleteOptionsDialog({ isOpen: false, userId: '', userName: '', loading: false })}
-      />
-
-      {/* Dev Login Modal */}
-      <AnimatePresence>{showDevLogin && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowDevLogin(false)}>
-          <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} transition={{ type: "spring", damping: 25, stiffness: 300 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-3xl overflow-hidden ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl border ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
-            <div className="relative overflow-hidden bg-gradient-to-br from-amber-500 via-orange-500 to-red-500 px-6 py-8">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2" />
-              <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full translate-y-1/2 -translate-x-1/2" />
-              <button onClick={() => setShowDevLogin(false)} className="absolute top-4 left-4 p-2 rounded-xl bg-white/20 hover:bg-white/30 transition-colors"><X className="h-5 w-5 text-white" /></button>
-              <div className="relative z-10 text-center">
-                <div className="mx-auto w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center mb-4"><ShieldCheck className="h-8 w-8 text-white" /></div>
-                <h2 className="text-2xl font-bold text-white">لوحة تحكم المطور</h2>
-                <p className="text-white/70 mt-1 text-sm">الدخول بمفتاح المطور السري</p>
-              </div>
-            </div>
-            <div className="p-6">
-              <form onSubmit={handleDevLogin} className="space-y-4">
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}><Mail className="h-3.5 w-3.5 inline ml-1" />البريد الإلكتروني</label>
-                  <input type="email" value={devEmail} onChange={(e) => setDevEmail(e.target.value)} placeholder="dev@email.com" className={`w-full px-4 py-3.5 rounded-xl border-2 transition-colors ${darkMode ? 'bg-slate-700/50 border-slate-600 text-white placeholder-slate-500 focus:border-amber-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-amber-500'} outline-none`} required />
-                </div>
-                <div>
-                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}><Lock className="h-3.5 w-3.5 inline ml-1" />كلمة المرور</label>
-                  <div className="relative">
-                    <input type={showDevPassword ? 'text' : 'password'} value={devPassword} onChange={(e) => setDevPassword(e.target.value)} placeholder="••••••••" className={`w-full px-4 py-3.5 rounded-xl border-2 transition-colors ${darkMode ? 'bg-slate-700/50 border-slate-600 text-white placeholder-slate-500 focus:border-amber-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-amber-500'} outline-none`} required />
-                    <button type="button" onClick={() => setShowDevPassword(!showDevPassword)} className={`absolute left-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors ${darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-slate-600'}`}>{showDevPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</button>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" id="devRememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500" />
-                  <label htmlFor="devRememberMe" className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>تذكرني</label>
-                </div>
-                <button type="submit" disabled={devLoading} className="w-full py-3.5 rounded-xl font-bold text-white text-lg bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-lg shadow-amber-500/25 transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50">{devLoading ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : '🛡️ دخول المطور'}</button>
-              </form>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}</AnimatePresence>
 
       {/* Toasts */}
       <div className="fixed top-4 left-4 z-[100] space-y-2">
@@ -2460,7 +2090,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
   <>
     <button onClick={() => { fetchMyPendingApartments(); setShowMyPending(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><User className="h-5 w-5" />حسابي{myPendingApartments.length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-amber-500 text-white text-xs">{myPendingApartments.length}</span>}</button>
     <button onClick={() => { fetchUserPayments(); setShowMyPayments(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><CreditCard className="h-5 w-5" />المدفوعات</button>
-    <button onClick={async () => { setShowWallet(true); setShowMobileMenu(false); try { const res = await fetch('/api/wallet'); const data = await res.json(); if (res.ok) { setWalletBalance(data.balance || 0); setWalletTransactions(data.transactions || []); } } catch {} }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><Wallet className="h-5 w-5" />محفظتي {walletBalance > 0 && <span className="mr-auto text-emerald-500 font-bold">{walletBalance} {settings.currency}</span>}</button>
     <button onClick={() => { handleLogout(); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-red-400' : 'bg-slate-100 text-red-500'}`}><LogOut className="h-5 w-5" />تسجيل الخروج</button>
   </>
 ) : (
@@ -2696,219 +2325,41 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
         </motion.div>
       )}</AnimatePresence>
 
-      {/* Auth Modal - Modern Design */}
+      {/* Auth Modal */}
       <AnimatePresence>{showAuth && (
-        <motion.div 
-          initial={{ opacity: 0 }} 
-          animate={{ opacity: 1 }} 
-          exit={{ opacity: 0 }} 
-          className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
-          onClick={() => setShowAuth(false)}
-        >
-          <motion.div 
-            initial={{ scale: 0.9, y: 20, opacity: 0 }} 
-            animate={{ scale: 1, y: 0, opacity: 1 }} 
-            exit={{ scale: 0.9, y: 20, opacity: 0 }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            onClick={(e) => e.stopPropagation()} 
-            className={`w-full max-w-lg overflow-hidden rounded-3xl shadow-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'}`}
-          >
-            {/* Top decorative header */}
-            <div className={`relative overflow-hidden px-8 pt-8 pb-6 ${authStep === 'login' ? 'bg-gradient-to-br from-violet-600 via-purple-600 to-fuchsia-600' : 'bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500'}`}>
-              {/* Background decoration */}
-              <div className="absolute inset-0 opacity-10">
-                <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/20"></div>
-                <div className="absolute -bottom-8 -left-8 w-32 h-32 rounded-full bg-white/20"></div>
-                <div className="absolute top-4 left-1/4 w-16 h-16 rounded-full bg-white/10"></div>
-              </div>
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                      <Building2 className="h-7 w-7 text-white" />
-                    </div>
-                    <div>
-                      <h1 className="text-xl font-bold text-white">منطقتي</h1>
-                      <p className="text-white/70 text-xs">Manteqti - Real Estate</p>
-                    </div>
-                  </div>
-                  <button onClick={() => setShowAuth(false)} className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center hover:bg-white/30 transition-colors">
-                    <X className="h-5 w-5 text-white" />
-                  </button>
-                </div>
-                {/* Tab Switcher */}
-                <div className="flex bg-white/15 backdrop-blur-sm rounded-2xl p-1">
-                  <button 
-                    type="button"
-                    onClick={() => setAuthStep('login')}
-                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${
-                      authStep === 'login' 
-                        ? 'bg-white text-violet-700 shadow-lg shadow-black/10' 
-                        : 'text-white/80 hover:text-white'
-                    }`}
-                  >
-                    تسجيل الدخول
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => setAuthStep('register')}
-                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 ${
-                      authStep === 'register' 
-                        ? 'bg-white text-emerald-700 shadow-lg shadow-black/10' 
-                        : 'text-white/80 hover:text-white'
-                    }`}
-                  >
-                    حساب جديد
-                  </button>
-                </div>
-              </div>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowAuth(false)}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{authStep === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}</h2>
+              <button onClick={() => setShowAuth(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
             </div>
-            
-            {/* Form Body */}
-            <form onSubmit={authStep === 'login' ? handleLogin : handleRegister} className="p-8 space-y-5">
-              <div className="text-center mb-2">
-                <motion.h2 
-                  key={authStep}
-                  initial={{ opacity: 0, y: -10 }} 
-                  animate={{ opacity: 1, y: 0 }}
-                  className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-slate-800'}`}
-                >
-                  {authStep === 'login' ? 'مرحباً بعودتك! 👋' : 'إنشاء حساب جديد 🚀'}
-                </motion.h2>
-                <p className={`text-sm mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                  {authStep === 'login' ? 'سجل دخولك لاستكشاف العقارات' : 'انضم إلينا وابدأ رحلتك العقارية'}
-                </p>
-              </div>
-
-              {/* Name Field (Register only) */}
-              <AnimatePresence>
-                {authStep === 'register' && (
-                  <motion.div 
-                    initial={{ height: 0, opacity: 0 }} 
-                    animate={{ height: 'auto', opacity: 1 }} 
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="relative">
-                      <User className={`absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 ${darkMode ? 'text-slate-400' : 'text-slate-400'}`} />
-                      <input 
-                        type="text" 
-                        value={authName} 
-                        onChange={(e) => setAuthName(e.target.value)} 
-                        placeholder="الاسم الكامل" 
-                        className={`w-full pl-4 pr-11 py-3.5 rounded-2xl border-2 transition-all duration-200 ${
-                          darkMode 
-                            ? 'bg-slate-700/50 border-slate-600 text-white placeholder-slate-400 focus:border-violet-500' 
-                            : 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400 focus:border-violet-500 focus:bg-white'
-                        } focus:ring-0 focus:outline-none`} 
-                        required 
-                      />
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Email Field */}
-              <div className="relative">
-                <Mail className={`absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 ${darkMode ? 'text-slate-400' : 'text-slate-400'}`} />
-                <input 
-                  type="email" 
-                  value={authIdentifier} 
-                  onChange={(e) => setAuthIdentifier(e.target.value)} 
-                  placeholder="البريد الإلكتروني" 
-                  className={`w-full pl-4 pr-11 py-3.5 rounded-2xl border-2 transition-all duration-200 ${
-                    darkMode 
-                      ? 'bg-slate-700/50 border-slate-600 text-white placeholder-slate-400 focus:border-violet-500' 
-                      : 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400 focus:border-violet-500 focus:bg-white'
-                  } focus:ring-0 focus:outline-none`} 
-                  required 
-                />
-              </div>
-
-              {/* Password Field */}
-              <div className="relative">
-                <Lock className={`absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 ${darkMode ? 'text-slate-400' : 'text-slate-400'}`} />
-                <input 
-                  type={showPassword ? 'text' : 'password'} 
-                  value={authPassword} 
-                  onChange={(e) => setAuthPassword(e.target.value)} 
-                  placeholder="كلمة المرور" 
-                  className={`w-full pl-11 pr-11 py-3.5 rounded-2xl border-2 transition-all duration-200 ${
-                    darkMode 
-                      ? 'bg-slate-700/50 border-slate-600 text-white placeholder-slate-400 focus:border-violet-500' 
-                      : 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400 focus:border-violet-500 focus:bg-white'
-                  } focus:ring-0 focus:outline-none`} 
-                  required 
-                />
-                <button 
-                  type="button" 
-                  onClick={() => setShowPassword(!showPassword)} 
-                  className={`absolute left-4 top-1/2 -translate-y-1/2 p-1 rounded-lg transition-colors ${darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-slate-600'}`}
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-
-              {/* Remember Me & Forgot Password (Login only) */}
-              {authStep === 'login' && (
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      checked={rememberMe} 
-                      onChange={(e) => setRememberMe(e.target.checked)} 
-                      className="w-4 h-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500 accent-violet-600"
-                    />
-                    <span className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>تذكرني</span>
-                  </label>
-                  <button 
-                    type="button" 
-                    onClick={() => { setShowAuth(false); setShowForgotPassword(true); setForgotSuccess(false); setForgotOtp(''); }}
-                    className={`text-sm font-medium ${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-violet-600 hover:text-violet-700'} transition-colors`}
-                  >
-                    نسيت كلمة المرور؟
-                  </button>
-                </div>
-              )}
-
-              {/* Submit Button */}
-              <button 
-                type="submit" 
-                disabled={authLoading} 
-                className={`w-full py-4 rounded-2xl font-semibold text-white text-base transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:transform-none shadow-lg ${
-                  authStep === 'login' 
-                    ? 'bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 hover:shadow-violet-500/30' 
-                    : 'bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:shadow-emerald-500/30'
-                }`}
-              >
-                {authLoading ? (
-                  <Loader2 className="h-5 w-5 animate-spin mx-auto" />
-                ) : authStep === 'login' ? (
-                  <span className="flex items-center justify-center gap-2"><Key className="h-4 w-4" /> تسجيل الدخول</span>
-                ) : (
-                  <span className="flex items-center justify-center gap-2"><UserPlus className="h-4 w-4" /> إنشاء حساب</span>
-                )}
-              </button>
+            <form onSubmit={authStep === 'login' ? handleLogin : handleRegister} className="space-y-4">
+              {authStep === 'register' && <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الاسم</label><input type="text" value={authName} onChange={(e) => setAuthName(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>}
+              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>البريد الإلكتروني أو رقم الهاتف</label><input type="text" value={authIdentifier} onChange={(e) => setAuthIdentifier(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
+              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>كلمة المرور</label><input type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
+              <div className="flex items-center gap-2"><input type="checkbox" id="rememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 rounded" /><label htmlFor="rememberMe" className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>تذكرني</label></div>
+              <button type="submit" disabled={authLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium disabled:opacity-50">{authLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : authStep === 'login' ? 'دخول' : 'تسجيل'}</button>
             </form>
+            <div className="mt-4 text-center"><button onClick={() => setAuthStep(authStep === 'login' ? 'register' : 'login')} className={`text-sm ${darkMode ? 'text-violet-400' : 'text-violet-600'} hover:underline`}>{authStep === 'login' ? 'ليس لديك حساب؟ سجل الآن' : 'لديك حساب؟ سجل دخولك'}</button></div>
+            {authStep === 'login' && <div className="mt-2 text-center"><button onClick={() => { setShowAuth(false); setShowForgotPassword(true); }} className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'} hover:underline`}>نسيت كلمة المرور؟</button></div>}
+          </motion.div>
+        </motion.div>
+      )}</AnimatePresence>
 
-            {/* Footer */}
-            <div className={`px-8 pb-8 pt-2 text-center border-t ${darkMode ? 'border-slate-700' : 'border-slate-100'}`}>
-              <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                {authStep === 'login' ? 'ليس لديك حساب؟' : 'لديك حساب بالفعل؟'}{' '}
-                <button 
-                  type="button"
-                  onClick={() => setAuthStep(authStep === 'login' ? 'register' : 'login')} 
-                  className={`font-semibold transition-colors ${
-                    authStep === 'login' 
-                      ? (darkMode ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-700')
-                      : (darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-violet-600 hover:text-violet-700')
-                  }`}
-                >
-                  {authStep === 'login' ? 'سجل الآن مجاناً' : 'سجل دخولك'}
-                </button>
-              </p>
+      {/* Developer Login Modal */}
+      <AnimatePresence>{showDevLogin && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowDevLogin(false)}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Lock className="h-6 w-6 text-amber-500" />دخول المطور</h2>
+              <button onClick={() => setShowDevLogin(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
             </div>
+            <form onSubmit={handleDevLogin} className="space-y-4">
+              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>البريد الإلكتروني</label><input type="email" value={devEmail} onChange={(e) => setDevEmail(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
+              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>كلمة المرور</label><input type="password" value={devPassword} onChange={(e) => setDevPassword(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
+              <div className="flex items-center gap-2"><input type="checkbox" id="devRememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 rounded" /><label htmlFor="devRememberMe" className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>تذكرني</label></div>
+              <button type="submit" disabled={devLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium disabled:opacity-50">{devLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'دخول'}</button>
+            </form>
           </motion.div>
         </motion.div>
       )}</AnimatePresence>
@@ -3025,87 +2476,22 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 )}
               </div>
 
-              {/* Comments Section — Modern Design */}
+              {/* Comments Section */}
               <div className={`mt-6 pt-6 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
-                    <MessageCircle className="h-5 w-5 text-white" />
-                  </div>
-                  <div>
-                    <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'}`}>التعليقات</h3>
-                    {currentUser && <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apartmentComments.filter(c => c.apartmentId === selectedApartment.id).length} تعليق</p>}
-                  </div>
+                <h3 className={`font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><MessageCircle className="h-5 w-5 text-violet-500" />التعليقات</h3>
+                <div className="flex gap-2 mb-4">
+                  <input type="text" value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="اكتب تعليقاً..." className={`flex-1 px-4 py-2 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                  <button onClick={() => addComment(selectedApartment.id)} disabled={commentLoading} className="px-4 py-2 rounded-xl bg-violet-600 text-white disabled:opacity-50">{commentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}</button>
                 </div>
-
-                {/* Not logged in — show login prompt */}
-                {!currentUser && !isDeveloper && (
-                  <div className={`text-center py-8 rounded-2xl ${darkMode ? 'bg-slate-700/30' : 'bg-slate-50/50'} border ${darkMode ? 'border-slate-600/30' : 'border-slate-100'}`}>
-                    <MessageCircle className={`h-12 w-12 mx-auto mb-3 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
-                    <p className={`font-medium mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>سجل دخولك لرؤية التعليقات</p>
-                    <button onClick={() => { setShowAuth(true); setAuthStep('login'); }} className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 text-white text-sm font-medium shadow-lg shadow-violet-500/20 hover:shadow-violet-500/30 transition-all">
-                      تسجيل الدخول
-                    </button>
-                  </div>
-                )}
-
-                {/* Logged in — show full comments */}
-                {(currentUser || isDeveloper) && (<>
-                {/* Comment Input */}
-                <div className={`flex gap-3 mb-5 p-4 rounded-2xl ${darkMode ? 'bg-slate-700/50' : 'bg-violet-50/50'} border ${darkMode ? 'border-slate-600/50' : 'border-violet-100'}`}>
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center flex-shrink-0 shadow-md">
-                    <User className="h-5 w-5 text-white" />
-                  </div>
-                  <div className="flex-1 flex gap-2">
-                    <input type="text" value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="اكتب تعليقاً..." className={`flex-1 px-4 py-2.5 rounded-xl border-0 ${darkMode ? 'bg-slate-600 text-white placeholder:text-slate-400' : 'bg-white text-slate-900 placeholder:text-slate-400'} shadow-sm focus:ring-2 focus:ring-violet-500/30 focus:outline-none transition-all`} onKeyDown={(e) => { if (e.key === 'Enter' && newComment.trim()) addComment(selectedApartment.id); }} />
-                    <button onClick={() => addComment(selectedApartment.id)} disabled={commentLoading || !newComment.trim()} className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-lg shadow-violet-500/20 hover:shadow-violet-500/30 disabled:opacity-50 disabled:shadow-none transition-all">
-                      {commentLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Comments List */}
                 <div className="space-y-3">
-                  {apartmentComments.filter(c => c.apartmentId === selectedApartment.id).map((comment, idx) => {
-                    const isOwnComment = currentUser?.id === comment.userId;
-                    const isPending = comment.status === 'pending';
-                    const colors = ['from-violet-500 to-purple-600', 'from-emerald-500 to-teal-600', 'from-amber-500 to-orange-600', 'from-rose-500 to-pink-600', 'from-cyan-500 to-blue-600'];
-                    const avatarColor = colors[comment.user.name.length % colors.length];
-                    const initial = comment.user.name.charAt(0);
-
-                    return (
-                      <motion.div
-                        key={comment.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.05 }}
-                        className={`p-4 rounded-2xl border transition-all ${isOwnComment ? (darkMode ? 'bg-violet-900/20 border-violet-700/30' : 'bg-violet-50/80 border-violet-100') : (darkMode ? 'bg-slate-700/50 border-slate-600/50' : 'bg-slate-50 border-slate-100')}`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${avatarColor} flex items-center justify-center flex-shrink-0 shadow-md`}>
-                            <span className="text-white font-bold text-sm">{initial}</span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className={`font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{comment.user.name}</span>
-                              {isOwnComment && <span className={`text-xs px-2 py-0.5 rounded-full ${darkMode ? 'bg-violet-900/50 text-violet-300' : 'bg-violet-100 text-violet-600'}`}>أنت</span>}
-                              {isPending && <span className={`text-xs px-2 py-0.5 rounded-full ${darkMode ? 'bg-amber-900/50 text-amber-300' : 'bg-amber-100 text-amber-600'} flex items-center gap-1`}><Clock className="h-3 w-3" />بانتظار الموافقة</span>}
-                            </div>
-                            <p className={`mt-1 text-sm leading-relaxed ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{comment.content}</p>
-                            <p className={`text-xs mt-2 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(comment.createdAt).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-                          </div>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                  {apartmentComments.filter(c => c.apartmentId === selectedApartment.id).length === 0 && (
-                    <div className={`text-center py-8 rounded-2xl ${darkMode ? 'bg-slate-700/30' : 'bg-slate-50/50'}`}>
-                      <MessageCircle className={`h-12 w-12 mx-auto mb-3 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
-                      <p className={`font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا توجد تعليقات بعد</p>
-                      <p className={`text-sm mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>كن أول من يعلق!</p>
+                  {comments.filter(c => c.apartmentId === selectedApartment.id).map(comment => (
+                    <div key={comment.id} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                      <div className="flex items-center gap-2 mb-1"><span className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{comment.user.name}</span><span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(comment.createdAt).toLocaleDateString('ar-EG')}</span></div>
+                      <p className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{comment.content}</p>
                     </div>
-                  )}
+                  ))}
+                  {comments.filter(c => c.apartmentId === selectedApartment.id).length === 0 && <p className={`text-center py-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>لا توجد تعليقات بعد</p>}
                 </div>
-                </>)}
               </div>
             </div>
           </motion.div>
@@ -3196,148 +2582,40 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               {/* Stats Tab */}
               {devTab === 'stats' && (
                 <div className="space-y-6">
-                  {/* العقارات Stats */}
-                  <div>
-                    <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Building2 className="h-5 w-5 text-violet-500" />إحصائيات العقارات</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {[ { label: 'إجمالي العقارات', value: allApartments.length, icon: Building2, color: 'from-violet-500 to-purple-600' }, { label: 'قيد المراجعة', value: pendingApartments.length, icon: Hourglass, color: 'from-amber-500 to-orange-600' }, { label: 'الاستفسارات', value: inquiries.length, icon: MessageCircle, color: 'from-cyan-500 to-teal-600' }, { label: 'المدفوعات المؤكدة', value: payments.filter(p => p.status === 'Paid').length, icon: CreditCard, color: 'from-emerald-500 to-teal-600' } ].map((stat, i) => (
-                        <div key={i} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${stat.color} flex items-center justify-center`}><stat.icon className="h-4 w-4 text-white" /></div>
-                            <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{stat.label}</p>
-                          </div>
-                          <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{stat.value}</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {[ { label: 'إجمالي العقارات', value: allApartments.length, icon: Building2, color: 'from-violet-500 to-purple-600' }, { label: 'قيد المراجعة', value: pendingApartments.length, icon: Hourglass, color: 'from-amber-500 to-orange-600' }, { label: 'الاستفسارات', value: inquiries.length, icon: MessageCircle, color: 'from-blue-500 to-cyan-600' }, { label: 'المدفوعات المؤكدة', value: payments.filter(p => p.status === 'Paid').length, icon: CreditCard, color: 'from-emerald-500 to-teal-600' } ].map((stat, i) => (
+                      <div key={i} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${stat.color} flex items-center justify-center`}><stat.icon className="h-4 w-4 text-white" /></div>
+                          <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{stat.label}</p>
                         </div>
-                      ))}
-                    </div>
+                        <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{stat.value}</p>
+                      </div>
+                    ))}
                   </div>
-
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {[ { label: 'للإيجار', value: allApartments.filter(a => a.type === 'rent').length, color: 'text-emerald-500' }, { label: 'للبيع', value: allApartments.filter(a => a.type === 'sale').length, color: 'text-blue-500' }, { label: 'مميز', value: allApartments.filter(a => a.isFeatured).length, color: 'text-amber-500' }, { label: 'VIP+', value: allApartments.filter(a => a.isVip).length, color: 'text-purple-500' } ].map((stat, i) => (
                       <div key={i} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50/50'}`}><p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{stat.label}</p><p className={`text-xl font-bold ${stat.color}`}>{stat.value}</p></div>
                     ))}
                   </div>
-
-                  {/* User Statistics */}
-                  <div>
-                    <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Users className="h-5 w-5 text-emerald-500" />إحصائيات المستخدمين</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      {[
-                        { label: 'إجمالي المستخدمين', value: userStats?.totalUsers ?? allUsers.length, icon: Users, color: 'from-violet-500 to-purple-600', highlight: true },
-                        { label: 'مؤيدين', value: userStats?.approvedUsers ?? allUsers.filter(u => u.isApproved).length, icon: CheckCircle2, color: 'from-emerald-500 to-teal-600' },
-                        { label: 'بانتظار التأكيد', value: userStats?.pendingApprovalUsers ?? allUsers.filter(u => !u.isApproved).length, icon: Hourglass, color: 'from-amber-500 to-orange-600' },
-                        { label: 'محظورين', value: userStats?.blockedUsers ?? allUsers.filter(u => u.isBlocked).length, icon: Ban, color: 'from-red-500 to-rose-600' },
-                        { label: 'أكدوا الإيميل', value: userStats?.emailVerifiedUsers ?? '-', icon: ShieldCheck, color: 'from-cyan-500 to-blue-600' },
-                        { label: 'لم يؤكدوا الإيميل', value: userStats?.emailUnverifiedUsers ?? '-', icon: AlertCircle, color: 'from-rose-500 to-pink-600' },
-                      ].map((stat, i) => (
-                        <div key={i} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'} ${stat.highlight ? (darkMode ? 'ring-1 ring-violet-500/30' : 'ring-1 ring-violet-200') : ''}`}>
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${stat.color} flex items-center justify-center`}><stat.icon className="h-4 w-4 text-white" /></div>
-                            <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{stat.label}</p>
-                          </div>
-                          <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{stat.value}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* User Registration Timeline */}
-                  <div>
-                    <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Calendar className="h-5 w-5 text-amber-500" />تسجيلات المستخدمين</h3>
-                    <div className="grid grid-cols-3 gap-4">
-                      {[ { label: 'اليوم', value: userStats?.todayUsers ?? '-', color: 'from-emerald-500 to-teal-600' }, { label: 'هذا الأسبوع', value: userStats?.weekUsers ?? '-', color: 'from-amber-500 to-orange-600' }, { label: 'هذا الشهر', value: userStats?.monthUsers ?? '-', color: 'from-violet-500 to-purple-600' } ].map((stat, i) => (
-                        <div key={i} className={`p-4 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                          <p className={`text-xs mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{stat.label}</p>
-                          <div className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-gradient-to-r ${stat.color} text-white font-bold text-lg`}>{stat.value}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Recent Users */}
-                  {recentUsers.length > 0 && (
-                    <div>
-                      <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Clock className="h-5 w-5 text-cyan-500" />آخر التسجيلات</h3>
-                      <div className={`rounded-xl overflow-hidden ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                        <div className="max-h-64 overflow-y-auto">
-                          {recentUsers.map(u => (
-                            <div key={u.id} className={`p-3 flex items-center justify-between border-b last:border-0 ${darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
-                              <div className="flex items-center gap-3">
-                                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold ${u.isApproved ? 'bg-emerald-500/10 text-emerald-500' : u.isBlocked ? 'bg-red-500/10 text-red-500' : 'bg-amber-500/10 text-amber-500'}`}>
-                                  {u.name.charAt(0)}
-                                </div>
-                                <div>
-                                  <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{u.name}</p>
-                                  <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`} dir="ltr">{u.email}</p>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {!u.emailVerified && <span className="px-2 py-0.5 rounded-full text-xs bg-amber-500/10 text-amber-500">لم يؤكد الإيميل</span>}
-                                {u.emailVerified && !u.isApproved && <span className="px-2 py-0.5 rounded-full text-xs bg-violet-500/10 text-violet-500">بانتظار التأكيد</span>}
-                                {u.isApproved && <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-500/10 text-emerald-500">مؤيد</span>}
-                                {u.isBlocked && <span className="px-2 py-0.5 rounded-full text-xs bg-red-500/10 text-red-500">محظور</span>}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Smart Analysis */}
                   <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
                     <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Brain className="h-5 w-5 text-violet-500" />تحليل ذكي</h3>
                     <div className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
                       <p>📊 <strong>نسبة الإيجار للبيع:</strong> {allApartments.length > 0 ? Math.round((allApartments.filter(a => a.type === 'rent').length / allApartments.length) * 100) : 0}% إيجار</p>
                       <p className="mt-2">💰 <strong>متوسط الأسعار:</strong> {allApartments.length > 0 ? Math.round(allApartments.reduce((a, b) => a + b.price, 0) / allApartments.length).toLocaleString() : 0} {settings.currency}</p>
                       <p className="mt-2">🏆 <strong>أكثر منطقة:</strong> {uniqueAreas.length > 0 ? uniqueAreas.reduce((a, b) => allApartments.filter(apt => apt.area === a).length >= allApartments.filter(apt => apt.area === b).length ? a : b, uniqueAreas[0]) : 'لا توجد'}</p>
-                      <p className="mt-2">👤 <strong>إجمالي المستخدمين:</strong> {userStats?.totalUsers ?? allUsers.length} | مؤيدين: {userStats?.approvedUsers ?? '-'} | بانتظار: {userStats?.pendingApprovalUsers ?? '-'}</p>
-                      <p className="mt-2">📧 <strong>تأكيد الإيميل:</strong> {userStats?.emailVerifiedUsers ?? '-'} مؤكد | {userStats?.emailUnverifiedUsers ?? '-'} لم يؤكد</p>
+                      <p className="mt-2">👤 <strong>المستخدمين النشطين:</strong> {allUsers.length} | المحظورين: {blockedUsers.length}</p>
                     </div>
                   </div>
-                  <div className={`p-5 rounded-2xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/20">
-                        <MessageCircle className="h-5 w-5 text-white" />
-                      </div>
-                      <div>
-                        <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>التعليقات قيد المراجعة</h3>
-                        <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{comments.filter(c => c.status === 'pending').length} تعليق بانتظار الموافقة</p>
-                      </div>
-                    </div>
-                    <div className="space-y-3 max-h-80 overflow-y-auto">
-                      {comments.filter(c => c.status === 'pending').length === 0 ? (
-                        <div className="text-center py-6">
-                          <CheckCircle2 className={`h-10 w-10 mx-auto mb-2 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
-                          <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا توجد تعليقات قيد المراجعة ✨</p>
+                  <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                    <h3 className={`font-bold mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>التعليقات قيد المراجعة</h3>
+                    <div className="space-y-2">
+                      {comments.filter(c => c.status === 'pending').length === 0 ? <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد تعليقات قيد المراجعة</p> : comments.filter(c => c.status === 'pending').map(c => (
+                        <div key={c.id} className={`p-3 rounded-lg ${darkMode ? 'bg-slate-600' : 'bg-white'} flex items-center justify-between`}>
+                          <div><p className={darkMode ? 'text-white' : 'text-slate-900'}>{c.content}</p><p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{c.user.name}</p></div>
+                          <div className="flex gap-2"><button onClick={() => approveComment(c.id)} className="p-1 rounded bg-emerald-500 text-white"><Check className="h-4 w-4" /></button><button onClick={() => deleteComment(c.id)} className="p-1 rounded bg-red-500 text-white"><X className="h-4 w-4" /></button></div>
                         </div>
-                      ) : comments.filter(c => c.status === 'pending').map(c => {
-                        const avatarColors = ['from-violet-500 to-purple-600', 'from-emerald-500 to-teal-600', 'from-amber-500 to-orange-600', 'from-rose-500 to-pink-600', 'from-cyan-500 to-blue-600'];
-                        const ac = avatarColors[c.user.name.length % avatarColors.length];
-                        return (
-                          <div key={c.id} className={`p-4 rounded-2xl border transition-all ${darkMode ? 'bg-slate-600 border-slate-500/50' : 'bg-white border-slate-100'} shadow-sm hover:shadow-md`}>
-                            <div className="flex items-start gap-3">
-                              <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${ac} flex items-center justify-center flex-shrink-0 shadow-sm`}>
-                                <span className="text-white font-bold text-xs">{c.user.name.charAt(0)}</span>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <span className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-slate-900'}`}>{c.user.name}</span>
-                                    {c.apartment && <span className={`text-xs px-2 py-0.5 rounded-full ${darkMode ? 'bg-violet-900/50 text-violet-300' : 'bg-violet-100 text-violet-600'}`}>📌 {c.apartment.title}</span>}
-                                  </div>
-                                  <div className="flex gap-1.5 flex-shrink-0">
-                                    <button onClick={() => approveComment(c.id)} className="p-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:from-emerald-600 hover:to-teal-700 shadow-sm transition-all" title="موافقة"><Check className="h-3.5 w-3.5" /></button>
-                                    <button onClick={() => deleteComment(c.id)} className="p-1.5 rounded-lg bg-gradient-to-r from-red-500 to-rose-600 text-white hover:from-red-600 hover:to-rose-700 shadow-sm transition-all" title="حذف"><Trash2 className="h-3.5 w-3.5" /></button>
-                                  </div>
-                                </div>
-                                <p className={`mt-1 text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{c.content}</p>
-                                <p className={`text-xs mt-1.5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(c.createdAt).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -3835,147 +3113,14 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <input type="text" maxLength={10} value={settings.currency} onChange={(e) => setSettings({ ...settings, currency: e.target.value.replace(/<[^>]*>/g, '').slice(0, 10) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                   </div>
-
-                  {/* Payment Accounts Section */}
-                  <div className={`p-5 rounded-2xl border-2 ${darkMode ? 'bg-slate-700/50 border-emerald-500/20' : 'bg-emerald-50/50 border-emerald-200'}`}>
-                    <h3 className={`font-bold mb-1 flex items-center gap-2 text-lg ${darkMode ? 'text-white' : 'text-slate-900'}`}><Wallet className="h-5 w-5 text-emerald-500" />حسابات استقبال الدفع</h3>
-                    <p className={`text-xs mb-5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>اضبط حساباتك لاستقبال مدفوعات الشحن — المستخدمون سيرون الأرقام جزئياً masked</p>
-                    
-                    <div className="space-y-5">
-                      {/* 1. Mobile Wallets */}
-                      <div>
-                        <p className={`text-xs font-bold uppercase tracking-wider mb-3 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>📱 محافظ الجوال</p>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          {/* Vodafone Cash */}
-                          <div className={`relative rounded-xl border-2 p-4 transition-all ${settings.vodafoneCashNumber ? 'border-red-400/40' : darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
-                            <div className="flex items-center justify-between mb-2.5">
-                              <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">VF</div>
-                                <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>فودافون كاش</span>
-                              </div>
-                              <div className={`w-2.5 h-2.5 rounded-full ${settings.vodafoneCashNumber ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : darkMode ? 'bg-slate-600' : 'bg-slate-300'}`} title={settings.vodafoneCashNumber ? 'مفعّل' : 'غير مفعل'} />
-                            </div>
-                            <input type="tel" value={settings.vodafoneCashNumber} onChange={(e) => setSettings({ ...settings, vodafoneCashNumber: e.target.value.replace(/[^0-9\s]/g, '') })} placeholder="01xxxxxxxxx" className={`w-full px-3.5 py-2.5 rounded-lg border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-500 focus:border-red-500' : 'bg-white border-slate-200 placeholder-slate-400 focus:border-red-500'} outline-none transition-colors`} />
-                          </div>
-                          {/* Orange Cash */}
-                          <div className={`relative rounded-xl border-2 p-4 transition-all ${settings.orangeCashNumber ? 'border-orange-400/40' : darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
-                            <div className="flex items-center justify-between mb-2.5">
-                              <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">OR</div>
-                                <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>أورنج كاش</span>
-                              </div>
-                              <div className={`w-2.5 h-2.5 rounded-full ${settings.orangeCashNumber ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : darkMode ? 'bg-slate-600' : 'bg-slate-300'}`} />
-                            </div>
-                            <input type="tel" value={settings.orangeCashNumber} onChange={(e) => setSettings({ ...settings, orangeCashNumber: e.target.value.replace(/[^0-9\s]/g, '') })} placeholder="01xxxxxxxxx" className={`w-full px-3.5 py-2.5 rounded-lg border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-500 focus:border-orange-500' : 'bg-white border-slate-200 placeholder-slate-400 focus:border-orange-500'} outline-none transition-colors`} />
-                          </div>
-                          {/* Etisalat Cash */}
-                          <div className={`relative rounded-xl border-2 p-4 transition-all ${settings.etisalatCashNumber ? 'border-blue-400/40' : darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
-                            <div className="flex items-center justify-between mb-2.5">
-                              <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">ET</div>
-                                <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>اتصالات كاش</span>
-                              </div>
-                              <div className={`w-2.5 h-2.5 rounded-full ${settings.etisalatCashNumber ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : darkMode ? 'bg-slate-600' : 'bg-slate-300'}`} />
-                            </div>
-                            <input type="tel" value={settings.etisalatCashNumber} onChange={(e) => setSettings({ ...settings, etisalatCashNumber: e.target.value.replace(/[^0-9\s]/g, '') })} placeholder="01xxxxxxxxx" className={`w-full px-3.5 py-2.5 rounded-lg border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-500 focus:border-blue-500' : 'bg-white border-slate-200 placeholder-slate-400 focus:border-blue-500'} outline-none transition-colors`} />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* 2. InstaPay */}
-                      <div>
-                        <p className={`text-xs font-bold uppercase tracking-wider mb-3 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>⚡ إنستاباي</p>
-                        <div className={`rounded-xl border-2 p-4 transition-all ${settings.instapayAccount ? 'border-violet-400/40' : darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
-                          <div className="flex items-center justify-between mb-2.5">
-                            <div className="flex items-center gap-2">
-                              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">IP</div>
-                              <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>إنستاباي</span>
-                            </div>
-                            <div className={`w-2.5 h-2.5 rounded-full ${settings.instapayAccount ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : darkMode ? 'bg-slate-600' : 'bg-slate-300'}`} />
-                          </div>
-                          <input type="text" value={settings.instapayAccount} onChange={(e) => setSettings({ ...settings, instapayAccount: e.target.value.replace(/<[^>]*>/g, '') })} placeholder="رقم هاتف أو @username" className={`w-full px-3.5 py-2.5 rounded-lg border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-500 focus:border-violet-500' : 'bg-white border-slate-200 placeholder-slate-400 focus:border-violet-500'} outline-none transition-colors`} />
-                        </div>
-                      </div>
-
-                      {/* 3. Bank Transfer */}
-                      <div>
-                        <p className={`text-xs font-bold uppercase tracking-wider mb-3 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>🏦 تحويل بنكي</p>
-                        <div className={`rounded-xl border-2 p-4 transition-all ${(settings.bankAccountNumber && settings.bankName) ? 'border-emerald-400/40' : darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
-                          <div className="flex items-center justify-between mb-2.5">
-                            <div className="flex items-center gap-2">
-                              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">BK</div>
-                              <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>حساب بنكي</span>
-                            </div>
-                            <div className={`w-2.5 h-2.5 rounded-full ${(settings.bankAccountNumber && settings.bankName) ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : darkMode ? 'bg-slate-600' : 'bg-slate-300'}`} />
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            <input type="text" value={settings.bankName} onChange={(e) => setSettings({ ...settings, bankName: e.target.value.replace(/<[^>]*>/g, '') })} placeholder="اسم البنك" className={`w-full px-3.5 py-2.5 rounded-lg border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-500 focus:border-emerald-500' : 'bg-white border-slate-200 placeholder-slate-400 focus:border-emerald-500'} outline-none transition-colors`} />
-                            <input type="text" value={settings.bankAccountName} onChange={(e) => setSettings({ ...settings, bankAccountName: e.target.value.replace(/<[^>]*>/g, '') })} placeholder="اسم صاحب الحساب" className={`w-full px-3.5 py-2.5 rounded-lg border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-500 focus:border-emerald-500' : 'bg-white border-slate-200 placeholder-slate-400 focus:border-emerald-500'} outline-none transition-colors`} />
-                            <input type="text" value={settings.bankAccountNumber} onChange={(e) => setSettings({ ...settings, bankAccountNumber: e.target.value.replace(/<[^>]*>/g, '') })} placeholder="رقم الحساب / IBAN" className={`w-full px-3.5 py-2.5 rounded-lg border text-sm ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-500 focus:border-emerald-500' : 'bg-white border-slate-200 placeholder-slate-400 focus:border-emerald-500'} outline-none transition-colors`} />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* 4. Card Payment (Visa) */}
-                      <div>
-                        <p className={`text-xs font-bold uppercase tracking-wider mb-3 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>💳 بطاقات الدفع</p>
-                        <div className={`rounded-xl border-2 p-4 transition-all ${settings.visaEnabled ? 'border-indigo-400/40' : darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-sm"><CreditCard className="h-4 w-4 text-white" /></div>
-                              <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-slate-900'}`}>فيزا / ماستركارد</span>
-                            </div>
-                            <button onClick={() => setSettings({ ...settings, visaEnabled: !settings.visaEnabled })} className={`relative w-12 h-6 rounded-full transition-all duration-200 ${settings.visaEnabled ? 'bg-emerald-500 shadow-sm shadow-emerald-500/30' : darkMode ? 'bg-slate-600' : 'bg-slate-300'}`}>
-                              <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-all duration-200 ${settings.visaEnabled ? 'left-0.5' : 'left-6'}`} />
-                            </button>
-                          </div>
-                          {settings.visaEnabled && (
-                            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              <div>
-                                <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>Stripe Public Key</label>
-                                <input type="text" value={settings.visaPublicKey} onChange={(e) => setSettings({ ...settings, visaPublicKey: e.target.value })} placeholder="pk_..." className={`w-full px-3 py-2 rounded-lg border text-xs font-mono ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-500 focus:border-indigo-500' : 'bg-white border-slate-200 placeholder-slate-400 focus:border-indigo-500'} outline-none transition-colors`} />
-                              </div>
-                              <div>
-                                <label className={`block text-xs font-medium mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>Stripe Secret Key</label>
-                                <input type="password" value={settings.visaSecretKey} onChange={(e) => setSettings({ ...settings, visaSecretKey: e.target.value })} placeholder="sk_..." className={`w-full px-3 py-2 rounded-lg border text-xs font-mono ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-500 focus:border-indigo-500' : 'bg-white border-slate-200 placeholder-slate-400 focus:border-indigo-500'} outline-none transition-colors`} />
-                              </div>
-                            </motion.div>
-                          )}
-                          <p className={`text-xs mt-2.5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>بدون مفاتيح Stripe، الدفع بالبطاقة سيعمل كوضع تجريبي</p>
-                        </div>
-                      </div>
-
-                      {/* Recharge Limits */}
-                      <div>
-                        <p className={`text-xs font-bold uppercase tracking-wider mb-3 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>⚙️ حدود الشحن</p>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className={`rounded-xl border-2 p-4 ${darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
-                            <label className={`block text-xs font-medium mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>الحد الأدنى</label>
-                            <div className="flex items-center gap-2">
-                              <input type="number" min="1" value={settings.minRechargeAmount} onChange={(e) => setSettings({ ...settings, minRechargeAmount: Math.max(1, parseInt(e.target.value) || 1) })} className={`flex-1 px-3 py-2 rounded-lg border text-sm font-bold ${darkMode ? 'bg-slate-600 border-slate-500 text-white' : 'bg-white border-slate-200'} outline-none`} />
-                              <span className={`text-xs font-medium ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{settings.currency}</span>
-                            </div>
-                          </div>
-                          <div className={`rounded-xl border-2 p-4 ${darkMode ? 'border-slate-600' : 'border-slate-200'}`}>
-                            <label className={`block text-xs font-medium mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>الحد الأقصى</label>
-                            <div className="flex items-center gap-2">
-                              <input type="number" min="100" value={settings.maxRechargeAmount} onChange={(e) => setSettings({ ...settings, maxRechargeAmount: Math.min(1000000, parseInt(e.target.value) || 50000) })} className={`flex-1 px-3 py-2 rounded-lg border text-sm font-bold ${darkMode ? 'bg-slate-600 border-slate-500 text-white' : 'bg-white border-slate-200'} outline-none`} />
-                              <span className={`text-xs font-medium ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{settings.currency}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
                   <button onClick={() => updateSettings(settings)} disabled={settingsLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2">{settingsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}حفظ الإعدادات</button>
                   {/* Developer Password Change */}
                   <div className={`p-4 rounded-xl border-2 ${darkMode ? 'bg-slate-700 border-amber-500/30' : 'bg-amber-50 border-amber-200'}`}>
                     <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Key className="h-5 w-5 text-amber-500" />تغيير كلمة مرور المطور</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div className="relative"><input type={showDevChangePasswords[0] ? 'text' : 'password'} placeholder="كلمة المرور الحالية" value={devPasswordChange.current} onChange={(e) => setDevPasswordChange({ ...devPasswordChange, current: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 placeholder-slate-400'} pr-11`} /><button type="button" onClick={() => setShowDevChangePasswords(p => [!p[0], p[1], p[2]])} className={`absolute left-3 top-1/2 -translate-y-1/2 p-1 rounded-md ${darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-slate-600'}`}>{showDevChangePasswords[0] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div>
-                      <div className="relative"><input type={showDevChangePasswords[1] ? 'text' : 'password'} placeholder="كلمة المرور الجديدة" value={devPasswordChange.new} onChange={(e) => setDevPasswordChange({ ...devPasswordChange, new: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 placeholder-slate-400'} pr-11`} /><button type="button" onClick={() => setShowDevChangePasswords(p => [p[0], !p[1], p[2]])} className={`absolute left-3 top-1/2 -translate-y-1/2 p-1 rounded-md ${darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-slate-600'}`}>{showDevChangePasswords[1] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div>
-                      <div className="relative"><input type={showDevChangePasswords[2] ? 'text' : 'password'} placeholder="تأكيد كلمة المرور" value={devPasswordChange.confirm} onChange={(e) => setDevPasswordChange({ ...devPasswordChange, confirm: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 placeholder-slate-400'} pr-11`} /><button type="button" onClick={() => setShowDevChangePasswords(p => [p[0], p[1], !p[2]])} className={`absolute left-3 top-1/2 -translate-y-1/2 p-1 rounded-md ${darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-slate-600'}`}>{showDevChangePasswords[2] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div>
+                      <input type="password" placeholder="كلمة المرور الحالية" value={devPasswordChange.current} onChange={(e) => setDevPasswordChange({ ...devPasswordChange, current: e.target.value })} className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 placeholder-slate-400'}`} />
+                      <input type="password" placeholder="كلمة المرور الجديدة" value={devPasswordChange.new} onChange={(e) => setDevPasswordChange({ ...devPasswordChange, new: e.target.value })} className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 placeholder-slate-400'}`} />
+                      <input type="password" placeholder="تأكيد كلمة المرور" value={devPasswordChange.confirm} onChange={(e) => setDevPasswordChange({ ...devPasswordChange, confirm: e.target.value })} className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-600 border-slate-500 text-white placeholder-slate-400' : 'bg-white border-slate-200 placeholder-slate-400'}`} />
                     </div>
                     <button onClick={async () => {
                       if (!devPasswordChange.current || !devPasswordChange.new || !devPasswordChange.confirm) { addToast('جميع الحقول مطلوبة', 'error'); return; }
@@ -4016,55 +3161,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <div className={`p-2.5 rounded-lg ${settings.priorityListingFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>🔝 أولوية: {settings.priorityListingFee === 0 ? 'مجاني ✨' : `${settings.priorityListingFee} ${settings.currency}`}</div>
                     </div>
                     <p className={`text-xs mt-2 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>💡 الأسعار تتحدث للمستخدمين تلقائياً بدون تحديث الصفحة</p>
-                  </div>
-                  {/* Backup & Restore */}
-                  <div className={`p-4 rounded-xl border-2 ${darkMode ? 'bg-slate-700 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200'}`}>
-                    <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Download className="h-5 w-5 text-emerald-500" />نسخ احتياطي واستعادة</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <button onClick={async () => {
-                        try {
-                          const res = await fetch('/api/backup');
-                          if (!res.ok) throw new Error('فشل التصدير');
-                          const blob = await res.blob();
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = `manteqti-backup-${new Date().toISOString().split('T')[0]}.json`;
-                          document.body.appendChild(a);
-                          a.click();
-                          document.body.removeChild(a);
-                          URL.revokeObjectURL(url);
-                          addToast('تم تحميل النسخة الاحتياطية بنجاح ✅', 'success');
-                        } catch { addToast('فشل تحميل النسخة الاحتياطية', 'error'); }
-                      }} className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-medium text-sm transition-all bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:opacity-90`}>
-                        <Download className="h-4 w-4" />تصدير نسخة احتياطية (JSON)
-                      </button>
-                      <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-medium text-sm transition-all cursor-pointer bg-gradient-to-r from-blue-500 to-cyan-600 text-white hover:opacity-90`}>
-                        <Upload className="h-4 w-4" />استعادة من نسخة احتياطية
-                        <input type="file" accept=".json" className="hidden" onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          setConfirmDialog({
-                            isOpen: true, title: 'استعادة بيانات', message: 'هل تريد استعادة البيانات من النسخة الاحتياطية؟\n\nسيتم إضافة البيانات المفقودة فقط (لن يتم حذف أي بيانات موجودة).', confirmText: 'استعادة', cancelText: 'إلغاء', type: 'warning',
-                            onConfirm: async () => {
-                              setConfirmDialog(prev => ({ ...prev, loading: true }));
-                              try {
-                                const text = await file.text();
-                                const data = JSON.parse(text);
-                                const res = await fetch('/api/backup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, mode: 'merge' }) });
-                                const result = await res.json();
-                                if (res.ok) {
-                                  addToast(`تم الاستعادة: ${JSON.stringify(result.restored)}`, 'success');
-                                  fetchDevData(); fetchApartments(0, false); fetchAllUsers();
-                                } else addToast(result.error || 'فشلت الاستعادة', 'error');
-                              } catch { addToast('ملف غير صالح', 'error'); }
-                              finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
-                            }
-                          });
-                        }} />
-                      </label>
-                    </div>
-                    <p className={`text-xs mt-2 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>💡 يُنصح بأخذ نسخة احتياطية بشكل دوري لحماية بياناتك</p>
                   </div>
                 </div>
               )}
@@ -4261,144 +3357,46 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Payment Modal */}
       <AnimatePresence>{paymentApartment && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => { setPaymentApartment(null); setPaymentMethod(''); }}>
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl overflow-hidden ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
-            <div className="bg-gradient-to-r from-emerald-500 to-teal-600 p-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-white">طلب بيانات التواصل</h2>
-                <button onClick={() => { setPaymentApartment(null); setPaymentMethod(''); }} className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"><X className="h-5 w-5 text-white" /></button>
-              </div>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setPaymentApartment(null)}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>طلب بيانات التواصل</h2>
+              <button onClick={() => setPaymentApartment(null)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
             </div>
-            <div className="p-6">
-              <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>المبلغ المطلوب:</p>
-                <p className="text-2xl font-bold text-emerald-500">{settings.contactFee === 0 ? 'مجاني ✨' : `${settings.contactFee} ${settings.currency}`}</p>
+            <div className={`p-4 rounded-xl mb-6 ${settings.contactFee === 0 ? (darkMode ? 'bg-emerald-900/30' : 'bg-emerald-50') : (darkMode ? 'bg-slate-700' : 'bg-slate-50')}`}><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>المبلغ المطلوب:</p><p className={`text-2xl font-bold ${settings.contactFee === 0 ? 'text-emerald-500' : 'text-emerald-500'}`}>{settings.contactFee === 0 ? 'مجاني ✨' : `${settings.contactFee} ${settings.currency}`}</p></div>
+            {settings.contactFee === 0 ? (
+              <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-emerald-900/20 border border-emerald-700' : 'bg-emerald-50 border border-emerald-200'}`}>
+                <p className={`text-center font-medium ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>🎉 هذه الخدمة مجانية! لا حاجة للدفع</p>
               </div>
-              {settings.contactFee === 0 ? (
-                <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-emerald-900/20 border border-emerald-700' : 'bg-emerald-50 border border-emerald-200'}`}>
-                  <p className={`text-center font-medium ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>🎉 هذه الخدمة مجانية! لا حاجة للدفع</p>
-                </div>
-              ) : (
-              <div className="space-y-3 mb-6">
-                <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>اختر طريقة الدفع:</p>
-                {/* Wallet option */}
-                <button onClick={() => setPaymentMethod('wallet')} className={`w-full p-4 rounded-xl border-2 text-right transition-all ${paymentMethod === 'wallet' ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : darkMode ? 'border-slate-600 hover:border-slate-500' : 'border-slate-200 hover:border-slate-300'}`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center"><Wallet className="h-5 w-5 text-white" /></div>
-                      <div>
-                        <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>محفظتي</p>
-                        <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>رصيدك: {walletBalance} {settings.currency}</p>
-                      </div>
-                    </div>
-                    {walletBalance < settings.contactFee && <span className="text-xs text-amber-500">رصيد غير كافٍ</span>}
-                    {walletBalance >= settings.contactFee && <span className="text-xs text-emerald-500">✓ كافٍ</span>}
-                  </div>
-                </button>
-                {paymentMethods.filter(m => m.id !== 'visa').map(method => (
-                  <button key={method.id} onClick={() => setPaymentMethod(method.id)} className={`w-full p-4 rounded-xl border-2 text-right transition-all ${paymentMethod === method.id ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : darkMode ? 'border-slate-600 hover:border-slate-500' : 'border-slate-200 hover:border-slate-300'}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${method.color} flex items-center justify-center text-lg`}>{method.icon}</div>
-                        <div>
-                          <p className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{method.name}</p>
-                          {method.account && <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{method.accountLabel}: {method.account}</p>}
-                        </div>
-                      </div>
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${paymentMethod === method.id ? 'border-emerald-500 bg-emerald-500' : darkMode ? 'border-slate-500' : 'border-slate-300'}`}>
-                        {paymentMethod === method.id && <Check className="h-3 w-3 text-white" />}
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-              )}
-              <button onClick={() => handlePayment()} disabled={settings.contactFee !== 0 && (!paymentMethod || paymentSubmitting || (paymentMethod === 'wallet' && walletBalance < settings.contactFee))} className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium disabled:opacity-50">{paymentSubmitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : settings.contactFee === 0 ? 'الحصول مجاناً ✨' : paymentMethod === 'wallet' ? `دفع من المحفظة (${settings.contactFee} ${settings.currency})` : 'تأكيد الطلب'}</button>
+            ) : (
+            <div className="space-y-3 mb-6">
+              <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>اختر طريقة الدفع:</p>
+              {['فودافون كاش', 'أورنج كاش', 'اتصالات كاش', 'تحويل بنكي'].map(method => (
+                <button key={method} onClick={() => setPaymentMethod(method)} className={`w-full p-4 rounded-xl border-2 text-right transition-all ${paymentMethod === method ? 'border-emerald-500 bg-emerald-50' : darkMode ? 'border-slate-600 hover:border-slate-500' : 'border-slate-200 hover:border-slate-300'}`}>{method}</button>
+              ))}
             </div>
+            )}
+            <button onClick={() => handlePayment()} disabled={settings.contactFee !== 0 && (!paymentMethod || paymentSubmitting)} className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium disabled:opacity-50">{paymentSubmitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : settings.contactFee === 0 ? 'الحصول مجاناً ✨' : 'تأكيد الطلب'}</button>
           </motion.div>
         </motion.div>
       )}</AnimatePresence>
 
-      {/* Wallet Modal - New Modern Design */}
-      <WalletModal
-        isOpen={showWallet}
-        onClose={() => setShowWallet(false)}
-        darkMode={darkMode}
-        walletBalance={walletBalance}
-        currency={settings.currency}
-        walletTransactions={walletTransactions}
-        paymentMethods={paymentMethods}
-        onRecharge={async (amount, method, reference) => {
-          try {
-            const res = await fetch('/api/wallet', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ amount, method, reference: reference || undefined }),
-            });
-            const data = await res.json();
-            if (res.ok) {
-              addToast(data.autoConfirm ? 'تم شحن المحفظة بنجاح ✅' : 'تم تسجيل طلب الشحن — بانتظار تأكيد المطور ✅', 'success');
-              // Refresh wallet data
-              const wRes = await fetch('/api/wallet');
-              const wData = await wRes.json();
-              if (wRes.ok) {
-                setWalletBalance(wData.balance || 0);
-                setWalletTransactions(wData.transactions || []);
-              }
-              return true;
-            } else {
-              addToast(data.error || 'فشل طلب الشحن', 'error');
-              return false;
-            }
-          } catch {
-            addToast('حدث خطأ', 'error');
-            return false;
-          }
-        }}
-        onFetchWallet={async () => {
-          try {
-            const wRes = await fetch('/api/wallet');
-            const wData = await wRes.json();
-            if (wRes.ok) {
-              setWalletBalance(wData.balance || 0);
-              setWalletTransactions(wData.transactions || []);
-            }
-          } catch {}
-        }}
-        onOpenVisa={(amount) => {
-          setShowVisaPayment(true);
-          setVisaAmount(amount);
-        }}
-        autoConfirm={false}
-        addToast={addToast}
-      />
-
       {/* Forgot Password Modal */}
       <AnimatePresence>{showForgotPassword && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => { setShowForgotPassword(false); setForgotSuccess(false); setForgotOtp(''); }}>
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl overflow-hidden ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
-            <div className="px-6 pt-6 pb-4 bg-gradient-to-r from-violet-600 to-purple-700">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-white">🔑 استعادة كلمة المرور</h2>
-                <button onClick={() => { setShowForgotPassword(false); setForgotSuccess(false); setForgotOtp(''); }} className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"><X className={"h-5 w-5 text-white"} /></button>
-              </div>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowForgotPassword(false)}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>استعادة كلمة المرور</h2>
+              <button onClick={() => setShowForgotPassword(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
             </div>
-            <div className="p-6">
-              {!forgotSuccess ? (
-                <form onSubmit={handleForgotPassword} className="space-y-4">
-                  <p className={`text-sm mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>أدخل بريدك الإلكتروني وسنرسل لك رمز استعادة</p>
-                  <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>البريد الإلكتروني</label><input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400' : 'bg-white border-slate-200 placeholder-slate-500'} focus:ring-2 focus:ring-violet-500 focus:border-transparent`} required /></div>
-                  <button type="submit" disabled={forgotLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium disabled:opacity-50">{forgotLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'إرسال رمز الاستعادة'}</button>
-                </form>
-              ) : (
-                <div className="space-y-4">
-                  <div className="text-center py-2"><CheckCircle2 className="h-12 w-12 mx-auto mb-2 text-emerald-500" /><p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>تم إرسال رمز الاستعادة! أدخله أدناه</p></div>
-                  <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رمز الاستعادة (6 أرقام)</label><input type="text" maxLength={6} value={forgotOtp} onChange={(e) => setForgotOtp(e.target.value.replace(/\D/g, ''))} placeholder="000000" className={`w-full px-4 py-3 rounded-xl border text-center text-2xl tracking-[0.5em] font-mono ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
-                  <button onClick={() => setShowResetPassword(true)} disabled={forgotOtp.length !== 6} className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white font-medium disabled:opacity-50">متابعة لتغيير كلمة المرور</button>
-                  <button type="button" onClick={handleForgotPassword} disabled={forgotLoading} className={`w-full py-2 rounded-xl text-sm ${darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-700'} disabled:opacity-50`}>{forgotLoading ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'إعادة إرسال الرمز'}</button>
-                </div>
-              )}
-            </div>
+            {forgotSuccess ? (
+              <div className="text-center py-4"><CheckCircle2 className="h-16 w-16 mx-auto mb-4 text-emerald-500" /><p className={darkMode ? 'text-slate-300' : 'text-slate-600'}>تم إرسال رابط استعادة كلمة المرور</p></div>
+            ) : (
+              <form onSubmit={handleForgotPassword} className="space-y-4">
+                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>البريد الإلكتروني</label><input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
+                <button type="submit" disabled={forgotLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium disabled:opacity-50">{forgotLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'إرسال رابط الاستعادة'}</button>
+              </form>
+            )}
           </motion.div>
         </motion.div>
       )}</AnimatePresence>
@@ -4406,124 +3404,36 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
       {/* Reset Password Modal */}
       <AnimatePresence>{showResetPassword && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowResetPassword(false)}>
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl overflow-hidden ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
-            <div className="px-6 pt-6 pb-4 bg-gradient-to-r from-emerald-600 to-teal-700">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-white">🔒 كلمة المرور الجديدة</h2>
-                <button onClick={() => setShowResetPassword(false)} className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors"><X className="h-5 w-5 text-white" /></button>
-              </div>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>كلمة المرور الجديدة</h2>
+              <button onClick={() => setShowResetPassword(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
             </div>
-            <form onSubmit={handleResetPassword} className="p-6 space-y-4">
-              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>كلمة المرور الجديدة</label>
-                <div className="relative"><input type={showForgotNewPassword ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'} pr-11`} required /><button type="button" onClick={() => setShowForgotNewPassword(!showForgotNewPassword)} className={`absolute left-3 top-1/2 -translate-y-1/2 p-1 rounded-md ${darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-slate-600'}`}>{showForgotNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div>
-              </div>
-              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>تأكيد كلمة المرور</label>
-                <div className="relative"><input type={showForgotConfirmPassword ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'} pr-11`} required /><button type="button" onClick={() => setShowForgotConfirmPassword(!showForgotConfirmPassword)} className={`absolute left-3 top-1/2 -translate-y-1/2 p-1 rounded-md ${darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-slate-600'}`}>{showForgotConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></div>
-              </div>
-              <button type="submit" disabled={resetLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white font-medium disabled:opacity-50">{resetLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : '🔒 تغيير كلمة المرور'}</button>
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>كلمة المرور الجديدة</label><input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
+              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>تأكيد كلمة المرور</label><input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
+              <button type="submit" disabled={resetLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium disabled:opacity-50">{resetLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'تغيير كلمة المرور'}</button>
             </form>
           </motion.div>
         </motion.div>
       )}</AnimatePresence>
-      {/* OTP Verification Modal - Modern Design */}
+      {/* OTP Verification Modal */}
       <AnimatePresence>{showOtpVerification && (
-        <motion.div 
-          initial={{ opacity: 0 }} 
-          animate={{ opacity: 1 }} 
-          exit={{ opacity: 0 }} 
-          className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
-          onClick={() => setShowOtpVerification(false)}
-        >
-          <motion.div 
-            initial={{ scale: 0.9, y: 20, opacity: 0 }} 
-            animate={{ scale: 1, y: 0, opacity: 1 }} 
-            exit={{ scale: 0.9, y: 20, opacity: 0 }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            onClick={(e) => e.stopPropagation()} 
-            className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'}`}
-          >
-            {/* Header */}
-            <div className="relative overflow-hidden px-8 pt-8 pb-6 bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500">
-              <div className="absolute inset-0 opacity-10">
-                <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-white/20"></div>
-                <div className="absolute -bottom-8 -left-8 w-32 h-32 rounded-full bg-white/20"></div>
-              </div>
-              <div className="relative z-10 text-center">
-                <div className="mx-auto w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center mb-4">
-                  <ShieldCheck className="h-8 w-8 text-white" />
-                </div>
-                <h3 className="text-2xl font-bold text-white">تأكيد البريد الإلكتروني</h3>
-                <p className="text-white/80 text-sm mt-2">أدخل رمز التحقق المكون من 6 أرقام</p>
-                <p className="text-white/90 font-medium mt-1 text-sm">{otpEmail}</p>
-              </div>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowOtpVerification(false)}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+            <div className="text-center mb-6">
+              <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 bg-gradient-to-r from-emerald-500 to-teal-600`}><Send className="h-8 w-8 text-white" /></div>
+              <h3 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>تأكيد البريد الإلكتروني</h3>
+              <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>تم إرسال رمز تأكيد إلى<br /><span className="font-medium text-emerald-500">{otpEmail}</span></p>
             </div>
-
-            {/* OTP Input */}
-            <form onSubmit={handleVerifyOtp} className="p-8 space-y-6">
-              <div className="flex justify-center gap-2 sm:gap-3" dir="ltr">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <input
-                    key={i}
-                    type="text"
-                    maxLength={1}
-                    value={otpCode[i] || ''}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, '');
-                      const newCode = otpCode.split('');
-                      newCode[i] = val;
-                      setOtpCode(newCode.join(''));
-                      // Auto-focus next input
-                      if (val && i < 5) {
-                        const next = e.target.nextElementSibling as HTMLInputElement;
-                        if (next) next.focus();
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Backspace' && !otpCode[i] && i > 0) {
-                        const prev = (e.target as HTMLInputElement).previousElementSibling as HTMLInputElement;
-                        if (prev) { prev.focus(); prev.select(); }
-                      }
-                    }}
-                    onPaste={(e) => {
-                      e.preventDefault();
-                      const paste = (e.clipboardData.getData('text') || '').replace(/\D/g, '').slice(0, 6);
-                      if (paste.length === 6) { setOtpCode(paste); }
-                    }}
-                    className={`w-11 h-14 sm:w-14 sm:h-16 text-center text-2xl font-bold rounded-2xl border-2 transition-all duration-200 focus:outline-none focus:ring-0 ${
-                      darkMode 
-                        ? 'bg-slate-700/50 border-slate-600 text-white focus:border-emerald-500' 
-                        : 'bg-slate-50 border-slate-200 text-slate-800 focus:border-emerald-500'
-                    }`}
-                  />
-                ))}
+            <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <div>
+                <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رمز التأكيد (6 أرقام)</label>
+                <input type="text" maxLength={6} value={otpCode} onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))} placeholder="000000" className={`w-full px-4 py-3 rounded-xl border text-center text-2xl tracking-[0.5em] font-mono ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required />
               </div>
-
-              <button 
-                type="submit" 
-                disabled={otpLoading || otpCode.length !== 6} 
-                className="w-full py-4 rounded-2xl font-semibold text-white transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:transform-none shadow-lg bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:shadow-emerald-500/30"
-              >
-                {otpLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'تأكيد الرمز'}
-              </button>
-
-              <div className="text-center space-y-3">
-                <button 
-                  type="button" 
-                  onClick={handleResendOtp} 
-                  disabled={otpResendLoading} 
-                  className={`text-sm font-medium transition-colors disabled:opacity-50 ${darkMode ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-700'}`}
-                >
-                  {otpResendLoading ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'إعادة إرسال الرمز'}
-                </button>
-                <button 
-                  type="button" 
-                  onClick={() => { setShowOtpVerification(false); setAuthStep('login'); setShowAuth(true); }} 
-                  className={`block mx-auto text-sm ${darkMode ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'} transition-colors`
-                  }
-                >
-                  العودة لتسجيل الدخول
-                </button>
-              </div>
+              <button type="submit" disabled={otpLoading || otpCode.length !== 6} className="w-full py-3 rounded-xl font-medium text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 transition-all">{otpLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'تأكيد'}</button>
+              <button type="button" onClick={handleResendOtp} disabled={otpResendLoading} className={`w-full py-2 rounded-xl text-sm ${darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-700'} disabled:opacity-50`}>{otpResendLoading ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'إعادة إرسال الرمز'}</button>
+              <button type="button" onClick={() => { setShowOtpVerification(false); setShowAuth(true); }} className={`w-full py-2 text-sm ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>تسجيل الدخول بدلاً من ذلك</button>
             </form>
           </motion.div>
         </motion.div>

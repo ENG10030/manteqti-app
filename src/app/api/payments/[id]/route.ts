@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
 
-export const dynamic = "force-dynamic";
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
 
 export async function GET(
   request: NextRequest,
@@ -18,7 +18,7 @@ export async function GET(
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+      decoded = verify(token, JWT_SECRET);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
@@ -40,9 +40,21 @@ export async function GET(
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
     }
 
-    // 🔒 Ownership check: only the payment owner or a developer can view
-    if (payment.userId !== decoded.userId && decoded.role !== 'DEVELOPER') {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+    // Authorization: must be the payment owner or a developer
+    const isDev = decoded.role === 'DEVELOPER' || decoded.identifier === DEVELOPER_EMAIL;
+    if (!isDev) {
+      try {
+        const user = await db.user.findUnique({ where: { id: decoded.userId }, select: { role: true, identifier: true } });
+        if (user?.role !== 'DEVELOPER' && user?.identifier !== DEVELOPER_EMAIL) {
+          if (payment.userId !== decoded.userId) {
+            return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+          }
+        }
+      } catch {
+        if (payment.userId !== decoded.userId) {
+          return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+        }
+      }
     }
 
     return NextResponse.json({
@@ -88,7 +100,7 @@ export async function PUT(
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+      decoded = verify(token, JWT_SECRET);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
@@ -131,7 +143,7 @@ export async function PATCH(
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+      decoded = verify(token, JWT_SECRET);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }

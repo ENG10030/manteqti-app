@@ -2,24 +2,27 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { notifyRealtime } from "@/lib/realtime";
-import { JWT_SECRET } from "@/lib/auth";
 
-export const dynamic = "force-dynamic";
-
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
 
 async function isDeveloper(request: Request): Promise<boolean> {
   const cookieHeader = request.headers.get("cookie");
   const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
   const token = cookies.get("auth-token");
+
   if (!token) return false;
+
   try {
-    const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as unknown as { userId: string; role?: string; identifier?: string };
+    const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
+    
     if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
+
     const user = await db.user.findUnique({
       where: { id: decoded.userId },
       select: { role: true, identifier: true },
     });
+
     return user?.role === "DEVELOPER" || user?.identifier === DEVELOPER_EMAIL;
   } catch {
     return false;
@@ -30,110 +33,191 @@ async function getCurrentUserId(request: Request): Promise<string | null> {
   const cookieHeader = request.headers.get("cookie");
   const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
   const token = cookies.get("auth-token");
+
   if (!token) return null;
+
   try {
-    const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as unknown as { userId: string };
+    const decoded = verify(token, JWT_SECRET) as { userId: string };
     return decoded.userId;
   } catch {
     return null;
   }
 }
 
-function sanitize(value: unknown): string {
-  if (typeof value === "string") return value.replace(/<[^>]*>/g, "").trim();
-  return String(value ?? "");
+// Validate fee value - must be non-negative integer
+function validateFee(value: any): number {
+  const num = parseInt(value);
+  if (isNaN(num) || num < 0) return 0;
+  return num;
 }
 
-function toNum(value: unknown): number {
-  const num = parseInt(String(value));
-  return isNaN(num) || num < 0 ? 0 : num;
+// Validate currency - max 10 chars, no HTML
+function validateCurrency(value: any): string {
+  if (typeof value !== 'string') return 'ج.م';
+  const sanitized = value.replace(/<[^>]*>/g, '').trim().slice(0, 10);
+  return sanitized || 'ج.م';
 }
 
-// ==========================================
-// 🔧 AUTO-HEAL: Add missing columns to DB
-// This replaces the old sync-schema endpoint
-// ==========================================
-const REQUIRED_COLUMNS: Record<string, { column: string; type: string; default: string }> = {
-  vodafoneCashNumber:   { column: "vodafone_cash_number",   type: "TEXT",     default: "''" },
-  orangeCashNumber:     { column: "orange_cash_number",     type: "TEXT",     default: "''" },
-  etisalatCashNumber:   { column: "etisalat_cash_number",   type: "TEXT",     default: "''" },
-  bankAccountName:      { column: "bank_account_name",      type: "TEXT",     default: "''" },
-  bankAccountNumber:    { column: "bank_account_number",    type: "TEXT",     default: "''" },
-  bankName:             { column: "bank_name",              type: "TEXT",     default: "''" },
-  instapayAccount:      { column: "instapay_account",        type: "TEXT",     default: "''" },
-  usdtTronAddress:      { column: "usdt_tron_address",       type: "TEXT",     default: "''" },
-  visaEnabled:          { column: "visa_enabled",           type: "BOOLEAN",  default: "false" },
-  visaPublicKey:        { column: "visa_public_key",         type: "TEXT",     default: "''" },
-  visaSecretKey:        { column: "visa_secret_key",         type: "TEXT",     default: "''" },
-  minRechargeAmount:    { column: "min_recharge_amount",     type: "INTEGER",  default: "10" },
-  maxRechargeAmount:    { column: "max_recharge_amount",     type: "INTEGER",  default: "50000" },
-  paymentAutoConfirm:   { column: "payment_auto_confirm",    type: "BOOLEAN",  default: "false" },
-  paymentSecurityPin:   { column: "payment_security_pin",    type: "TEXT",     default: "''" },
+const DEFAULT_SETTINGS = {
+  contactFee: 50,
+  regularFee: 30,
+  featuredFee: 100,
+  premiumFee: 200,
+  vipFee: 300,
+  saleDisplayFee: 100,
+  rentDisplayFee: 75,
+  otherServicesFee: 50,
+  highlightFee: 150,
+  priorityListingFee: 200,
+  verifiedListingFee: 250,
+  currency: "ج.م",
 };
 
-async function autoHealDatabase(): Promise<number> {
-  let added = 0;
-  for (const [field, info] of Object.entries(REQUIRED_COLUMNS)) {
-    try {
-      const check = await db.$queryRawUnsafe(
-        `SELECT column_name FROM information_schema.columns WHERE table_name = 'settings' AND column_name = '${info.column}'`
-      ) as Array<{ column_name: string }>;
+// ============= AUTO-MIGRATION: Ensure Settings table exists with all columns =============
+// This runs automatically on every GET/PUT request to handle cases where
+// prisma db:push failed during Vercel build (Supabase unreachable from build server)
 
-      if (check.length === 0) {
-        await db.$executeRawUnsafe(
-          `ALTER TABLE settings ADD COLUMN ${info.column} ${info.type} DEFAULT ${info.default}`
-        );
-        added++;
-        console.log(`[Settings Auto-Heal] Added column: ${info.column}`);
+let migrationDone = false;
+
+async function ensureSettingsTable(): Promise<boolean> {
+  if (migrationDone) return true;
+
+  try {
+    // Check database type
+    const dbUrl = process.env.DATABASE_URL || '';
+    const isPostgres = dbUrl.startsWith('postgres') || dbUrl.startsWith('postgresql');
+
+    if (isPostgres) {
+      // PostgreSQL - use pg_tables and information_schema
+      // Step 1: Check if table exists
+      const tableExists = await db.$queryRaw<Array<{ exists: boolean }>>`
+        SELECT EXISTS (
+          SELECT FROM pg_tables 
+          WHERE tablename = 'Settings'
+        ) as "exists"
+      `;
+
+      if (!tableExists[0]?.exists) {
+        // Create the full table
+        console.log('[Settings Auto-Migration] Creating Settings table...');
+        await db.$executeRaw`
+          CREATE TABLE "Settings" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "contactFee" INTEGER NOT NULL DEFAULT 50,
+            "regularFee" INTEGER NOT NULL DEFAULT 30,
+            "featuredFee" INTEGER NOT NULL DEFAULT 100,
+            "premiumFee" INTEGER NOT NULL DEFAULT 200,
+            "vipFee" INTEGER NOT NULL DEFAULT 300,
+            "saleDisplayFee" INTEGER NOT NULL DEFAULT 100,
+            "rentDisplayFee" INTEGER NOT NULL DEFAULT 75,
+            "otherServicesFee" INTEGER NOT NULL DEFAULT 50,
+            "highlightFee" INTEGER NOT NULL DEFAULT 150,
+            "priorityListingFee" INTEGER NOT NULL DEFAULT 200,
+            "verifiedListingFee" INTEGER NOT NULL DEFAULT 250,
+            "currency" TEXT NOT NULL DEFAULT 'ج.م',
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+          )
+        `;
+        console.log('[Settings Auto-Migration] Settings table created successfully');
+      } else {
+        // Table exists - check for missing columns
+        const existingColumns = await db.$queryRaw<Array<{ column_name: string }>>`
+          SELECT column_name FROM information_schema.columns 
+          WHERE table_name = 'Settings'
+        `;
+        const columnNames = existingColumns.map(c => c.column_name);
+
+        const requiredColumns: Record<string, string> = {
+          contactFee: 'INTEGER NOT NULL DEFAULT 50',
+          regularFee: 'INTEGER NOT NULL DEFAULT 30',
+          featuredFee: 'INTEGER NOT NULL DEFAULT 100',
+          premiumFee: 'INTEGER NOT NULL DEFAULT 200',
+          vipFee: 'INTEGER NOT NULL DEFAULT 300',
+          saleDisplayFee: 'INTEGER NOT NULL DEFAULT 100',
+          rentDisplayFee: 'INTEGER NOT NULL DEFAULT 75',
+          otherServicesFee: 'INTEGER NOT NULL DEFAULT 50',
+          highlightFee: 'INTEGER NOT NULL DEFAULT 150',
+          priorityListingFee: 'INTEGER NOT NULL DEFAULT 200',
+          verifiedListingFee: 'INTEGER NOT NULL DEFAULT 250',
+          currency: "TEXT NOT NULL DEFAULT 'ج.م'",
+        };
+
+        for (const [colName, colDef] of Object.entries(requiredColumns)) {
+          if (!columnNames.includes(colName)) {
+            console.log(`[Settings Auto-Migration] Adding missing column: ${colName}`);
+            await db.$executeRawUnsafe(`ALTER TABLE "Settings" ADD COLUMN "${colName}" ${colDef}`);
+          }
+        }
       }
-    } catch (err) {
-      console.error(`[Settings Auto-Heal] Failed to add ${info.column}:`, err);
+    } else {
+      // SQLite - the table should exist from prisma db:push
+      // If it doesn't, create it
+      const tableExists = await db.$queryRaw<Array<{ name: string }>>`
+        SELECT name FROM sqlite_master WHERE type='table' AND name='Settings'
+      `;
+
+      if (!tableExists || tableExists.length === 0) {
+        console.log('[Settings Auto-Migration] Creating Settings table (SQLite)...');
+        await db.$executeRaw`
+          CREATE TABLE "Settings" (
+            "id" TEXT NOT NULL PRIMARY KEY,
+            "contactFee" INTEGER NOT NULL DEFAULT 50,
+            "regularFee" INTEGER NOT NULL DEFAULT 30,
+            "featuredFee" INTEGER NOT NULL DEFAULT 100,
+            "premiumFee" INTEGER NOT NULL DEFAULT 200,
+            "vipFee" INTEGER NOT NULL DEFAULT 300,
+            "saleDisplayFee" INTEGER NOT NULL DEFAULT 100,
+            "rentDisplayFee" INTEGER NOT NULL DEFAULT 75,
+            "otherServicesFee" INTEGER NOT NULL DEFAULT 50,
+            "highlightFee" INTEGER NOT NULL DEFAULT 150,
+            "priorityListingFee" INTEGER NOT NULL DEFAULT 200,
+            "verifiedListingFee" INTEGER NOT NULL DEFAULT 250,
+            "currency" TEXT NOT NULL DEFAULT 'ج.م',
+            "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+          )
+        `;
+      }
     }
+
+    migrationDone = true;
+    return true;
+  } catch (error) {
+    console.error('[Settings Auto-Migration] Error:', error);
+    // Don't throw - let the main function try Prisma anyway
+    return false;
   }
-  return added;
 }
 
-// ==========================================
-// GET - Fetch settings (public, stripped)
-// ==========================================
+// GET - جلب الإعدادات (public)
 export async function GET() {
   try {
-    const row = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
-    if (row) {
-      // 🔒 Strip sensitive fields before returning to public
-      const { visaSecretKey, visaPublicKey, paymentSecurityPin, vodafoneCashNumber, orangeCashNumber, etisalatCashNumber, bankAccountNumber, bankAccountName, instapayAccount, usdtTronAddress, ...publicSettings } = row;
-      
-      return NextResponse.json({
-        settings: publicSettings,
-        paymentMethods: buildPublicPaymentMethods(row),
-      }, {
-        headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-          "Pragma": "no-cache",
-          "Expires": "0",
-        },
-      });
+    // Ensure table exists first
+    await ensureSettingsTable();
+
+    let settings = await db.settings.findFirst();
+
+    if (!settings) {
+      settings = await db.settings.create({ data: DEFAULT_SETTINGS });
     }
 
-    // No row exists — return defaults
-    return NextResponse.json({
-      settings: {
-        contactFee: 50, regularFee: 30, featuredFee: 100, premiumFee: 200, vipFee: 300,
-        saleDisplayFee: 100, rentDisplayFee: 75, otherServicesFee: 50,
-        highlightFee: 150, priorityListingFee: 200, verifiedListingFee: 250,
-        currency: "ج.م", id: "default",
-      },
-      paymentMethods: [],
-    }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(
+      { settings },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache' } }
+    );
   } catch (error) {
     console.error("Get settings error:", error);
-    return NextResponse.json({ error: "حدث خطأ أثناء جلب الإعدادات" }, { status: 500 });
+    
+    // If DB operation fails completely, return defaults
+    return NextResponse.json({
+      settings: DEFAULT_SETTINGS,
+      _note: "إعدادات افتراضية - لم يتم الاتصال بقاعدة البيانات"
+    });
   }
 }
 
-// ==========================================
-// PUT - Update settings (AUTO-HEAL built-in)
-// ==========================================
+// PUT - تحديث الإعدادات (developer only)
 export async function PUT(request: Request) {
   try {
     if (!(await isDeveloper(request))) {
@@ -142,242 +226,62 @@ export async function PUT(request: Request) {
 
     const body = await request.json();
 
-    // Sanitize all incoming data
-    const updateData = {
-      contactFee: toNum(body.contactFee),
-      regularFee: toNum(body.regularFee),
-      featuredFee: toNum(body.featuredFee),
-      premiumFee: toNum(body.premiumFee),
-      vipFee: toNum(body.vipFee),
-      saleDisplayFee: toNum(body.saleDisplayFee),
-      rentDisplayFee: toNum(body.rentDisplayFee),
-      otherServicesFee: toNum(body.otherServicesFee),
-      highlightFee: toNum(body.highlightFee),
-      priorityListingFee: toNum(body.priorityListingFee),
-      verifiedListingFee: toNum(body.verifiedListingFee),
-      currency: sanitize(body.currency) || "ج.م",
-      vodafoneCashNumber: sanitize(body.vodafoneCashNumber).replace(/[^0-9\s]/g, "").slice(0, 20),
-      orangeCashNumber: sanitize(body.orangeCashNumber).replace(/[^0-9\s]/g, "").slice(0, 20),
-      etisalatCashNumber: sanitize(body.etisalatCashNumber).replace(/[^0-9\s]/g, "").slice(0, 20),
-      bankAccountName: sanitize(body.bankAccountName).slice(0, 100),
-      bankAccountNumber: sanitize(body.bankAccountNumber).slice(0, 100),
-      bankName: sanitize(body.bankName).slice(0, 100),
-      instapayAccount: sanitize(body.instapayAccount).slice(0, 100),
-      visaEnabled: body.visaEnabled === true,
-      visaPublicKey: sanitize(body.visaPublicKey).slice(0, 100),
-      visaSecretKey: sanitize(body.visaSecretKey).slice(0, 100),
-      minRechargeAmount: Math.max(1, toNum(body.minRechargeAmount) || 10),
-      maxRechargeAmount: Math.min(1000000, toNum(body.maxRechargeAmount) || 50000),
-      usdtTronAddress: sanitize(body.usdtTronAddress).slice(0, 100),
-      paymentAutoConfirm: body.paymentAutoConfirm === true,
-      paymentSecurityPin: sanitize(body.paymentSecurityPin).replace(/\D/g, "").slice(0, 6),
+    // Server-side validation
+    const validatedData = {
+      contactFee: validateFee(body.contactFee),
+      regularFee: validateFee(body.regularFee),
+      featuredFee: validateFee(body.featuredFee),
+      premiumFee: validateFee(body.premiumFee),
+      vipFee: validateFee(body.vipFee),
+      saleDisplayFee: validateFee(body.saleDisplayFee),
+      rentDisplayFee: validateFee(body.rentDisplayFee),
+      otherServicesFee: validateFee(body.otherServicesFee),
+      highlightFee: validateFee(body.highlightFee),
+      priorityListingFee: validateFee(body.priorityListingFee),
+      verifiedListingFee: validateFee(body.verifiedListingFee),
+      currency: validateCurrency(body.currency),
     };
 
-    // ============================================
-    // 🔧 AUTO-HEAL: Add missing columns first
-    // ============================================
-    const healedColumns = await autoHealDatabase();
-    if (healedColumns > 0) {
-      console.log(`[Settings] Auto-healed ${healedColumns} missing columns`);
-    }
+    // Ensure table exists with all columns
+    await ensureSettingsTable();
 
-    // ============================================
-    // STEP 1: Find or create the settings row
-    // ============================================
-    let targetId: string | null = null;
-    try {
-      const existing = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
-      if (existing) {
-        targetId = existing.id;
-        // Clean up duplicate rows if any
-        const allRows = await db.settings.findMany({ select: { id: true } });
-        if (allRows.length > 1) {
-          const otherIds = allRows.filter(r => r.id !== targetId).map(r => r.id);
-          try { await db.settings.deleteMany({ where: { id: { in: otherIds } } }); } catch {}
-          console.log(`[Settings] Cleaned ${otherIds.length} duplicate rows`);
-        }
-      }
-    } catch (findErr) {
-      console.error("[Settings] Find error:", findErr);
-    }
+    let settings = await db.settings.findFirst();
 
-    // ============================================
-    // STEP 2: Save using UPDATE or CREATE
-    // ============================================
-    let saved;
-    if (targetId) {
-      try {
-        saved = await db.settings.update({ where: { id: targetId }, data: updateData });
-      } catch (updateErr) {
-        console.error("[Settings] Prisma update failed, trying raw SQL:", updateErr);
-
-        // FALLBACK: Raw SQL with snake_case column names
-        try {
-          const esc = (v: string) => v.replace(/'/g, "''");
-          const strOrNull = (v: string) => v ? `'${esc(v)}'` : "NULL";
-
-          await db.$executeRawUnsafe(`
-            UPDATE settings SET
-              contact_fee = ${updateData.contactFee},
-              regular_fee = ${updateData.regularFee},
-              featured_fee = ${updateData.featuredFee},
-              premium_fee = ${updateData.premiumFee},
-              vip_fee = ${updateData.vipFee},
-              sale_display_fee = ${updateData.saleDisplayFee},
-              rent_display_fee = ${updateData.rentDisplayFee},
-              other_services_fee = ${updateData.otherServicesFee},
-              highlight_fee = ${updateData.highlightFee},
-              priority_listing_fee = ${updateData.priorityListingFee},
-              verified_listing_fee = ${updateData.verifiedListingFee},
-              currency = '${esc(updateData.currency)}',
-              min_recharge_amount = ${updateData.minRechargeAmount},
-              max_recharge_amount = ${updateData.maxRechargeAmount},
-              vodafone_cash_number = ${strOrNull(updateData.vodafoneCashNumber)},
-              orange_cash_number = ${strOrNull(updateData.orangeCashNumber)},
-              etisalat_cash_number = ${strOrNull(updateData.etisalatCashNumber)},
-              bank_account_name = ${strOrNull(updateData.bankAccountName)},
-              bank_account_number = ${strOrNull(updateData.bankAccountNumber)},
-              bank_name = ${strOrNull(updateData.bankName)},
-              instapay_account = ${strOrNull(updateData.instapayAccount)},
-              usdt_tron_address = ${strOrNull(updateData.usdtTronAddress)},
-              visa_enabled = ${updateData.visaEnabled},
-              visa_public_key = ${strOrNull(updateData.visaPublicKey)},
-              visa_secret_key = ${strOrNull(updateData.visaSecretKey)},
-              payment_auto_confirm = ${updateData.paymentAutoConfirm},
-              payment_security_pin = ${strOrNull(updateData.paymentSecurityPin)}
-            WHERE id = '${targetId}'
-          `);
-
-          saved = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
-          console.log("[Settings] Saved via raw SQL fallback");
-        } catch (sqlErr) {
-          console.error("[Settings] Raw SQL also failed:", sqlErr);
-          return NextResponse.json({
-            error: "فشل تحديث الإعدادات",
-          }, { status: 500 });
-        }
-      }
+    if (!settings) {
+      settings = await db.settings.create({ data: validatedData });
     } else {
-      // No existing row — create new
-      try {
-        saved = await db.settings.create({ data: updateData });
-      } catch (createErr) {
-        console.error("[Settings] Create failed:", createErr);
-
-        // FALLBACK: Raw SQL INSERT
-        try {
-          const esc = (v: string) => v.replace(/'/g, "''");
-          const strOrNull = (v: string) => v ? `'${esc(v)}'` : "NULL";
-
-          await db.$executeRawUnsafe(`
-            INSERT INTO settings (
-              id, contact_fee, regular_fee, featured_fee, premium_fee, vip_fee,
-              sale_display_fee, rent_display_fee, other_services_fee,
-              highlight_fee, priority_listing_fee, verified_listing_fee,
-              currency, min_recharge_amount, max_recharge_amount,
-              vodafone_cash_number, orange_cash_number, etisalat_cash_number,
-              bank_account_name, bank_account_number, bank_name, instapay_account,
-              usdt_tron_address, visa_enabled, visa_public_key, visa_secret_key,
-              payment_auto_confirm, payment_security_pin
-            ) VALUES (
-              gen_random_uuid(),
-              ${updateData.contactFee}, ${updateData.regularFee}, ${updateData.featuredFee},
-              ${updateData.premiumFee}, ${updateData.vipFee}, ${updateData.saleDisplayFee},
-              ${updateData.rentDisplayFee}, ${updateData.otherServicesFee},
-              ${updateData.highlightFee}, ${updateData.priorityListingFee},
-              ${updateData.verifiedListingFee}, '${esc(updateData.currency)}',
-              ${updateData.minRechargeAmount}, ${updateData.maxRechargeAmount},
-              ${strOrNull(updateData.vodafoneCashNumber)},
-              ${strOrNull(updateData.orangeCashNumber)},
-              ${strOrNull(updateData.etisalatCashNumber)},
-              ${strOrNull(updateData.bankAccountName)},
-              ${strOrNull(updateData.bankAccountNumber)},
-              ${strOrNull(updateData.bankName)},
-              ${strOrNull(updateData.instapayAccount)},
-              ${strOrNull(updateData.usdtTronAddress)},
-              ${updateData.visaEnabled}, ${strOrNull(updateData.visaPublicKey)},
-              ${strOrNull(updateData.visaSecretKey)}, ${updateData.paymentAutoConfirm},
-              ${strOrNull(updateData.paymentSecurityPin)}
-            )
-          `);
-
-          saved = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
-          console.log("[Settings] Created via raw SQL fallback");
-        } catch (sqlErr2) {
-          console.error("[Settings] Raw SQL INSERT also failed:", sqlErr2);
-          return NextResponse.json({
-            error: "فشل إنشاء الإعدادات",
-          }, { status: 500 });
-        }
-      }
+      settings = await db.settings.update({
+        where: { id: settings.id },
+        data: validatedData,
+      });
     }
 
-    // Log the change — 🔒 Strip sensitive keys before logging
+    // Log settings change
     const currentUserId = await getCurrentUserId(request);
     try {
-      const { visaSecretKey, visaPublicKey, paymentSecurityPin, ...safeForLog } = updateData;
       await db.operationLog.create({
         data: {
-          action: "UPDATE_SETTINGS",
-          entityType: "Settings",
-          entityId: saved!.id,
+          action: 'UPDATE_SETTINGS',
+          entityType: 'Settings',
+          entityId: settings.id,
           userId: currentUserId,
-          details: JSON.stringify(safeForLog),
+          details: JSON.stringify(validatedData),
         },
       });
     } catch {}
 
-    // Notify other clients
-    try { notifyRealtime("settings-updated", updateData); } catch {}
+    // Notify ALL connected clients about settings change
+    notifyRealtime('settings-updated', validatedData);
 
     return NextResponse.json({
       message: "تم تحديث الإعدادات بنجاح ✅",
-      settings: saved,
+      settings,
     });
   } catch (error) {
     console.error("Update settings error:", error);
-    return NextResponse.json({ error: "حدث خطأ أثناء تحديث الإعدادات" }, { status: 500 });
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء تحديث الإعدادات" },
+      { status: 500 }
+    );
   }
-}
-
-// ==========================================
-// Build payment methods for display
-// ==========================================
-function buildPublicPaymentMethods(s: any) {
-  const methods: Array<{ id: string; name: string; icon: string; enabled: boolean; account?: string; color: string }> = [];
-
-  if (s.vodafoneCashNumber) {
-    methods.push({ id: "vodafone_cash", name: "فودافون كاش", icon: "📱", enabled: true, account: maskPhone(String(s.vodafoneCashNumber)), color: "from-red-500 to-red-600" });
-  }
-  if (s.orangeCashNumber) {
-    methods.push({ id: "orange_cash", name: "أورنج كاش", icon: "🟠", enabled: true, account: maskPhone(String(s.orangeCashNumber)), color: "from-orange-500 to-orange-600" });
-  }
-  if (s.etisalatCashNumber) {
-    methods.push({ id: "etisalat_cash", name: "اتصالات كاش", icon: "🔵", enabled: true, account: maskPhone(String(s.etisalatCashNumber)), color: "from-teal-500 to-cyan-600" });
-  }
-  if (s.bankAccountNumber && s.bankName) {
-    methods.push({ id: "bank_transfer", name: "تحويل بنكي", icon: "🏦", enabled: true, account: String(s.bankName), color: "from-emerald-500 to-emerald-600" });
-  }
-  if (s.instapayAccount) {
-    methods.push({ id: "instapay", name: "إنستاباي", icon: "⚡", enabled: true, account: maskInstapay(String(s.instapayAccount)), color: "from-violet-500 to-purple-600" });
-  }
-  if (s.usdtTronAddress) {
-    methods.push({ id: "usdt_trc20", name: "USDT (TRC20)", icon: "🪙", enabled: true, account: String(s.usdtTronAddress).length > 10 ? String(s.usdtTronAddress).slice(0, 6) + "..." + String(s.usdtTronAddress).slice(-4) : String(s.usdtTronAddress), color: "from-amber-500 to-yellow-600" });
-  }
-  if (s.visaEnabled) {
-    methods.push({ id: "visa", name: "فيزا / ماستركارد", icon: "💳", enabled: true, color: "from-slate-700 to-slate-900" });
-  }
-
-  return methods;
-}
-
-function maskPhone(phone: string): string {
-  const cleaned = phone.replace(/\s/g, "");
-  if (cleaned.length <= 6) return cleaned;
-  return cleaned.slice(0, 4) + "****" + cleaned.slice(-2);
-}
-
-function maskInstapay(account: string): string {
-  if (account.length <= 5) return account;
-  return account.slice(0, 3) + "***" + account.slice(-2);
 }

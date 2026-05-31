@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
 
-export const dynamic = "force-dynamic";
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 export async function GET() {
   try {
@@ -15,7 +14,7 @@ export async function GET() {
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+      decoded = verify(token, JWT_SECRET);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
@@ -67,7 +66,7 @@ export async function GET() {
     })));
   } catch (error) {
     console.error('Error fetching payments:', error);
-    return NextResponse.json({ error: 'حدث خطأ أثناء جلب المدفوعات' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch payments' }, { status: 500 });
   }
 }
 
@@ -80,17 +79,26 @@ export async function POST(request: NextRequest) {
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+      decoded = verify(token, JWT_SECRET);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
 
-    // 🔒 فقط المطور يمكنه إنشاء مدفوعات مباشرة
-    if (decoded.role !== 'DEVELOPER') {
-      return NextResponse.json({ error: 'غير مصرح - فقط المطور يمكنه إنشاء مدفوعات' }, { status: 403 });
-    }
-
     const data = await request.json();
+
+    // Basic validation
+    if (!data.method || typeof data.method !== 'string' || data.method.trim() === '') {
+      return NextResponse.json({ error: 'method is required and must be a non-empty string' }, { status: 400 });
+    }
+    if (!data.amount || typeof data.amount !== 'number' || !Number.isInteger(data.amount) || data.amount <= 0) {
+      return NextResponse.json({ error: 'amount is required and must be a positive integer' }, { status: 400 });
+    }
+    if (data.inquiryId) {
+      const inquiryExists = await db.inquiry.findUnique({ where: { id: data.inquiryId } });
+      if (!inquiryExists) {
+        return NextResponse.json({ error: 'Inquiry not found' }, { status: 400 });
+      }
+    }
 
     const payment = await db.payment.create({
       data: {
@@ -118,7 +126,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error creating payment:', error);
-    return NextResponse.json({ error: 'حدث خطأ أثناء إنشاء الدفعة' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to create payment' }, { status: 500 });
   }
 }
 
@@ -133,7 +141,7 @@ export async function DELETE(request: NextRequest) {
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+      decoded = verify(token, JWT_SECRET);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
@@ -158,6 +166,6 @@ export async function DELETE(request: NextRequest) {
     }
   } catch (error) {
     console.error('Error deleting payments:', error);
-    return NextResponse.json({ error: 'حدث خطأ أثناء حذف المدفوعات' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to delete payments' }, { status: 500 });
   }
 }

@@ -3,10 +3,8 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { requireApprovedUser } from '@/lib/auth-middleware';
-import { JWT_SECRET } from '@/lib/auth';
-import { checkRateLimit } from '@/lib/rate-limit';
 
-export const dynamic = "force-dynamic";
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 // جلب التعليقات
 export async function GET(request: NextRequest) {
@@ -15,60 +13,9 @@ export async function GET(request: NextRequest) {
     const apartmentId = searchParams.get('apartmentId');
     const status = searchParams.get('status');
     const userId = searchParams.get('userId');
-    const currentUserId = searchParams.get('currentUserId');
-
-    // If fetching for a specific apartment (public view)
-    if (apartmentId) {
-      const where: Record<string, unknown> = {
-        apartmentId,
-        // Show approved comments OR user's own pending comments
-        OR: [
-          { status: 'approved' },
-        ],
-      };
-
-      // If currentUserId provided, also include their own pending comments
-      if (currentUserId) {
-        where.OR = [
-          { status: 'approved' },
-          { status: 'pending', userId: currentUserId },
-        ];
-      }
-
-      const comments = await db.comment.findMany({
-        where,
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              identifier: true,
-            }
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      return NextResponse.json(comments);
-    }
-
-    // General fetch (dev dashboard) — return all comments — 🔒 يجب تسجيل الدخول
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
-    if (decoded.role !== 'DEVELOPER') {
-      return NextResponse.json({ error: 'غير مصرح - فقط المطور يمكنه رؤية كل التعليقات' }, { status: 403 });
-    }
 
     const where: Record<string, unknown> = {};
+    if (apartmentId) where.apartmentId = apartmentId;
     if (status) where.status = status;
     if (userId) where.userId = userId;
 
@@ -102,13 +49,6 @@ export async function GET(request: NextRequest) {
 // إضافة تعليق جديد
 export async function POST(request: NextRequest) {
   try {
-    // Rate limiting: 10 requests per 15 minutes per user
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-    const allowed = await checkRateLimit('create-comment', 'ip', ip, 10, 15 * 60);
-    if (!allowed) {
-      return NextResponse.json({ error: 'طلبات كثيرة. حاول بعد 15 دقيقة' }, { status: 429 });
-    }
-
     const { auth, errorResponse } = await requireApprovedUser(request);
     if (errorResponse || !auth) return errorResponse!;
 
@@ -119,6 +59,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 });
     }
 
+    // Sanitize content — strip HTML tags to prevent XSS
+    const sanitizedContent = content.trim().replace(/<[^>]*>/g, '').slice(0, 2000);
+    if (!sanitizedContent) {
+      return NextResponse.json({ error: 'محتوى التعليق غير صالح' }, { status: 400 });
+    }
+
     const isDeveloper = auth.role === 'DEVELOPER';
     const userId = auth.userId;
 
@@ -126,7 +72,7 @@ export async function POST(request: NextRequest) {
       data: {
         apartmentId,
         userId,
-        content,
+        content: sanitizedContent,
         status: isDeveloper ? 'approved' : 'pending',
       },
       include: {
@@ -140,10 +86,10 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    return NextResponse.json({
-      success: true,
+    return NextResponse.json({ 
+      success: true, 
       comment,
-      message: isDeveloper ? 'تم نشر التعليق مباشرة' : 'تم إرسال تعليقك وهو في انتظار موافقة المطور'
+      message: isDeveloper ? 'تم نشر التعليق مباشرة' : 'تم إرسال تعليقك وهو في انتظار موافقة المطور' 
     });
   } catch (error) {
     console.error('Error creating comment:', error);
