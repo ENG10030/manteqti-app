@@ -20,7 +20,7 @@ import { WalletModal } from '@/components/wallet-modal';
 import { io } from 'socket.io-client';
 
 // Developer credentials
-const DEVELOPER_EMAIL = process.env.NEXT_PUBLIC_DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
+const DEVELOPER_EMAIL = process.env.NEXT_PUBLIC_DEVELOPER_EMAIL || '';
 
 // Contact fee now comes from settings (dynamic)
 

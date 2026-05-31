@@ -143,7 +143,7 @@ export async function PUT(request: Request) {
         const allRows = await db.settings.findMany({ select: { id: true } });
         if (allRows.length > 1) {
           const otherIds = allRows.filter(r => r.id !== targetId).map(r => r.id);
-          try { await db.settings.deleteMany({ where: { id: { in: otherIds } } } } catch {}
+          try { await db.settings.deleteMany({ where: { id: { in: otherIds } } }); } catch {}
           console.log(`[Settings] Cleaned ${otherIds.length} duplicate rows`);
         }
       }
