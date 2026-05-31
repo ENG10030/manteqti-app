@@ -16,12 +16,12 @@ export async function GET() {
       settings: settingsCount,
       timestamp: new Date().toISOString(),
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    // 🔒 SECURITY: Never expose error details in production response
+    console.error("Health check failed:", error);
     return NextResponse.json({
       status: "error",
       database: "disconnected",
-      error: error.message || "Unknown error",
-      errorStack: error.stack || "",
       timestamp: new Date().toISOString(),
     }, { status: 500 });
   }

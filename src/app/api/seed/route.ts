@@ -290,7 +290,7 @@ export async function GET() {
   } catch (error) {
     console.error("Seed error:", error);
     return NextResponse.json(
-      { error: "حدث خطأ", details: error instanceof Error ? error.message : "Unknown" },
+      { error: "حدث خطأ" },
       { status: 500 }
     );
   }

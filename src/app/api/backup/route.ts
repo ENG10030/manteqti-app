@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: any) {
     console.error("Backup error:", error);
-    return NextResponse.json({ error: "فشل التصدير", details: error.message }, { status: 500 });
+    return NextResponse.json({ error: "فشل التصدير" }, { status: 500 });
   }
 }
 
@@ -206,6 +206,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error("Restore error:", error);
-    return NextResponse.json({ error: "فشل الاستعادة", details: error.message }, { status: 500 });
+    return NextResponse.json({ error: "فشل الاستعادة" }, { status: 500 });
   }
 }

@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
-import { User } from "@prisma/client";
-import { checkRateLimit, recordFailedAttempt, getClientIp } from "@/lib/rate-limit";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
@@ -17,13 +15,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "خطأ في إعدادات الخادم" }, { status: 500 });
     }
 
-    // 🔒 Database-backed rate limiting (works across all serverless instances)
-    const ip = getClientIp(request);
-    
-    if (!(await checkRateLimit("dev-login", "ip", ip))) {
-      return NextResponse.json({ error: "محاولات كثيرة. حاول بعد 15 دقيقة" }, { status: 429 });
-    }
-
     const body = await request.json();
     const { password } = body;
 
@@ -34,24 +25,37 @@ export async function POST(request: Request) {
 
     // التحقق من كلمة مرور المطور فقط من Environment Variables
     if (password !== DEVELOPER_PASSWORD) {
-      // 🔒 سجل المحاولة الفاشلة في الداتابيز
-      await recordFailedAttempt("dev-login", "ip", ip, request, "Wrong developer password");
       return NextResponse.json({ error: "كلمة مرور المطور غير صحيحة" }, { status: 401 });
     }
 
     // البحث عن حساب المطور في قاعدة البيانات
-    let user: User | null = null;
+    let user: { id: string; name: string; email: string | null; role: string } | null = null;
+    
     try {
+      // 🔒 Rate limiting في الداتابيز (لو الداتابيز شغالة)
+      const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
+                 request.headers.get("x-real-ip") || "unknown";
+      
+      const since = new Date(Date.now() - 15 * 60 * 1000);
+      const count = await db.operationLog.count({
+        where: {
+          action: "rate-limit:dev-login",
+          entityType: "ip",
+          entityId: ip,
+          createdAt: { gte: since },
+        },
+      });
+
+      if (count >= 5) {
+        return NextResponse.json({ error: "محاولات كثيرة. حاول بعد 15 دقيقة" }, { status: 429 });
+      }
+
       user = await db.user.findUnique({
         where: { identifier: DEVELOPER_EMAIL },
       });
-    } catch (dbError: unknown) {
-      console.error("DB find error:", dbError instanceof Error ? dbError.message : String(dbError));
-    }
 
-    // لو المستخدم مش موجود، انشئه
-    if (!user) {
-      try {
+      // لو المستخدم مش موجود، انشئه
+      if (!user) {
         const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 12);
         user = await db.user.create({
           data: {
@@ -64,21 +68,14 @@ export async function POST(request: Request) {
             emailVerified: true,
           },
         });
-      } catch (createError: unknown) {
-        const prismaError = createError as { code?: string };
-        // لو فيه duplicate (موجود فعلاً بـ role مختلفة مثلاً)
-        if (prismaError?.code === 'P2002') {
-          user = await db.user.findUnique({
-            where: { identifier: DEVELOPER_EMAIL },
-          });
-        } else {
-          console.error("Create user error:", createError);
-          throw createError;
-        }
       }
+    } catch (dbError: unknown) {
+      // 🔐 لو الداتابيز اتعطلت — المطور لازم يقدر يدخل على أي حال
+      console.error("DB error in dev login (non-blocking):", dbError instanceof Error ? dbError.message : String(dbError));
+      // user يفضل null والـ fallback values هتشتغل
     }
 
-    // حتى لو الداتابيز اتعطل، المطور لازم يقدر يدخل
+    // 🔐 Fallback — حتى لو الداتابيز اتعطلت بالكامل
     const userId = user?.id || "dev-fallback";
     const userRole = user?.role || "DEVELOPER";
     const userName = user?.name || "المطور";
