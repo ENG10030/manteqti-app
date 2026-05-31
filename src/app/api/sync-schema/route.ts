@@ -39,118 +39,104 @@ export async function POST(request: Request) {
     const results: string[] = [];
 
     if (isPostgres) {
-      // PostgreSQL sync
-      // 1. Ensure Settings table exists
-      const tableExists = await db.$queryRaw<Array<{ exists: boolean }>>`
-        SELECT EXISTS (SELECT FROM pg_tables WHERE tablename = 'Settings') as "exists"
+      // All table names use lowercase (via @@map in schema.postgres.prisma)
+      // Column names use snake_case (via @map in schema.postgres.prisma)
+
+      // 1. Ensure settings table exists
+      const settingsExists = await db.$queryRaw<Array<{ exists: boolean }>>`
+        SELECT EXISTS (SELECT FROM pg_tables WHERE tablename = 'settings') as "exists"
       `;
 
-      if (!tableExists[0]?.exists) {
-        await db.$executeRaw`
-          CREATE TABLE "Settings" (
+      if (!settingsExists[0]?.exists) {
+        await db.$executeRawUnsafe(`
+          CREATE TABLE "settings" (
             "id" TEXT NOT NULL PRIMARY KEY,
-            "contactFee" INTEGER NOT NULL DEFAULT 50,
-            "regularFee" INTEGER NOT NULL DEFAULT 30,
-            "featuredFee" INTEGER NOT NULL DEFAULT 100,
-            "premiumFee" INTEGER NOT NULL DEFAULT 200,
-            "vipFee" INTEGER NOT NULL DEFAULT 300,
-            "saleDisplayFee" INTEGER NOT NULL DEFAULT 100,
-            "rentDisplayFee" INTEGER NOT NULL DEFAULT 75,
-            "otherServicesFee" INTEGER NOT NULL DEFAULT 50,
-            "highlightFee" INTEGER NOT NULL DEFAULT 150,
-            "priorityListingFee" INTEGER NOT NULL DEFAULT 200,
-            "verifiedListingFee" INTEGER NOT NULL DEFAULT 250,
+            "contact_fee" INTEGER NOT NULL DEFAULT 50,
+            "featured_fee" INTEGER NOT NULL DEFAULT 100,
+            "premium_fee" INTEGER NOT NULL DEFAULT 200,
+            "sale_display_fee" INTEGER NOT NULL DEFAULT 100,
+            "rent_display_fee" INTEGER NOT NULL DEFAULT 75,
+            "other_services_fee" INTEGER NOT NULL DEFAULT 50,
+            "highlight_fee" INTEGER NOT NULL DEFAULT 150,
+            "priority_listing_fee" INTEGER NOT NULL DEFAULT 200,
+            "verified_listing_fee" INTEGER NOT NULL DEFAULT 250,
+            "regular_fee" INTEGER NOT NULL DEFAULT 30,
+            "vip_fee" INTEGER NOT NULL DEFAULT 300,
             "currency" TEXT NOT NULL DEFAULT 'ج.م',
-            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+            "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
           )
-        `;
+        `);
         results.push('✅ تم إنشاء جدول الإعدادات');
       } else {
-        // Check for missing columns
+        // Add missing columns
         const existingColumns = await db.$queryRaw<Array<{ column_name: string }>>`
-          SELECT column_name FROM information_schema.columns WHERE table_name = 'Settings'
+          SELECT column_name FROM information_schema.columns WHERE table_name = 'settings'
         `;
-        const columnNames = existingColumns.map(c => c.column_name);
+        const colNames = existingColumns.map(c => c.column_name);
 
-        const requiredColumns: Record<string, string> = {
-          contactFee: 'INTEGER NOT NULL DEFAULT 50',
-          regularFee: 'INTEGER NOT NULL DEFAULT 30',
-          featuredFee: 'INTEGER NOT NULL DEFAULT 100',
-          premiumFee: 'INTEGER NOT NULL DEFAULT 200',
-          vipFee: 'INTEGER NOT NULL DEFAULT 300',
-          saleDisplayFee: 'INTEGER NOT NULL DEFAULT 100',
-          rentDisplayFee: 'INTEGER NOT NULL DEFAULT 75',
-          otherServicesFee: 'INTEGER NOT NULL DEFAULT 50',
-          highlightFee: 'INTEGER NOT NULL DEFAULT 150',
-          priorityListingFee: 'INTEGER NOT NULL DEFAULT 200',
-          verifiedListingFee: 'INTEGER NOT NULL DEFAULT 250',
-          currency: "TEXT NOT NULL DEFAULT 'ج.م'",
+        const required: Record<string, string> = {
+          "contact_fee": "INTEGER NOT NULL DEFAULT 50",
+          "regular_fee": "INTEGER NOT NULL DEFAULT 30",
+          "featured_fee": "INTEGER NOT NULL DEFAULT 100",
+          "premium_fee": "INTEGER NOT NULL DEFAULT 200",
+          "vip_fee": "INTEGER NOT NULL DEFAULT 300",
+          "sale_display_fee": "INTEGER NOT NULL DEFAULT 100",
+          "rent_display_fee": "INTEGER NOT NULL DEFAULT 75",
+          "other_services_fee": "INTEGER NOT NULL DEFAULT 50",
+          "highlight_fee": "INTEGER NOT NULL DEFAULT 150",
+          "priority_listing_fee": "INTEGER NOT NULL DEFAULT 200",
+          "verified_listing_fee": "INTEGER NOT NULL DEFAULT 250",
+          "currency": "TEXT NOT NULL DEFAULT 'ج.م'",
         };
 
-        for (const [colName, colDef] of Object.entries(requiredColumns)) {
-          if (!columnNames.includes(colName)) {
-            await db.$executeRawUnsafe(`ALTER TABLE "Settings" ADD COLUMN "${colName}" ${colDef}`);
-            results.push(`✅ تم إضافة العمود: ${colName}`);
+        for (const [col, def] of Object.entries(required)) {
+          if (!colNames.includes(col)) {
+            await db.$executeRawUnsafe(`ALTER TABLE "settings" ADD COLUMN "${col}" ${def}`);
+            results.push(`✅ تم إضافة العمود: ${col}`);
           }
         }
 
         if (results.length === 0) {
-          results.push('✅ جميع الأعمدة موجودة');
+          results.push('✅ جدول الإعدادات: جميع الأعمدة موجودة');
         }
       }
 
-      // 2. Ensure OperationLog table exists
+      // 2. Ensure operation_logs table exists
       const opLogExists = await db.$queryRaw<Array<{ exists: boolean }>>`
-        SELECT EXISTS (SELECT FROM pg_tables WHERE tablename = 'OperationLog') as "exists"
+        SELECT EXISTS (SELECT FROM pg_tables WHERE tablename = 'operation_logs') as "exists"
       `;
       if (!opLogExists[0]?.exists) {
-        await db.$executeRaw`
-          CREATE TABLE "OperationLog" (
+        await db.$executeRawUnsafe(`
+          CREATE TABLE "operation_logs" (
             "id" TEXT NOT NULL PRIMARY KEY,
             "action" TEXT NOT NULL,
-            "entityType" TEXT,
-            "entityId" TEXT,
+            "entity_type" TEXT,
+            "entity_id" TEXT,
             "details" TEXT,
-            "userId" TEXT,
-            "ipAddress" TEXT,
-            "userAgent" TEXT,
-            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+            "user_id" TEXT,
+            "ip_address" TEXT,
+            "user_agent" TEXT,
+            "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
           )
-        `;
+        `);
         results.push('✅ تم إنشاء جدول سجلات العمليات');
+      } else {
+        results.push('✅ جدول سجلات العمليات: موجود');
       }
 
-      // 3. Ensure ApprovalLog table exists
-      const approvalLogExists = await db.$queryRaw<Array<{ exists: boolean }>>`
-        SELECT EXISTS (SELECT FROM pg_tables WHERE tablename = 'ApprovalLog') as "exists"
-      `;
-      if (!approvalLogExists[0]?.exists) {
-        await db.$executeRaw`
-          CREATE TABLE "ApprovalLog" (
-            "id" TEXT NOT NULL PRIMARY KEY,
-            "userId" TEXT NOT NULL,
-            "action" TEXT NOT NULL,
-            "userName" TEXT NOT NULL,
-            "userEmail" TEXT,
-            "reason" TEXT,
-            "performedBy" TEXT,
-            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-          )
-        `;
-        results.push('✅ تم إنشاء جدول سجلات التأكيدات');
-      }
-
-      // 4. Check Settings has data
+      // 3. Check settings has data
       const settingsCount = await db.$queryRaw<Array<{ count: number }>>`
-        SELECT COUNT(*)::int as "count" FROM "Settings"
+        SELECT COUNT(*)::int as "count" FROM "settings"
       `;
       if (settingsCount[0]?.count === 0) {
-        await db.$executeRaw`
-          INSERT INTO "Settings" ("id", "contactFee", "regularFee", "featuredFee", "premiumFee", "vipFee", "saleDisplayFee", "rentDisplayFee", "otherServicesFee", "highlightFee", "priorityListingFee", "verifiedListingFee", "currency")
+        await db.$executeRawUnsafe(`
+          INSERT INTO "settings" ("id", "contact_fee", "regular_fee", "featured_fee", "premium_fee", "vip_fee", "sale_display_fee", "rent_display_fee", "other_services_fee", "highlight_fee", "priority_listing_fee", "verified_listing_fee", "currency")
           VALUES (gen_random_uuid()::text, 50, 30, 100, 200, 300, 100, 75, 50, 150, 200, 250, 'ج.م')
-        `;
+        `);
         results.push('✅ تم إنشاء إعدادات افتراضية');
+      } else {
+        results.push('✅ الإعدادات: بيانات موجودة');
       }
 
     } else {

@@ -73,9 +73,10 @@ const DEFAULT_SETTINGS = {
   currency: "ج.م",
 };
 
-// ============= AUTO-MIGRATION: Ensure Settings table exists with all columns =============
-// This runs automatically on every GET/PUT request to handle cases where
-// prisma db:push failed during Vercel build (Supabase unreachable from build server)
+// ============= AUTO-MIGRATION =============
+// Ensures the Settings table exists with ALL required columns.
+// The Prisma schema uses @@map("settings") and column @map() directives.
+// This handles cases where prisma db:push fails during Vercel build.
 
 let migrationDone = false;
 
@@ -83,83 +84,78 @@ async function ensureSettingsTable(): Promise<boolean> {
   if (migrationDone) return true;
 
   try {
-    // Check database type
     const dbUrl = process.env.DATABASE_URL || '';
     const isPostgres = dbUrl.startsWith('postgres') || dbUrl.startsWith('postgresql');
 
     if (isPostgres) {
-      // PostgreSQL - use pg_tables and information_schema
-      // Step 1: Check if table exists
+      // PostgreSQL: table name is "settings" (lowercase, via @@map)
+      // Columns use snake_case (via @map)
       const tableExists = await db.$queryRaw<Array<{ exists: boolean }>>`
         SELECT EXISTS (
           SELECT FROM pg_tables 
-          WHERE tablename = 'Settings'
+          WHERE tablename = 'settings'
         ) as "exists"
       `;
 
       if (!tableExists[0]?.exists) {
-        // Create the full table
-        console.log('[Settings Auto-Migration] Creating Settings table...');
-        await db.$executeRaw`
-          CREATE TABLE "Settings" (
+        // Create table matching schema.postgres.prisma exactly
+        await db.$executeRawUnsafe(`
+          CREATE TABLE "settings" (
             "id" TEXT NOT NULL PRIMARY KEY,
-            "contactFee" INTEGER NOT NULL DEFAULT 50,
-            "regularFee" INTEGER NOT NULL DEFAULT 30,
-            "featuredFee" INTEGER NOT NULL DEFAULT 100,
-            "premiumFee" INTEGER NOT NULL DEFAULT 200,
-            "vipFee" INTEGER NOT NULL DEFAULT 300,
-            "saleDisplayFee" INTEGER NOT NULL DEFAULT 100,
-            "rentDisplayFee" INTEGER NOT NULL DEFAULT 75,
-            "otherServicesFee" INTEGER NOT NULL DEFAULT 50,
-            "highlightFee" INTEGER NOT NULL DEFAULT 150,
-            "priorityListingFee" INTEGER NOT NULL DEFAULT 200,
-            "verifiedListingFee" INTEGER NOT NULL DEFAULT 250,
+            "contact_fee" INTEGER NOT NULL DEFAULT 50,
+            "featured_fee" INTEGER NOT NULL DEFAULT 100,
+            "premium_fee" INTEGER NOT NULL DEFAULT 200,
+            "sale_display_fee" INTEGER NOT NULL DEFAULT 100,
+            "rent_display_fee" INTEGER NOT NULL DEFAULT 75,
+            "other_services_fee" INTEGER NOT NULL DEFAULT 50,
+            "highlight_fee" INTEGER NOT NULL DEFAULT 150,
+            "priority_listing_fee" INTEGER NOT NULL DEFAULT 200,
+            "verified_listing_fee" INTEGER NOT NULL DEFAULT 250,
+            "regular_fee" INTEGER NOT NULL DEFAULT 30,
+            "vip_fee" INTEGER NOT NULL DEFAULT 300,
             "currency" TEXT NOT NULL DEFAULT 'ج.م',
-            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+            "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
           )
-        `;
-        console.log('[Settings Auto-Migration] Settings table created successfully');
+        `);
+        console.log('[Settings Migration] Table "settings" created');
       } else {
-        // Table exists - check for missing columns
+        // Table exists - add any missing columns
         const existingColumns = await db.$queryRaw<Array<{ column_name: string }>>`
           SELECT column_name FROM information_schema.columns 
-          WHERE table_name = 'Settings'
+          WHERE table_name = 'settings'
         `;
-        const columnNames = existingColumns.map(c => c.column_name);
+        const colNames = existingColumns.map(c => c.column_name);
 
-        const requiredColumns: Record<string, string> = {
-          contactFee: 'INTEGER NOT NULL DEFAULT 50',
-          regularFee: 'INTEGER NOT NULL DEFAULT 30',
-          featuredFee: 'INTEGER NOT NULL DEFAULT 100',
-          premiumFee: 'INTEGER NOT NULL DEFAULT 200',
-          vipFee: 'INTEGER NOT NULL DEFAULT 300',
-          saleDisplayFee: 'INTEGER NOT NULL DEFAULT 100',
-          rentDisplayFee: 'INTEGER NOT NULL DEFAULT 75',
-          otherServicesFee: 'INTEGER NOT NULL DEFAULT 50',
-          highlightFee: 'INTEGER NOT NULL DEFAULT 150',
-          priorityListingFee: 'INTEGER NOT NULL DEFAULT 200',
-          verifiedListingFee: 'INTEGER NOT NULL DEFAULT 250',
-          currency: "TEXT NOT NULL DEFAULT 'ج.م'",
+        const required: Record<string, string> = {
+          "contact_fee": "INTEGER NOT NULL DEFAULT 50",
+          "regular_fee": "INTEGER NOT NULL DEFAULT 30",
+          "featured_fee": "INTEGER NOT NULL DEFAULT 100",
+          "premium_fee": "INTEGER NOT NULL DEFAULT 200",
+          "vip_fee": "INTEGER NOT NULL DEFAULT 300",
+          "sale_display_fee": "INTEGER NOT NULL DEFAULT 100",
+          "rent_display_fee": "INTEGER NOT NULL DEFAULT 75",
+          "other_services_fee": "INTEGER NOT NULL DEFAULT 50",
+          "highlight_fee": "INTEGER NOT NULL DEFAULT 150",
+          "priority_listing_fee": "INTEGER NOT NULL DEFAULT 200",
+          "verified_listing_fee": "INTEGER NOT NULL DEFAULT 250",
+          "currency": "TEXT NOT NULL DEFAULT 'ج.م'",
         };
 
-        for (const [colName, colDef] of Object.entries(requiredColumns)) {
-          if (!columnNames.includes(colName)) {
-            console.log(`[Settings Auto-Migration] Adding missing column: ${colName}`);
-            await db.$executeRawUnsafe(`ALTER TABLE "Settings" ADD COLUMN "${colName}" ${colDef}`);
+        for (const [col, def] of Object.entries(required)) {
+          if (!colNames.includes(col)) {
+            await db.$executeRawUnsafe(`ALTER TABLE "settings" ADD COLUMN "${col}" ${def}`);
+            console.log(`[Settings Migration] Added column: ${col}`);
           }
         }
       }
     } else {
-      // SQLite - the table should exist from prisma db:push
-      // If it doesn't, create it
+      // SQLite: table name is "Settings" (Prisma default)
       const tableExists = await db.$queryRaw<Array<{ name: string }>>`
         SELECT name FROM sqlite_master WHERE type='table' AND name='Settings'
       `;
-
       if (!tableExists || tableExists.length === 0) {
-        console.log('[Settings Auto-Migration] Creating Settings table (SQLite)...');
-        await db.$executeRaw`
+        await db.$executeRawUnsafe(`
           CREATE TABLE "Settings" (
             "id" TEXT NOT NULL PRIMARY KEY,
             "contactFee" INTEGER NOT NULL DEFAULT 50,
@@ -177,15 +173,14 @@ async function ensureSettingsTable(): Promise<boolean> {
             "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
           )
-        `;
+        `);
       }
     }
 
     migrationDone = true;
     return true;
   } catch (error) {
-    console.error('[Settings Auto-Migration] Error:', error);
-    // Don't throw - let the main function try Prisma anyway
+    console.error('[Settings Migration] Error:', error);
     return false;
   }
 }
@@ -193,7 +188,6 @@ async function ensureSettingsTable(): Promise<boolean> {
 // GET - جلب الإعدادات (public)
 export async function GET() {
   try {
-    // Ensure table exists first
     await ensureSettingsTable();
 
     let settings = await db.settings.findFirst();
@@ -209,11 +203,8 @@ export async function GET() {
   } catch (error) {
     console.error("Get settings error:", error);
     
-    // If DB operation fails completely, return defaults
-    return NextResponse.json({
-      settings: DEFAULT_SETTINGS,
-      _note: "إعدادات افتراضية - لم يتم الاتصال بقاعدة البيانات"
-    });
+    // Return defaults so the app never breaks
+    return NextResponse.json({ settings: DEFAULT_SETTINGS });
   }
 }
 
@@ -226,7 +217,6 @@ export async function PUT(request: Request) {
 
     const body = await request.json();
 
-    // Server-side validation
     const validatedData = {
       contactFee: validateFee(body.contactFee),
       regularFee: validateFee(body.regularFee),
@@ -242,7 +232,6 @@ export async function PUT(request: Request) {
       currency: validateCurrency(body.currency),
     };
 
-    // Ensure table exists with all columns
     await ensureSettingsTable();
 
     let settings = await db.settings.findFirst();
@@ -270,7 +259,7 @@ export async function PUT(request: Request) {
       });
     } catch {}
 
-    // Notify ALL connected clients about settings change
+    // Notify ALL connected clients
     notifyRealtime('settings-updated', validatedData);
 
     return NextResponse.json({

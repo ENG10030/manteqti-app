@@ -289,15 +289,13 @@ export default function App() {
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
   useEffect(() => { isDeveloperRef.current = isDeveloper; }, [isDeveloper]);
 
-  // Socket.io - connect ONCE only, uses refs to avoid stale closures
+  // Socket.io - connect ONCE, fail silently on Vercel (no realtime service)
   useEffect(() => {
     try {
       const socket = io('/?XTransformPort=3004', {
-        transports: ['polling', 'websocket'],
-        reconnection: true,
-        reconnectionAttempts: 3,
-        reconnectionDelay: 5000,
-        timeout: 5000,
+        transports: ['polling'],
+        reconnection: false,
+        timeout: 3000,
       });
 
       socketRef.current = socket;
