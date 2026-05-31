@@ -66,7 +66,7 @@ export async function GET() {
     })));
   } catch (error) {
     console.error('Error fetching payments:', error);
-    return NextResponse.json({ error: 'Failed to fetch payments' }, { status: 500 });
+    return NextResponse.json({ error: 'حدث خطأ أثناء جلب المدفوعات' }, { status: 500 });
   }
 }
 
@@ -82,6 +82,11 @@ export async function POST(request: NextRequest) {
       decoded = verify(token, JWT_SECRET);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    // 🔒 فقط المطور يمكنه إنشاء مدفوعات مباشرة
+    if (decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح - فقط المطور يمكنه إنشاء مدفوعات' }, { status: 403 });
     }
 
     const data = await request.json();
@@ -112,7 +117,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error creating payment:', error);
-    return NextResponse.json({ error: 'Failed to create payment' }, { status: 500 });
+    return NextResponse.json({ error: 'حدث خطأ أثناء إنشاء الدفعة' }, { status: 500 });
   }
 }
 
@@ -152,6 +157,6 @@ export async function DELETE(request: NextRequest) {
     }
   } catch (error) {
     console.error('Error deleting payments:', error);
-    return NextResponse.json({ error: 'Failed to delete payments' }, { status: 500 });
+    return NextResponse.json({ error: 'حدث خطأ أثناء حذف المدفوعات' }, { status: 500 });
   }
 }

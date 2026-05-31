@@ -50,7 +50,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(comments);
     }
 
-    // General fetch (dev dashboard) — return all comments
+    // General fetch (dev dashboard) — return all comments — 🔒 يجب تسجيل الدخول
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+    if (decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح - فقط المطور يمكنه رؤية كل التعليقات' }, { status: 403 });
+    }
+
     const where: Record<string, unknown> = {};
     if (status) where.status = status;
     if (userId) where.userId = userId;

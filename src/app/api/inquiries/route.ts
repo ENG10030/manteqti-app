@@ -56,7 +56,7 @@ export async function GET() {
     })));
   } catch (error) {
     console.error('Error fetching inquiries:', error);
-    return NextResponse.json({ error: 'Failed to fetch inquiries' }, { status: 500 });
+    return NextResponse.json({ error: 'حدث خطأ أثناء جلب الاستفسارات' }, { status: 500 });
   }
 }
 
@@ -104,6 +104,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error creating inquiry:', error);
-    return NextResponse.json({ error: 'Failed to create inquiry' }, { status: 500 });
+    return NextResponse.json({ error: 'حدث خطأ أثناء إنشاء الاستفسار' }, { status: 500 });
   }
 }

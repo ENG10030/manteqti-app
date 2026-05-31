@@ -4,6 +4,7 @@ import { verify } from "jsonwebtoken";
 import { notifyApartmentsChanged } from "@/lib/realtime";
 
 const JWT_SECRET = process.env.JWT_SECRET || "";
+// 🔒 SECURITY: If JWT_SECRET is empty, all auth operations will fail (intentional)
 
 async function getCurrentUser(request: Request) {
   const cookieHeader = request.headers.get("cookie");
@@ -76,7 +77,7 @@ export async function GET(request: Request) {
       where,
       include: {
         user: {
-          select: { id: true, name: true, email: true },
+          select: { id: true, name: true },
         },
       },
       orderBy: [
@@ -90,10 +91,7 @@ export async function GET(request: Request) {
   } catch (error: any) {
     console.error("Get apartments error:", error);
     return NextResponse.json(
-      { 
-        error: "حدث خطأ أثناء جلب العقارات",
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
-      },
+      { error: "حدث خطأ أثناء جلب العقارات" },
       { status: 500 }
     );
   }

@@ -119,7 +119,6 @@ export async function GET() {
             dbError.code === 'P1001' || dbError.code === 'P1008') {
           return NextResponse.json({
             error: 'الجداول غير موجودة في قاعدة البيانات',
-            details: `Prisma Error ${dbError.code}: ${dbError.message}`,
             hint: 'يجب تشغيل: npx prisma db push --schema prisma/schema.prisma'
           }, { status: 500 });
         }
@@ -127,8 +126,6 @@ export async function GET() {
 
       return NextResponse.json({
         error: 'خطأ في قاعدة البيانات',
-        details: dbError instanceof Error ? dbError.message : String(dbError),
-        prismaCode: dbError instanceof Prisma.PrismaClientKnownRequestError ? dbError.code : null,
         hint: 'تأكد أن الجداول موجودة وأن DATABASE_URL صحيح'
       }, { status: 500 });
     }
