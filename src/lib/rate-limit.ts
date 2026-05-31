@@ -1,10 +1,10 @@
 /**
  * Database-backed rate limiting for Vercel serverless environments.
- * 
+ *
  * Uses the existing OperationLog model to track attempts across all serverless instances.
  * This replaces in-memory rate limiting which doesn't work in serverless because each
  * request may hit a different instance.
- * 
+ *
  * Usage:
  *   const allowed = await checkRateLimit("dev-login", "ip", userIp, 5, 15 * 60);
  *   if (!allowed) return NextResponse.json({ error: "Too many attempts" }, { status: 429 });
@@ -48,10 +48,10 @@ export async function checkRateLimit(
     const config = RATE_LIMIT_CONFIGS[endpoint] || {};
     const max = maxAttempts || config.maxAttempts || 5;
     const window = windowSeconds || config.windowSeconds || 15 * 60;
-    
+
     const action = `rate-limit:${endpoint}`;
     const since = new Date(Date.now() - window * 1000);
-    
+
     // Count recent attempts from this source
     const count = await db.operationLog.count({
       where: {
@@ -61,7 +61,7 @@ export async function checkRateLimit(
         createdAt: { gte: since },
       },
     });
-    
+
     return count < max;
   } catch (error) {
     // If DB is down, allow the request (fail open for availability)
@@ -94,7 +94,7 @@ export async function recordFailedAttempt(
          "unknown")
       : "unknown";
     const userAgent = request?.headers.get("user-agent") || "unknown";
-    
+
     await db.operationLog.create({
       data: {
         action,
@@ -129,14 +129,14 @@ export function getClientIp(request: Request): string {
 export async function cleanupRateLimitRecords(): Promise<number> {
   try {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    
+
     const result = await db.operationLog.deleteMany({
       where: {
         action: { startsWith: "rate-limit:" },
         createdAt: { lt: oneHourAgo },
       },
     });
-    
+
     return result.count;
   } catch (error) {
     console.error("Failed to cleanup rate limit records:", error);

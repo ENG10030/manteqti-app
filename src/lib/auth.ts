@@ -4,7 +4,12 @@ import { NextRequest } from "next/server";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 
-export const JWT_SECRET = process.env.JWT_SECRET || "";
+// 🔐 JWT_SECRET مطلوب — بدونها النظام مش هيشتغل
+const _envSecret = process.env.JWT_SECRET;
+if (!_envSecret) {
+  console.error("FATAL: JWT_SECRET environment variable is not set!");
+}
+export const JWT_SECRET = _envSecret || "FALLBACK_ERROR";
 
 export interface AuthUser {
   id: string;

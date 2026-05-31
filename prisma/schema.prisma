@@ -195,6 +195,24 @@ model Settings {
   priorityListingFee  Int      @default(200)
   verifiedListingFee  Int      @default(250)
   currency            String   @default("ج.م")
+
+  // 🔐 Developer Payment Receiving Accounts
+  vodafoneCashNumber   String?  @default("")
+  orangeCashNumber     String?  @default("")
+  etisalatCashNumber   String?  @default("")
+  bankAccountName      String?  @default("")
+  bankAccountNumber    String?  @default("")
+  bankName             String?  @default("")
+  instapayAccount      String?  @default("")
+  usdtTronAddress      String?  @default("")
+  visaEnabled          Boolean  @default(false)
+  visaPublicKey        String?  @default("")
+  visaSecretKey        String?  @default("")
+  minRechargeAmount    Int      @default(10)
+  maxRechargeAmount    Int      @default(50000)
+  paymentAutoConfirm   Boolean  @default(false)
+  paymentSecurityPin   String?  @default("")
+
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }

@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
+import { checkRateLimit, recordFailedAttempt } from "@/lib/rate-limit";
+import { JWT_SECRET } from "@/lib/auth";
 
-const JWT_SECRET = process.env.JWT_SECRET || "";
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
 
 export async function POST(request: Request) {
   try {
@@ -20,11 +21,21 @@ export async function POST(request: Request) {
       );
     }
 
+    // 🔒 Rate limiting — check BEFORE password comparison
+    const allowed = await checkRateLimit("login", "email", loginIdentifier, 10, 15 * 60);
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "محاولات كثيرة. حاول بعد 15 دقيقة" },
+        { status: 429 }
+      );
+    }
+
     const user = await db.user.findUnique({
       where: { identifier: loginIdentifier },
     });
 
     if (!user) {
+      await recordFailedAttempt("login", "email", loginIdentifier, request);
       return NextResponse.json(
         { error: "يجب إنشاء حساب أولاً" },
         { status: 404 }
@@ -34,6 +45,7 @@ export async function POST(request: Request) {
     const isValidPassword = await bcrypt.compare(password, user.password);
 
     if (!isValidPassword) {
+      await recordFailedAttempt("login", "email", loginIdentifier, request);
       return NextResponse.json(
         { error: "كلمة المرور أو البريد الإلكتروني غير صحيحة" },
         { status: 401 }
@@ -48,7 +60,7 @@ export async function POST(request: Request) {
     }
 
     // Block login if email not verified (developers and pre-existing users exempt)
-    const isDeveloper = user.role === 'DEVELOPER' || user.identifier === DEVELOPER_EMAIL;
+    const isDeveloper = user.role === 'DEVELOPER' || (DEVELOPER_EMAIL && user.identifier === DEVELOPER_EMAIL);
     if (!user.emailVerified && !isDeveloper) {
       return NextResponse.json({
         error: "يجب تأكيد البريد الإلكتروني أولاً",
