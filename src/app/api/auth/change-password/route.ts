@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 import { sendPasswordChangedEmail } from '@/lib/email';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export const dynamic = "force-dynamic";
 
@@ -18,9 +19,15 @@ export async function POST(request: NextRequest) {
 
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET);
+      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
     } catch {
       return NextResponse.json({ error: 'جلسة غير صالحة' }, { status: 401 });
+    }
+
+    // Rate limit: 5 attempts per 15 minutes per user
+    const allowed = await checkRateLimit('change-password', 'userId', decoded.userId, 5, 15 * 60);
+    if (!allowed) {
+      return NextResponse.json({ error: 'طلبات كثيرة. حاول بعد 15 دقيقة' }, { status: 429 });
     }
 
     const { currentPassword, newPassword } = await request.json();

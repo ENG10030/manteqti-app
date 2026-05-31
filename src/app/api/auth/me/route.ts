@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     }
 
     // ✅ Decode JWT directly — NO DATABASE NEEDED
-    const decoded = verify(token, JWT_SECRET) as unknown as {
+    const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as unknown as {
       userId: string;
       identifier?: string;
       role?: string;

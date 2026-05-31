@@ -16,7 +16,7 @@ export async function GET() {
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET);
+      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
@@ -78,9 +78,14 @@ export async function POST(request: NextRequest) {
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET);
+      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    // Check if user is blocked
+    if (decoded.isBlocked) {
+      return NextResponse.json({ error: 'حسابك محظور' }, { status: 403 });
     }
 
     const data = await request.json();

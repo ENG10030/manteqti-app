@@ -18,7 +18,7 @@ export async function GET(
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET);
+      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
@@ -88,7 +88,7 @@ export async function PUT(
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET);
+      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
@@ -131,7 +131,7 @@ export async function PATCH(
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET);
+      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }

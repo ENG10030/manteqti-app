@@ -20,7 +20,7 @@ export async function POST(
 
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET);
+      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }

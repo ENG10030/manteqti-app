@@ -5,7 +5,7 @@ import { JWT_SECRET } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
 
 async function isDeveloper(request: Request) {
   const cookieHeader = request.headers.get("cookie");
@@ -15,7 +15,7 @@ async function isDeveloper(request: Request) {
   if (!token) return false;
 
   try {
-    const decoded = verify(token, JWT_SECRET) as unknown as { userId: string; role?: string; identifier?: string };
+    const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as unknown as { userId: string; role?: string; identifier?: string };
     
     // التحقق من دور DEVELOPER أو بريد المطور
     if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;

@@ -11,7 +11,7 @@ async function verifyDeveloper(request: Request): Promise<boolean> {
     const cookieStore = await cookies();
     const token = cookieStore.get("auth-token")?.value;
     if (!token) return false;
-    const decoded = verify(token, JWT_SECRET) as unknown as { role?: string };
+    const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as unknown as { role?: string };
     return decoded.role === "DEVELOPER";
   } catch {
     return false;

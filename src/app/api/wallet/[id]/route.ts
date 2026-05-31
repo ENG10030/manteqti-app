@@ -15,7 +15,7 @@ async function isDeveloper(request: NextRequest): Promise<{ userId: string; iden
   const token = request.cookies.get("auth-token")?.value;
   if (!token) return null;
   try {
-    const decoded = verify(token, JWT_SECRET) as unknown as {
+    const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as unknown as {
       userId: string;
       role?: string;
       identifier?: string;
@@ -210,10 +210,10 @@ export async function PUT(request: NextRequest) {
         );
       }
 
-      // Verify security PIN if set in settings
-      if (securityPin) {
-        const settings = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
-        if ((settings as unknown as Record<string, unknown>)?.paymentSecurityPin && (settings as unknown as Record<string, unknown>).paymentSecurityPin !== securityPin) {
+      // Verify security PIN if set in settings (mandatory when configured)
+      const settings = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
+      if ((settings as unknown as Record<string, unknown>)?.paymentSecurityPin) {
+        if (!securityPin || securityPin !== (settings as unknown as Record<string, unknown>).paymentSecurityPin) {
           await db.operationLog.create({
             data: {
               action: "WALLET_BULK_PIN_FAILED",
@@ -228,7 +228,7 @@ export async function PUT(request: NextRequest) {
               userAgent,
             },
           });
-          return NextResponse.json({ error: "رمز الأمان غير صحيح" }, { status: 403 });
+          return NextResponse.json({ error: "رمز الأمان مطلوب. يرجى إدخال رمز الأمان" }, { status: 403 });
         }
       }
 
@@ -256,10 +256,10 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Verify security PIN if set in settings
-    if (securityPin) {
-      const settings = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
-      if ((settings as unknown as Record<string, unknown>)?.paymentSecurityPin && (settings as unknown as Record<string, unknown>).paymentSecurityPin !== securityPin) {
+    // Verify security PIN if set in settings (mandatory when configured)
+    const settings = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
+    if ((settings as unknown as Record<string, unknown>)?.paymentSecurityPin) {
+      if (!securityPin || securityPin !== (settings as unknown as Record<string, unknown>).paymentSecurityPin) {
         await db.operationLog.create({
           data: {
             action: "WALLET_PIN_FAILED",
@@ -274,7 +274,7 @@ export async function PUT(request: NextRequest) {
             userAgent,
           },
         });
-        return NextResponse.json({ error: "رمز الأمان غير صحيح" }, { status: 403 });
+        return NextResponse.json({ error: "رمز الأمان مطلوب. يرجى إدخال رمز الأمان" }, { status: 403 });
       }
     }
 

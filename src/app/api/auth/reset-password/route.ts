@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import { sendPasswordChangedEmail } from '@/lib/email';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,12 @@ export async function POST(request: NextRequest) {
     }
 
     const normalizedEmail = email.toLowerCase().trim();
+
+    // Rate limit: 5 attempts per 15 minutes per email
+    const allowed = await checkRateLimit('reset-password', 'email', normalizedEmail, 5, 15 * 60);
+    if (!allowed) {
+      return NextResponse.json({ error: 'طلبات كثيرة. حاول بعد 15 دقيقة' }, { status: 429 });
+    }
 
     const user = await db.user.findFirst({
       where: {
