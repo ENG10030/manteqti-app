@@ -34,7 +34,7 @@ export async function PUT(
     if (action === "approve") {
       const updated = await db.user.update({
         where: { id },
-        data: { isApproved: true },
+        data: { isApproved: true, isBlocked: false },
         select: { id: true, name: true, email: true, isApproved: true },
       });
 
@@ -102,7 +102,8 @@ export async function PUT(
 
       return NextResponse.json({ message: "تم إلغاء تأكيد التسجيل", user: updated });
     } else {
-      // Log rejection before deletion
+      // === رفض: حظر المستخدم بدل حذفه ===
+      // Log rejection
       try {
         await db.operationLog.create({
           data: {
@@ -129,18 +130,19 @@ export async function PUT(
         });
       } catch {}
 
-      // Instead of deleting the user and all their data (cascade),
-      // just mark them as blocked so their data is preserved
-      await db.user.update({
+      // حظر المستخدم بدل حذفه (للحفاظ على البيانات)
+      const updated = await db.user.update({
         where: { id },
         data: {
-          isBlocked: true,
-          blockReason: reason || "تم رفض التسجيل",
-          blockedAt: new Date(),
           isApproved: false,
+          isBlocked: true,
+          blockedAt: new Date(),
+          blockReason: reason || "تم رفض التسجيل",
         },
+        select: { id: true, name: true, email: true, isApproved: true, isBlocked: true },
       });
-      return NextResponse.json({ message: "تم رفض التسجيل وحظر الحساب (تم الاحتفاظ بالبيانات)" });
+
+      return NextResponse.json({ message: "تم رفض التسجيل وحظر الحساب", user: updated });
     }
   } catch (error) {
     console.error("User approval error:", error);
