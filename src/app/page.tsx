@@ -551,7 +551,7 @@ export default function App() {
     const init = async () => {
       // Step 1: Fetch auth
       try {
-        const authRes = await fetch('/api/auth/me');
+        const authRes = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
         const authData = await authRes.json();
         if (cancelled) return;
         if (authData.user) {

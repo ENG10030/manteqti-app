@@ -5,6 +5,8 @@ import { sign } from "jsonwebtoken";
 import { checkRateLimit, recordFailedAttempt } from "@/lib/rate-limit";
 import { JWT_SECRET } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
 
 export async function POST(request: Request) {

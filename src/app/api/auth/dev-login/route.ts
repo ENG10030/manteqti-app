@@ -3,8 +3,10 @@ import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
 import { checkRateLimit, recordFailedAttempt } from "@/lib/rate-limit";
+import { JWT_SECRET } from "@/lib/auth";
 
-const JWT_SECRET = process.env.JWT_SECRET;
+export const dynamic = "force-dynamic";
+
 const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
 const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD;
 
@@ -64,7 +66,6 @@ export async function POST(request: Request) {
     } catch (dbError: unknown) {
       // 🔐 لو الداتابيز اتعطلت — المطور لازم يقدر يدخل على أي حال
       console.error("DB error in dev login (non-blocking):", dbError instanceof Error ? dbError.message : String(dbError));
-      // user يفضل null والـ fallback values هتشتغل
     }
 
     // 🔐 Fallback — حتى لو الداتابيز اتعطلت بالكامل
@@ -103,12 +104,9 @@ export async function POST(request: Request) {
 
     return response;
   } catch (error: unknown) {
-    console.error("Dev login error:", error);
+    console.error("Dev login error:", error instanceof Error ? error.message : String(error));
     return NextResponse.json({
       error: "حدث خطأ"
     }, { status: 500 });
   }
 }
-
-// 🔒 GET endpoint disabled - was leaking developer email
-// No public endpoint should reveal developer information

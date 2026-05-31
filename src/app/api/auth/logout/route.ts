@@ -1,9 +1,21 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic";
+
 export async function POST() {
   const response = NextResponse.json({ message: "تم تسجيل الخروج بنجاح" });
 
+  // Clear auth-token cookie
   response.cookies.set("auth-token", "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 0,
+    path: "/",
+  });
+
+  // Also clear next-auth session token if it exists
+  response.cookies.set("next-auth.session-token", "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
