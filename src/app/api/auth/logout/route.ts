@@ -14,14 +14,5 @@ export async function POST() {
     path: "/",
   });
 
-  // Also clear next-auth session token if it exists
-  response.cookies.set("next-auth.session-token", "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 0,
-    path: "/",
-  });
-
   return response;
 }

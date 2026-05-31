@@ -39,52 +39,43 @@ async function getCurrentUserId(request: Request): Promise<string | null> {
   }
 }
 
-function v(value: unknown): string {
+function sanitize(value: unknown): string {
   if (typeof value === "string") return value.replace(/<[^>]*>/g, "").trim();
   return String(value ?? "");
 }
 
-function n(value: unknown): number {
+function toNum(value: unknown): number {
   const num = parseInt(String(value));
   return isNaN(num) || num < 0 ? 0 : num;
 }
 
 // ==========================================
-// GET - Fetch settings with multi-layer fallback
+// GET - Fetch settings (single source of truth via Prisma)
 // ==========================================
 export async function GET() {
   try {
-    // Try Prisma
-    try {
-      const row = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
-      if (row) {
-        return NextResponse.json({
-          settings: row,
-          paymentMethods: buildPublicPaymentMethods(row as unknown as Record<string, unknown>),
-        }, { headers: { "Cache-Control": "no-store, no-cache, must-revalidate", Pragma: "no-cache" } });
-      }
-    } catch (e) {
-      console.error("GET settings Prisma failed:", e);
+    const row = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
+    if (row) {
+      return NextResponse.json({
+        settings: row,
+        paymentMethods: buildPublicPaymentMethods(row),
+      }, {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        },
+      });
     }
 
-    // Try raw SQL
-    try {
-      const rows = await db.$queryRawUnsafe(
-        `SELECT * FROM "Settings" ORDER BY "createdAt" DESC LIMIT 1`
-      ) as Array<Record<string, unknown>>;
-      if (rows.length > 0) {
-        return NextResponse.json({
-          settings: rows[0],
-          paymentMethods: buildPublicPaymentMethods(rows[0]),
-        }, { headers: { "Cache-Control": "no-store, no-cache, must-revalidate", Pragma: "no-cache" } });
-      }
-    } catch (e) {
-      console.error("GET settings raw SQL failed:", e);
-    }
-
-    // No row exists — return defaults (don't try to create to avoid write errors)
+    // No row exists — return defaults
     return NextResponse.json({
-      settings: { contactFee: 50, regularFee: 30, featuredFee: 100, premiumFee: 200, vipFee: 300, saleDisplayFee: 100, rentDisplayFee: 75, otherServicesFee: 50, highlightFee: 150, priorityListingFee: 200, verifiedListingFee: 250, currency: "ج.م", id: "default" },
+      settings: {
+        contactFee: 50, regularFee: 30, featuredFee: 100, premiumFee: 200, vipFee: 300,
+        saleDisplayFee: 100, rentDisplayFee: 75, otherServicesFee: 50,
+        highlightFee: 150, priorityListingFee: 200, verifiedListingFee: 250,
+        currency: "ج.م", id: "default",
+      },
       paymentMethods: [],
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
@@ -94,10 +85,7 @@ export async function GET() {
 }
 
 // ==========================================
-// PUT - Update settings with 3-strategy fallback
-// Strategy 1: Prisma with ALL fields
-// Strategy 2: Prisma with BASE fields only
-// Strategy 3: Raw SQL field-by-field (skip missing columns)
+// PUT - Update settings (single strategy: Prisma only)
 // ==========================================
 export async function PUT(request: Request) {
   try {
@@ -107,174 +95,103 @@ export async function PUT(request: Request) {
 
     const body = await request.json();
 
-    // Validated full data
-    const fullData = {
-      contactFee: n(body.contactFee),
-      regularFee: n(body.regularFee),
-      featuredFee: n(body.featuredFee),
-      premiumFee: n(body.premiumFee),
-      vipFee: n(body.vipFee),
-      saleDisplayFee: n(body.saleDisplayFee),
-      rentDisplayFee: n(body.rentDisplayFee),
-      otherServicesFee: n(body.otherServicesFee),
-      highlightFee: n(body.highlightFee),
-      priorityListingFee: n(body.priorityListingFee),
-      verifiedListingFee: n(body.verifiedListingFee),
-      currency: v(body.currency) || "ج.م",
-      vodafoneCashNumber: v(body.vodafoneCashNumber).replace(/[^0-9\s]/g, "").slice(0, 20),
-      orangeCashNumber: v(body.orangeCashNumber).replace(/[^0-9\s]/g, "").slice(0, 20),
-      etisalatCashNumber: v(body.etisalatCashNumber).replace(/[^0-9\s]/g, "").slice(0, 20),
-      bankAccountName: v(body.bankAccountName).slice(0, 100),
-      bankAccountNumber: v(body.bankAccountNumber).slice(0, 100),
-      bankName: v(body.bankName).slice(0, 100),
-      instapayAccount: v(body.instapayAccount).slice(0, 100),
+    // Sanitize all incoming data
+    const updateData = {
+      contactFee: toNum(body.contactFee),
+      regularFee: toNum(body.regularFee),
+      featuredFee: toNum(body.featuredFee),
+      premiumFee: toNum(body.premiumFee),
+      vipFee: toNum(body.vipFee),
+      saleDisplayFee: toNum(body.saleDisplayFee),
+      rentDisplayFee: toNum(body.rentDisplayFee),
+      otherServicesFee: toNum(body.otherServicesFee),
+      highlightFee: toNum(body.highlightFee),
+      priorityListingFee: toNum(body.priorityListingFee),
+      verifiedListingFee: toNum(body.verifiedListingFee),
+      currency: sanitize(body.currency) || "ج.م",
+      vodafoneCashNumber: sanitize(body.vodafoneCashNumber).replace(/[^0-9\s]/g, "").slice(0, 20),
+      orangeCashNumber: sanitize(body.orangeCashNumber).replace(/[^0-9\s]/g, "").slice(0, 20),
+      etisalatCashNumber: sanitize(body.etisalatCashNumber).replace(/[^0-9\s]/g, "").slice(0, 20),
+      bankAccountName: sanitize(body.bankAccountName).slice(0, 100),
+      bankAccountNumber: sanitize(body.bankAccountNumber).slice(0, 100),
+      bankName: sanitize(body.bankName).slice(0, 100),
+      instapayAccount: sanitize(body.instapayAccount).slice(0, 100),
       visaEnabled: body.visaEnabled === true,
-      visaPublicKey: v(body.visaPublicKey).slice(0, 100),
-      visaSecretKey: v(body.visaSecretKey).slice(0, 100),
-      minRechargeAmount: Math.max(1, n(body.minRechargeAmount) || 10),
-      maxRechargeAmount: Math.min(1000000, n(body.maxRechargeAmount) || 50000),
-      usdtTronAddress: v(body.usdtTronAddress).slice(0, 100),
+      visaPublicKey: sanitize(body.visaPublicKey).slice(0, 100),
+      visaSecretKey: sanitize(body.visaSecretKey).slice(0, 100),
+      minRechargeAmount: Math.max(1, toNum(body.minRechargeAmount) || 10),
+      maxRechargeAmount: Math.min(1000000, toNum(body.maxRechargeAmount) || 50000),
+      usdtTronAddress: sanitize(body.usdtTronAddress).slice(0, 100),
       paymentAutoConfirm: body.paymentAutoConfirm === true,
-      paymentSecurityPin: v(body.paymentSecurityPin).replace(/\D/g, "").slice(0, 6),
+      paymentSecurityPin: sanitize(body.paymentSecurityPin).replace(/\D/g, "").slice(0, 6),
     };
 
-    // Base-only data (guaranteed to exist in any schema)
-    const baseData = {
-      contactFee: fullData.contactFee,
-      regularFee: fullData.regularFee,
-      featuredFee: fullData.featuredFee,
-      premiumFee: fullData.premiumFee,
-      vipFee: fullData.vipFee,
-      saleDisplayFee: fullData.saleDisplayFee,
-      rentDisplayFee: fullData.rentDisplayFee,
-      otherServicesFee: fullData.otherServicesFee,
-      highlightFee: fullData.highlightFee,
-      priorityListingFee: fullData.priorityListingFee,
-      verifiedListingFee: fullData.verifiedListingFee,
-      currency: fullData.currency,
-    };
-
-    // Find existing row
-    let rowId: string | null = null;
+    // Find existing row — get ALL rows and clean up duplicates
+    let targetId: string | null = null;
     try {
-      const row = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
-      if (row) rowId = row.id;
-    } catch {
-      try {
-        const rows = await db.$queryRawUnsafe(`SELECT "id" FROM "Settings" ORDER BY "createdAt" DESC LIMIT 1`) as Array<{ id: string }>;
-        if (rows.length > 0) rowId = rows[0].id;
-      } catch {}
-    }
+      const allRows = await db.settings.findMany({ orderBy: { createdAt: "desc" } });
+      if (allRows.length > 0) {
+        // Use the most recent row
+        targetId = allRows[0].id;
 
-    let saved: Record<string, unknown> | null = null;
-
-    // ==========================================
-    // Strategy 1: Prisma UPDATE with ALL fields
-    // ==========================================
-    if (rowId) {
-      try {
-        saved = await db.settings.update({ where: { id: rowId }, data: fullData }) as unknown as Record<string, unknown>;
-        console.log("Settings saved: Strategy 1 (Prisma full)");
-      } catch (e) {
-        console.warn("Strategy 1 failed:", (e as Error).message);
-      }
-    }
-
-    // ==========================================
-    // Strategy 2: Prisma UPDATE with BASE fields only
-    // ==========================================
-    if (!saved && rowId) {
-      try {
-        saved = await db.settings.update({ where: { id: rowId }, data: baseData }) as unknown as Record<string, unknown>;
-        console.log("Settings saved: Strategy 2 (Prisma base)");
-
-        // Now try extended fields one-by-one via raw SQL
-        const extended: Record<string, unknown> = {};
-        for (const [k, val] of Object.entries(fullData)) {
-          if (!(k in baseData)) extended[k] = val;
-        }
-        for (const [col, val] of Object.entries(extended)) {
+        // 🔧 CLEANUP: If there are duplicate rows, delete older ones
+        if (allRows.length > 1) {
+          const olderIds = allRows.slice(1).map(r => r.id);
           try {
-            const sqlVal = typeof val === "boolean" ? (val ? "TRUE" : "FALSE") : typeof val === "number" ? String(val) : `'${String(val).replace(/'/g, "''")}'`;
-            await db.$executeRawUnsafe(`UPDATE "Settings" SET "${col}" = ${sqlVal} WHERE "id" = '${rowId}'`);
-          } catch {
-            // Column doesn't exist — skip it
+            await db.settings.deleteMany({ where: { id: { in: olderIds } } });
+            console.log(`[Settings] Cleaned up ${olderIds.length} duplicate settings rows`);
+          } catch (cleanupErr) {
+            console.error("[Settings] Failed to clean duplicates:", cleanupErr);
           }
         }
-
-        // Re-fetch to get all saved values
-        try {
-          const refetched = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
-          if (refetched) saved = refetched as unknown as Record<string, unknown>;
-        } catch {}
-      } catch (e) {
-        console.warn("Strategy 2 failed:", (e as Error).message);
       }
+    } catch (findErr) {
+      console.error("[Settings] Error finding rows:", findErr);
     }
 
-    // ==========================================
-    // Strategy 3: Create new row if none exists
-    // ==========================================
-    if (!saved && !rowId) {
+    // Save — UPDATE if exists, CREATE if not
+    let saved;
+    try {
+      if (targetId) {
+        saved = await db.settings.update({
+          where: { id: targetId },
+          data: updateData,
+        });
+        console.log("[Settings] Updated existing row:", targetId);
+      } else {
+        saved = await db.settings.create({ data: updateData });
+        console.log("[Settings] Created new row:", saved.id);
+      }
+    } catch (saveErr) {
+      console.error("[Settings] Prisma save failed:", saveErr);
+      // Last resort: try creating if update failed
       try {
-        saved = await db.settings.create({ data: fullData }) as unknown as Record<string, unknown>;
-        console.log("Settings saved: Strategy 3 (Prisma create)");
-      } catch {
-        try {
-          saved = await db.settings.create({ data: baseData }) as unknown as Record<string, unknown>;
-          console.log("Settings saved: Strategy 3b (Prisma create base)");
-        } catch (e) {
-          console.error("Strategy 3 failed:", (e as Error).message);
-        }
+        // Delete all existing rows and create fresh
+        await db.settings.deleteMany({});
+        saved = await db.settings.create({ data: updateData });
+        console.log("[Settings] Recreated after cleanup:", saved.id);
+      } catch (lastResortErr) {
+        console.error("[Settings] Last resort failed:", lastResortErr);
+        return NextResponse.json({ error: "فشل تحديث الإعدادات — جرب مرة أخرى" }, { status: 500 });
       }
     }
 
-    // ==========================================
-    // Strategy 4: Raw SQL UPDATE field-by-field
-    // ==========================================
-    if (!saved && rowId) {
-      console.log("Trying Strategy 4: Raw SQL field-by-field");
-      for (const [col, val] of Object.entries(fullData)) {
-        try {
-          const sqlVal = typeof val === "boolean" ? (val ? "TRUE" : "FALSE") : typeof val === "number" ? String(val) : `'${String(val).replace(/'/g, "''")}'`;
-          await db.$executeRawUnsafe(`UPDATE "Settings" SET "${col}" = ${sqlVal} WHERE "id" = '${rowId}'`);
-        } catch {
-          // Column doesn't exist — skip
-        }
-      }
-      // Re-fetch
-      try {
-        const rows = await db.$queryRawUnsafe(`SELECT * FROM "Settings" WHERE "id" = '${rowId}' LIMIT 1`) as Array<Record<string, unknown>>;
-        if (rows.length > 0) saved = rows[0];
-        else saved = { id: rowId, ...fullData };
-      } catch {
-        saved = { id: rowId, ...fullData };
-      }
-      console.log("Settings saved: Strategy 4 (Raw SQL)");
-    }
-
-    // ==========================================
-    // All strategies failed
-    // ==========================================
-    if (!saved) {
-      return NextResponse.json({ error: "فشل تحديث الإعدادات — جرب مرة أخرى أو تواصل مع المطور" }, { status: 500 });
-    }
-
-    // Log
+    // Log the change
     const currentUserId = await getCurrentUserId(request);
     try {
       await db.operationLog.create({
         data: {
           action: "UPDATE_SETTINGS",
           entityType: "Settings",
-          entityId: rowId || ((saved as Record<string, unknown>).id as string | null | undefined),
+          entityId: saved.id,
           userId: currentUserId,
-          details: JSON.stringify(fullData),
+          details: JSON.stringify(updateData),
         },
       });
     } catch {}
 
-    notifyRealtime("settings-updated", fullData);
+    // Notify other clients
+    notifyRealtime("settings-updated", updateData);
 
     return NextResponse.json({
       message: "تم تحديث الإعدادات بنجاح ✅",
@@ -289,7 +206,7 @@ export async function PUT(request: Request) {
 // ==========================================
 // Build payment methods for display
 // ==========================================
-function buildPublicPaymentMethods(s: Record<string, unknown>) {
+function buildPublicPaymentMethods(s: any) {
   const methods: Array<{ id: string; name: string; icon: string; enabled: boolean; account?: string; color: string }> = [];
 
   if (s.vodafoneCashNumber) {

@@ -86,9 +86,9 @@ export async function POST(request: NextRequest) {
 
     // Generate JWT token and set auth-token cookie (same as login)
     const token = sign(
-      { userId: updatedUser.id, identifier: updatedUser.identifier, role: updatedUser.role },
+      { userId: updatedUser.id, identifier: updatedUser.identifier, role: updatedUser.role, name: updatedUser.name, email: updatedUser.email, isApproved: updatedUser.isApproved, emailVerified: true, isBlocked: false },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: '30d' }
     );
 
     const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || '';
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: 60 * 60 * 24 * 30,
       path: '/',
     });
 

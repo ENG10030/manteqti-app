@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import { sign } from "jsonwebtoken";
 import { sendOTPEmail, sendNewUserNotificationEmail } from "@/lib/email";
+import { JWT_SECRET } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -157,7 +159,7 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       message: isDeveloper ? "تم إنشاء الحساب بنجاح" : "تم إنشاء الحساب بنجاح. يرجى تأكيد البريد الإلكتروني",
       emailVerificationRequired: !isDeveloper,
       email: userEmail,
@@ -171,6 +173,25 @@ export async function POST(request: Request) {
         emailVerified: user.emailVerified,
       },
     });
+
+    // 🔑 Set auth-token cookie for developer (no OTP needed) and auto-approved users
+    // Non-developer users will get the cookie after OTP verification
+    if (isDeveloper) {
+      const token = sign(
+        { userId: user.id, identifier: user.identifier, role: user.role, name: user.name, email: user.email, isApproved: true, emailVerified: true, isBlocked: false },
+        JWT_SECRET,
+        { expiresIn: "30d" }
+      );
+      response.cookies.set("auth-token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 30,
+        path: "/",
+      });
+    }
+
+    return response;
   } catch (error) {
     console.error("Register error:", error);
     return NextResponse.json(
