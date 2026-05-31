@@ -3,6 +3,8 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 
+export const dynamic = "force-dynamic";
+
 // Extend the User type to include isBlocked
 declare module "next-auth" {
   interface User {

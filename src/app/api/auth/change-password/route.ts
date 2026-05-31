@@ -6,6 +6,8 @@ import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 import { sendPasswordChangedEmail } from '@/lib/email';
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   try {
     const cookieStore = await cookies();

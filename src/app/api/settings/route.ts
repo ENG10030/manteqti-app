@@ -3,6 +3,9 @@ import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { notifyRealtime } from "@/lib/realtime";
 import { JWT_SECRET } from "@/lib/auth";
+
+export const dynamic = "force-dynamic";
+
 const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
 
 async function isDeveloper(request: Request): Promise<boolean> {

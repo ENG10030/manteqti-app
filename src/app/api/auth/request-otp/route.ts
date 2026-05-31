@@ -4,6 +4,8 @@ import { sendOTPEmail } from '@/lib/email';
 import crypto from 'crypto';
 import { checkRateLimit, recordFailedAttempt } from '@/lib/rate-limit';
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   try {
     const { identifier } = await request.json();

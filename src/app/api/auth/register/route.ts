@@ -4,6 +4,8 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { sendOTPEmail, sendNewUserNotificationEmail } from "@/lib/email";
 
+export const dynamic = "force-dynamic";
+
 // قائمة نطاقات البريد المؤقتة المحظورة
 const BLOCKED_DOMAINS = [
   'mailinator.com', 'guerrillamail.com', 'guerrillamailblock.com', 'sharklasers.com',

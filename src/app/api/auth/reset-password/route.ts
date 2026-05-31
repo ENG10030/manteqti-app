@@ -3,6 +3,8 @@ import { db } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import { sendPasswordChangedEmail } from '@/lib/email';
 
+export const dynamic = "force-dynamic";
+
 // POST - Reset password using OTP code
 export async function POST(request: NextRequest) {
   try {

@@ -4,6 +4,8 @@ import crypto from 'crypto';
 import { sendOTPEmail } from '@/lib/email';
 import { checkRateLimit, recordFailedAttempt } from '@/lib/rate-limit';
 
+export const dynamic = "force-dynamic";
+
 // إرسال طلب استعادة كلمة المرور - OTP-based flow
 export async function POST(request: NextRequest) {
   try {

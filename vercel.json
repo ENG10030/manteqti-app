@@ -1,12 +1,20 @@
 {
-  "buildCommand": "prisma generate && next build",
-  "installCommand": "bun install",
   "framework": "nextjs",
-  "regions": ["iad1"],
-  "crons": [
+  "headers": [
     {
-      "path": "/api/cron/auto-delete",
-      "schedule": "0 0 * * *"
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, proxy-revalidate" },
+        { "key": "Pragma", "value": "no-cache" },
+        { "key": "Expires", "value": "0" },
+        { "key": "Surrogate-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/api/auth/(.*)",
+      "headers": [
+        { "key": "Vary", "value": "Cookie, Authorization" }
+      ]
     }
   ]
 }
