@@ -38,9 +38,24 @@ export async function GET(
       );
     }
 
-    // ✅ Determine auth level of the requester
+    // 🔒 التحقق من تسجيل الدخول — الزائر لا يمكنه رؤية التفاصيل
     const currentUser = await getCurrentUser(request);
-    const isDeveloper = currentUser?.role === "DEVELOPER";
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: 'يجب تسجيل الدخول لعرض التفاصيل', code: 'AUTH_REQUIRED' },
+        { status: 401 }
+      );
+    }
+
+    // التحقق من أن المستخدم غير محظور
+    if (currentUser.isBlocked) {
+      return NextResponse.json(
+        { error: 'تم حظر حسابك', code: 'BLOCKED' },
+        { status: 403 }
+      );
+    }
+
+    const isDeveloper = currentUser.role === "DEVELOPER";
 
     const apartment = await db.apartment.findUnique({
       where: { id },

@@ -23,19 +23,34 @@ async function getCurrentUser(request: Request) {
   }
 }
 
-// GET - جلب عقار واحد
+// GET - جلب عقار واحد (يتطلب تسجيل دخول)
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // 🔒 التحقق من تسجيل الدخول — الزائر لا يمكنه رؤية بيانات العقار
+    const user = await getCurrentUser(request);
+    if (!user) {
+      return NextResponse.json({ error: "يجب تسجيل الدخول لعرض بيانات العقار", code: "AUTH_REQUIRED" }, { status: 401 });
+    }
+
+    if (user.isBlocked) {
+      return NextResponse.json({ error: "تم حظر حسابك", code: "BLOCKED" }, { status: 403 });
+    }
+
     const { id } = await params;
 
     const apartment = await db.apartment.findUnique({
       where: { id },
       include: {
         user: {
-          select: { id: true, name: true, phone: true, email: true },
+          select: {
+            id: true,
+            name: true,
+            phone: user.role === "DEVELOPER" ? true : false,
+            email: user.role === "DEVELOPER" ? true : false,
+          },
         },
       },
     });

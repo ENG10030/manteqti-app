@@ -11,6 +11,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // 🔒 التحقق من تسجيل الدخول — الزائر لا يمكنه رؤية بيانات العقار
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول لعرض بيانات العقار', code: 'AUTH_REQUIRED' }, { status: 401 });
+    }
+
     const { id } = await params;
 
     const apartment = await db.apartment.findUnique({

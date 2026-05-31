@@ -36,7 +36,23 @@ export async function GET(
     }
 
     const currentUser = await getCurrentUser(request);
-    const isDeveloper = currentUser?.role === "DEVELOPER";
+
+    // 🔒 التحقق من تسجيل الدخول — الزائر لا يمكنه رؤية التفاصيل
+    if (!currentUser) {
+      return NextResponse.json(
+        { error: 'يجب تسجيل الدخول لعرض التفاصيل', code: 'AUTH_REQUIRED' },
+        { status: 401 }
+      );
+    }
+
+    if (currentUser.isBlocked) {
+      return NextResponse.json(
+        { error: 'تم حظر حسابك', code: 'BLOCKED' },
+        { status: 403 }
+      );
+    }
+
+    const isDeveloper = currentUser.role === "DEVELOPER";
 
     const apartment = await db.apartment.findUnique({
       where: { id },
