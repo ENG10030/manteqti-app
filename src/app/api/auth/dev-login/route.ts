@@ -5,15 +5,16 @@ import { sign } from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
+const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || "admin123";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { password } = body;
 
-    // Verify the developer email is configured
-    if (!DEVELOPER_EMAIL) {
-      return NextResponse.json({ error: "Developer login not configured" }, { status: 500 });
+    // التحقق من كلمة مرور المطور (من Environment Variables)
+    if (password !== DEVELOPER_PASSWORD) {
+      return NextResponse.json({ error: "كلمة مرور المطور غير صحيحة" }, { status: 401 });
     }
 
     // Find or create developer account
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
 
     if (!user) {
       // Auto-create developer account if it doesn't exist
-      const hashedPassword = password ? await bcrypt.hash(password, 10) : await bcrypt.hash("dev-admin-2024", 10);
+      const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
       user = await db.user.create({
         data: {
           name: "المطور",
@@ -35,12 +36,6 @@ export async function POST(request: Request) {
           emailVerified: true,
         },
       });
-    } else if (password) {
-      // If password provided, update it
-      const isValid = await bcrypt.compare(password, user.password);
-      if (!isValid) {
-        return NextResponse.json({ error: "كلمة المرور غير صحيحة" }, { status: 401 });
-      }
     }
 
     // Generate JWT token
