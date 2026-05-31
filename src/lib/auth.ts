@@ -2,11 +2,13 @@ import { db } from "./db";
 import { verify } from "jsonwebtoken";
 import { NextRequest } from "next/server";
 
-// 🔐 JWT_SECRET — fail fast if missing
-export const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
+// 🔐 JWT_SECRET — TypeScript needs local variable narrowing + explicit type annotation
+// Using a local const first so TypeScript narrows it through the throw, then export with type annotation
+const _envSecret = process.env.JWT_SECRET;
+if (!_envSecret) {
   throw new Error("FATAL: JWT_SECRET environment variable is not set!");
 }
+export const JWT_SECRET: string = _envSecret;
 
 export interface AuthUser {
   id: string;
