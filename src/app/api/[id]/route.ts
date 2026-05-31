@@ -38,8 +38,8 @@ async function isOwnerOrDeveloper(request: NextRequest, apartmentId: string): Pr
   } catch { /* continue */ }
   // Check owner
   try {
-    const apartment = await db.apartment.findUnique({ where: { id: apartmentId }, select: { userId: true } });
-    return apartment?.userId === auth.userId;
+    const apartment = await db.apartment.findUnique({ where: { id: apartmentId }, select: { createdBy: true } });
+    return apartment?.createdBy === auth.userId;
   } catch { return false; }
 }
 
