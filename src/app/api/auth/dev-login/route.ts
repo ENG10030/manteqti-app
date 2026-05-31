@@ -12,9 +12,8 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { password } = body;
 
-    // التحقق من كلمة مرور المطور (من Environment Variables)
-    if (password !== DEVELOPER_PASSWORD) {
-      return NextResponse.json({ error: "كلمة مرور المطور غير صحيحة" }, { status: 401 });
+    if (!DEVELOPER_EMAIL) {
+      return NextResponse.json({ error: "Developer login not configured" }, { status: 500 });
     }
 
     // Find or create developer account
@@ -23,7 +22,7 @@ export async function POST(request: Request) {
     });
 
     if (!user) {
-      // Auto-create developer account if it doesn't exist
+      // Create developer account
       const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
       user = await db.user.create({
         data: {
@@ -36,6 +35,14 @@ export async function POST(request: Request) {
           emailVerified: true,
         },
       });
+    } else if (password) {
+      // Check: accept password from env var OR from DB hash
+      const isEnvPassword = password === DEVELOPER_PASSWORD;
+      const isDbPassword = await bcrypt.compare(password, user.password);
+      
+      if (!isEnvPassword && !isDbPassword) {
+        return NextResponse.json({ error: "كلمة المرور غير صحيحة" }, { status: 401 });
+      }
     }
 
     // Generate JWT token
