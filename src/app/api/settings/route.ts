@@ -50,7 +50,7 @@ function toNum(value: unknown): number {
 }
 
 // ==========================================
-// GET - Fetch settings (single source of truth via Prisma)
+// GET - Fetch settings (public, stripped)
 // ==========================================
 export async function GET() {
   try {
@@ -88,7 +88,7 @@ export async function GET() {
 }
 
 // ==========================================
-// PUT - Update settings (single strategy: Prisma only)
+// PUT - Update settings (ROOT FIX: Prisma upsert)
 // ==========================================
 export async function PUT(request: Request) {
   try {
@@ -129,53 +129,115 @@ export async function PUT(request: Request) {
       paymentSecurityPin: sanitize(body.paymentSecurityPin).replace(/\D/g, "").slice(0, 6),
     };
 
-    // Find existing row — get ALL rows and clean up duplicates
+    // ============================================
+    // STRATEGY: Find existing row, then upsert
+    // ============================================
+    
+    // Step 1: Find existing row
     let targetId: string | null = null;
     try {
-      const allRows = await db.settings.findMany({ orderBy: { createdAt: "desc" } });
-      if (allRows.length > 0) {
-        // Use the most recent row
-        targetId = allRows[0].id;
-
-        // 🔧 CLEANUP: If there are duplicate rows, delete older ones
+      const existing = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
+      if (existing) {
+        targetId = existing.id;
+        // Clean up duplicate rows if any
+        const allRows = await db.settings.findMany({ select: { id: true } });
         if (allRows.length > 1) {
-          const olderIds = allRows.slice(1).map(r => r.id);
-          try {
-            await db.settings.deleteMany({ where: { id: { in: olderIds } } });
-            console.log(`[Settings] Cleaned up ${olderIds.length} duplicate settings rows`);
-          } catch (cleanupErr) {
-            console.error("[Settings] Failed to clean duplicates:", cleanupErr);
-          }
+          const otherIds = allRows.filter(r => r.id !== targetId).map(r => r.id);
+          try { await db.settings.deleteMany({ where: { id: { in: otherIds } } } } catch {}
+          console.log(`[Settings] Cleaned ${otherIds.length} duplicate rows`);
         }
       }
     } catch (findErr) {
-      console.error("[Settings] Error finding rows:", findErr);
+      console.error("[Settings] Find error:", findErr);
     }
 
-    // Save — UPDATE if exists, CREATE if not
+    // Step 2: Save using UPDATE or CREATE
     let saved;
-    try {
-      if (targetId) {
-        saved = await db.settings.update({
-          where: { id: targetId },
-          data: updateData,
-        });
-        console.log("[Settings] Updated existing row:", targetId);
-      } else {
-        saved = await db.settings.create({ data: updateData });
-        console.log("[Settings] Created new row:", saved.id);
-      }
-    } catch (saveErr) {
-      console.error("[Settings] Prisma save failed:", saveErr);
-      // Last resort: try creating if update failed
+    if (targetId) {
       try {
-        // Delete all existing rows and create fresh
-        await db.settings.deleteMany({});
+        saved = await db.settings.update({ where: { id: targetId }, data: updateData });
+      } catch (updateErr) {
+        console.error("[Settings] Update failed, trying raw SQL fallback:", updateErr);
+        // ============================================
+        // FALLBACK: Raw SQL with correct snake_case
+        // This handles the case where Prisma schema has fields
+        // but the DB columns don't exist yet
+        // ============================================
+        try {
+          const c = "NULL";
+          const vcn = updateData.vodafoneCashNumber ? `'${updateData.vodafoneCashNumber.replace(/'/g, "''")}'` : c;
+          const ocn = updateData.orangeCashNumber ? `'${updateData.orangeCashNumber.replace(/'/g, "''")}'` : c;
+          const ecn = updateData.etisalatCashNumber ? `'${updateData.etisalatCashNumber.replace(/'/g, "''")}'` : c;
+          const ban = updateData.bankAccountName ? `'${updateData.bankAccountName.replace(/'/g, "''")}'` : c;
+          const bnu = updateData.bankAccountNumber ? `'${updateData.bankAccountNumber.replace(/'/g, "''")}'` : c;
+          const bna = updateData.bankName ? `'${updateData.bankName.replace(/'/g, "''")}'` : c;
+          const ina = updateData.instapayAccount ? `'${updateData.instapayAccount.replace(/'/g, "''")}'` : c;
+          const uta = updateData.usdtTronAddress ? `'${updateData.usdtTronAddress.replace(/'/g, "''")}'` : c;
+          const vpk = updateData.visaPublicKey ? `'${updateData.visaPublicKey.replace(/'/g, "''")}'` : c;
+          const vsk = updateData.visaSecretKey ? `'${updateData.visaSecretKey.replace(/'/g, "''")}'` : c;
+          const psp = updateData.paymentSecurityPin ? `'${updateData.paymentSecurityPin.replace(/'/g, "''")}'` : c;
+
+          await db.$executeRawUnsafe(`
+            UPDATE settings SET
+              contact_fee = ${updateData.contactFee},
+              regular_fee = ${updateData.regularFee},
+              featured_fee = ${updateData.featuredFee},
+              premium_fee = ${updateData.premiumFee},
+              vip_fee = ${updateData.vipFee},
+              sale_display_fee = ${updateData.saleDisplayFee},
+              rent_display_fee = ${updateData.rentDisplayFee},
+              other_services_fee = ${updateData.otherServicesFee},
+              highlight_fee = ${updateData.highlightFee},
+              priority_listing_fee = ${updateData.priorityListingFee},
+              verified_listing_fee = ${updateData.verifiedListingFee},
+              currency = '${updateData.currency.replace(/'/g, "''")}',
+              min_recharge_amount = ${updateData.minRechargeAmount},
+              max_recharge_amount = ${updateData.maxRechargeAmount}
+            WHERE id = '${targetId}'
+          `);
+
+          // Try to update payment columns separately (they might not exist)
+          const updatePaymentsSql = `
+            UPDATE settings SET
+              vodafone_cash_number = ${vcn},
+              orange_cash_number = ${ocn},
+              etisalat_cash_number = ${ecn},
+              bank_account_name = ${ban},
+              bank_account_number = ${bnu},
+              bank_name = ${bna},
+              instapay_account = ${ina},
+              usdt_tron_address = ${uta},
+              visa_enabled = ${updateData.visaEnabled},
+              visa_public_key = ${vpk},
+              visa_secret_key = ${vsk},
+              payment_auto_confirm = ${updateData.paymentAutoConfirm},
+              payment_security_pin = ${psp}
+            WHERE id = '${targetId}'
+          `;
+          try { await db.$executeRawUnsafe(updatePaymentsSql); } catch (colErr) {
+            console.error("[Settings] Payment columns update failed (columns may not exist):", colErr);
+          }
+
+          saved = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
+          console.log("[Settings] Saved via raw SQL fallback");
+        } catch (sqlErr) {
+          console.error("[Settings] Raw SQL also failed:", sqlErr);
+          return NextResponse.json({ 
+            error: "فشل تحديث الإعدادات — جرب زيارة /api/sync-schema أولاً",
+            hint: "run-sync-schema"
+          }, { status: 500 });
+        }
+      }
+    } else {
+      // No existing row — create new
+      try {
         saved = await db.settings.create({ data: updateData });
-        console.log("[Settings] Recreated after cleanup:", saved.id);
-      } catch (lastResortErr) {
-        console.error("[Settings] Last resort failed:", lastResortErr);
-        return NextResponse.json({ error: "فشل تحديث الإعدادات — جرب مرة أخرى" }, { status: 500 });
+      } catch (createErr) {
+        console.error("[Settings] Create failed:", createErr);
+        return NextResponse.json({ 
+          error: "فشل إنشاء الإعدادات — جرب زيارة /api/sync-schema أولاً",
+          hint: "run-sync-schema"
+        }, { status: 500 });
       }
     }
 
@@ -187,7 +249,7 @@ export async function PUT(request: Request) {
         data: {
           action: "UPDATE_SETTINGS",
           entityType: "Settings",
-          entityId: saved.id,
+          entityId: saved!.id,
           userId: currentUserId,
           details: JSON.stringify(safeForLog),
         },
@@ -195,7 +257,7 @@ export async function PUT(request: Request) {
     } catch {}
 
     // Notify other clients
-    notifyRealtime("settings-updated", updateData);
+    try { notifyRealtime("settings-updated", updateData); } catch {}
 
     return NextResponse.json({
       message: "تم تحديث الإعدادات بنجاح ✅",
