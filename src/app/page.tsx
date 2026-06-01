@@ -111,6 +111,7 @@ function ConfirmDialog({ isOpen, title, message, confirmText = 'تأكيد', can
 
 export default function App() {
   // State
+  const [mounted, setMounted] = useState(false);
   const [apartments, setApartments] = useState<Apartment[]>([]);
   const [allApartments, setAllApartments] = useState<Apartment[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
@@ -119,6 +120,9 @@ export default function App() {
   const [initialLoad, setInitialLoad] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [darkMode, setDarkMode] = useState(false);
+
+  // Mark as mounted after first render to prevent hydration mismatch
+  useEffect(() => { setMounted(true); }, []);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'rent' | 'sale'>('all');
   const [areaFilter, setAreaFilter] = useState<string>('all');
@@ -1675,6 +1679,18 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
   const deleteComment = async (commentId: string) => {
     try { await fetch(`/api/comments/${commentId}`, { method: 'DELETE' }); fetchAllComments(); addToast('تم حذف التعليق', 'success'); } catch { addToast('حدث خطأ', 'error'); }
   };
+
+  // Prevent hydration mismatch - show minimal shell until mounted
+  if (!mounted) return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-violet-50 to-purple-50">
+      <div className="text-center">
+        <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-violet-600 to-purple-700 flex items-center justify-center mx-auto shadow-2xl shadow-violet-500/30">
+          <Building2 className="h-12 w-12 text-white" />
+        </div>
+        <p className="mt-8 text-lg font-medium text-slate-600">جاري التحميل...</p>
+      </div>
+    </div>
+  );
 
   // Loading state
   if (loading) return (
