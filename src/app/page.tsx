@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, MapPin, Bed, Bath, Phone, ExternalLink, X,
@@ -109,9 +110,12 @@ function ConfirmDialog({ isOpen, title, message, confirmText = 'تأكيد', can
   );
 }
 
-export default function App() {
-  // State
+function App() {
+  // Mounted guard — prevents framer-motion hydration mismatch (server vs client render diff)
   const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  // State
   const [apartments, setApartments] = useState<Apartment[]>([]);
   const [allApartments, setAllApartments] = useState<Apartment[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
@@ -121,8 +125,6 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [darkMode, setDarkMode] = useState(false);
 
-  // Mark as mounted after first render to prevent hydration mismatch
-  useEffect(() => { setMounted(true); }, []);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'rent' | 'sale'>('all');
   const [areaFilter, setAreaFilter] = useState<string>('all');
@@ -1680,7 +1682,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     try { await fetch(`/api/comments/${commentId}`, { method: 'DELETE' }); fetchAllComments(); addToast('تم حذف التعليق', 'success'); } catch { addToast('حدث خطأ', 'error'); }
   };
 
-  // Prevent hydration mismatch - show minimal shell until mounted
+  // Pre-hydration guard: return plain HTML (NO framer-motion) to prevent hydration mismatch
   if (!mounted) return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-violet-50 to-purple-50">
       <div className="text-center">
@@ -1692,7 +1694,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     </div>
   );
 
-  // Loading state
+  // Loading state (after mount — safe to use framer-motion now)
   if (loading) return (
     <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-slate-900' : 'bg-gradient-to-br from-slate-50 via-violet-50 to-purple-50'}`}>
       <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="text-center">
@@ -3489,3 +3491,17 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     </div>
   );
 }
+
+// Export with ssr:false to completely prevent server-side rendering and hydration mismatch
+const AppLoader = () => (
+  <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-violet-50 to-purple-50">
+    <div className="text-center">
+      <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-violet-600 to-purple-700 flex items-center justify-center mx-auto shadow-2xl shadow-violet-500/30">
+        <svg className="h-12 w-12 text-white animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
+      </div>
+      <p className="mt-8 text-lg font-medium text-slate-600">جاري التحميل...</p>
+    </div>
+  </div>
+);
+
+export default dynamic(() => Promise.resolve({ default: App }), { ssr: false, loading: () => <AppLoader /> });
