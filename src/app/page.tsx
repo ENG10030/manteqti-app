@@ -111,7 +111,7 @@ function ConfirmDialog({ isOpen, title, message, confirmText = 'تأكيد', can
 }
 
 function App() {
-  // Mounted guard — prevents framer-motion hydration mismatch (server vs client render diff)
+  // Mounted guard — prevents hydration mismatch from framer-motion & providers
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
@@ -297,21 +297,33 @@ function App() {
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
   useEffect(() => { isDeveloperRef.current = isDeveloper; }, [isDeveloper]);
 
-  // Socket.io - dynamic import to prevent bundle/hydration issues, skip on Vercel
+  // Socket.io - connect to Render realtime service (or local for dev)
   useEffect(() => {
-    // Skip on Vercel deployment (no realtime service)
-    if (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) {
-      return;
-    }
     let cancelled = false;
+    let cleanupFn: (() => void) | undefined;
     (async () => {
       try {
         const socketModule = await import('socket.io-client');
         if (cancelled) return;
-        const socket = socketModule.io('/?XTransformPort=3004', {
-          transports: ['polling'],
-          reconnection: false,
-          timeout: 3000,
+        
+        // Determine socket URL:
+        // - Render: NEXT_PUBLIC_SOCKET_URL (e.g. https://manteqti-realtime.onrender.com)
+        // - Local dev: use gateway proxy /?XTransformPort=3004
+        const isVercel = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
+        const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || (isVercel ? '' : '/?XTransformPort=3004');
+        
+        if (isVercel && !socketUrl) {
+          // No Render service configured — skip silently
+          console.log('[Socket] No NEXT_PUBLIC_SOCKET_URL configured, realtime disabled');
+          return;
+        }
+        
+        const socket = socketModule.io(socketUrl, {
+          transports: ['polling', 'websocket'],
+          reconnection: true,
+          reconnectionAttempts: 5,
+          reconnectionDelay: 2000,
+          timeout: 5000,
         });
         socketRef.current = socket;
         socket.on('connect', () => { isRealtimeConnectedRef.current = true; });
@@ -321,12 +333,12 @@ function App() {
         socket.on('notification', (data: { event: string }) => { if (data.event === 'settings-updated') fetchSettingsRef.current?.(); });
         socket.on('online-count', (data: { count: number }) => { onlineCountRef.current = data.count; });
         socket.on('connect_error', () => { isRealtimeConnectedRef.current = false; });
-        if (!cancelled) return () => { socket.disconnect(); socketRef.current = null; };
+        cleanupFn = () => { socket.disconnect(); socketRef.current = null; };
       } catch {
         // Socket.io not available
       }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; cleanupFn?.(); };
   }, []);
 
   // ========== fetchApartments (stable function, ref updated each render) ==========
@@ -1682,7 +1694,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     try { await fetch(`/api/comments/${commentId}`, { method: 'DELETE' }); fetchAllComments(); addToast('تم حذف التعليق', 'success'); } catch { addToast('حدث خطأ', 'error'); }
   };
 
-  // Pre-hydration guard: return plain HTML (NO framer-motion) to prevent hydration mismatch
+  // Pre-hydration guard: plain HTML only — NO framer-motion — ensures server HTML === client HTML
   if (!mounted) return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-violet-50 to-purple-50">
       <div className="text-center">
@@ -1694,7 +1706,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     </div>
   );
 
-  // Loading state (after mount — safe to use framer-motion now)
+  // Loading state (safe after mount — framer-motion OK)
   if (loading) return (
     <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-slate-900' : 'bg-gradient-to-br from-slate-50 via-violet-50 to-purple-50'}`}>
       <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="text-center">
