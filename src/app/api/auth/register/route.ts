@@ -2,15 +2,10 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import { sign } from "jsonwebtoken";
-import { sendOTPEmail, sendNewUserNotificationEmail } from "@/lib/email";
-import { JWT_SECRET } from "@/lib/auth";
-import { checkRateLimit } from "@/lib/rate-limit";
-
-export const dynamic = "force-dynamic";
 
 // قائمة نطاقات البريد المؤقتة المحظورة
 const BLOCKED_DOMAINS = [
+  // Temporary/disposable email services
   'mailinator.com', 'guerrillamail.com', 'guerrillamailblock.com', 'sharklasers.com',
   'guerrillamail.net', 'grr.la', 'dispostable.com', 'trashmail.com', 'trashmail.io',
   'tempmail.com', 'tempmail.io', 'temp-mail.org', 'throwaway.email', 'fakeinbox.com',
@@ -20,42 +15,50 @@ const BLOCKED_DOMAINS = [
   'incognitomail.org', 'mailnull.com', 'tempinbox.com', 'binkmail.com',
   'safetymail.info', 'spamavert.com', 'mintemail.com', 'mailtothis.com',
   'dispostable.com', 'inboxkitten.com',
+  // 10minutemail and similar
   '10minutemail.com', '10minutemail.net', 'tempmailaddress.com',
+  // Common fake domains used for testing
   'example.com', 'example.org', 'test.com', 'fake.com', 'invalid.com',
   'notreal.com', 'nomail.com', 'noemail.com', 'nowhere.com',
 ];
 
+// التحقق من أن نطاق البريد الإلكتروني ليس مؤقتاً أو وهمياً
 function isDisposableEmail(email: string): boolean {
   const domain = email.split('@')[1]?.toLowerCase();
   if (!domain) return true;
+  
+  // Check blocked list
   if (BLOCKED_DOMAINS.includes(domain)) return true;
+  
+  // Block domains with "temp", "trash", "spam", "fake", "disposable" in name
   const suspiciousKeywords = ['temp', 'trash', 'spam', 'fake', 'disposable', 'throw', 'burner', 'phish'];
   for (const keyword of suspiciousKeywords) {
     if (domain.includes(keyword)) return true;
   }
+  
   return false;
 }
 
+// التحقق من صحة البريد الإلكتروني بشكل صارم
 function isValidEmail(email: string): boolean {
+  // Basic format check
   const emailRegex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
   if (!emailRegex.test(email)) return false;
+  
+  // Check TLD is at least 2 characters
   const domain = email.split('@')[1];
   if (!domain) return false;
   const tld = domain.split('.').pop();
   if (!tld || tld.length < 2) return false;
+  
+  // Block disposable domains
   if (isDisposableEmail(email)) return false;
+  
   return true;
 }
 
 export async function POST(request: Request) {
   try {
-    // Rate limiting: 3 requests per 15 minutes per IP
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-    const allowed = await checkRateLimit("register", "ip", ip, 3, 15 * 60);
-    if (!allowed) {
-      return NextResponse.json({ error: "طلبات كثيرة. حاول بعد 15 دقيقة" }, { status: 429 });
-    }
-
     const body = await request.json();
     const { name, email, identifier, password, phone } = body;
 
@@ -68,6 +71,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // التحقق الصارم من صيغة البريد الإلكتروني
     if (!isValidEmail(userEmail)) {
       return NextResponse.json(
         { error: "صيغة البريد الإلكتروني غير صحيحة أو النطاق غير مسموح به. يرجى استخدام بريد إلكتروني حقيقي (Gmail, Yahoo, Hotmail, إلخ)" },
@@ -75,23 +79,15 @@ export async function POST(request: Request) {
       );
     }
 
-    if (password.length < 8) {
+    // التحقق من قوة كلمة المرور
+    if (password.length < 6) {
       return NextResponse.json(
-        { error: "كلمة المرور يجب أن تكون 8 أحرف على الأقل وتحتوي على حروف وأرقام" },
+        { error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" },
         { status: 400 }
       );
     }
 
-    // 🔒 Check password strength
-    const hasLetter = /[a-zA-Z]/.test(password);
-    const hasNumber = /[0-9]/.test(password);
-    if (!hasLetter || !hasNumber) {
-      return NextResponse.json(
-        { error: "كلمة المرور يجب أن تحتوي على حروف وأرقام" },
-        { status: 400 }
-      );
-    }
-
+    // التحقق من طول الاسم
     if (name.trim().length < 2) {
       return NextResponse.json(
         { error: "الاسم يجب أن يكون حرفين على الأقل" },
@@ -111,11 +107,7 @@ export async function POST(request: Request) {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const isDeveloper = userEmail === process.env.DEVELOPER_EMAIL;
-
-    // Generate OTP for email verification
-    const otp = isDeveloper ? null : crypto.randomInt(100000, 999999).toString();
-    const otpExpires = isDeveloper ? null : new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
+    const isDeveloper = userEmail === (process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com");
 
     const user = await db.user.create({
       data: {
@@ -127,8 +119,6 @@ export async function POST(request: Request) {
         role: isDeveloper ? "DEVELOPER" : "USER",
         isApproved: isDeveloper,
         emailVerified: isDeveloper,
-        otp,
-        otpExpires,
       },
     });
 
@@ -144,46 +134,14 @@ export async function POST(request: Request) {
             email: user.email,
             phone: phone || null,
             needsApproval: !isDeveloper,
-            otpSent: !isDeveloper,
           }),
           userId: user.id,
         },
       });
     } catch {}
 
-    // Send OTP email for non-developer users
-    if (!isDeveloper && otp) {
-      try {
-        const emailResult = await sendOTPEmail({ to: userEmail, otp, name: user.name });
-        console.log(`📧 Registration OTP email result: ${JSON.stringify(emailResult)}`);
-      } catch (err) {
-        console.error('Error sending registration OTP:', err);
-      }
-    }
-
-    // Send notification email to developer about new registration
-    if (!isDeveloper) {
-      const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
-      if (DEVELOPER_EMAIL) {
-        try {
-          await sendNewUserNotificationEmail({
-            to: DEVELOPER_EMAIL,
-            userName: user.name,
-            userEmail: user.email || userEmail,
-            userPhone: phone || null,
-          });
-        } catch (err) {
-          console.error('Error sending developer notification:', err);
-        }
-      } else {
-        console.error('DEVELOPER_EMAIL not set, skipping notification');
-      }
-    }
-
-    const response = NextResponse.json({
-      message: isDeveloper ? "تم إنشاء الحساب بنجاح" : "تم إنشاء الحساب بنجاح. يرجى تأكيد البريد الإلكتروني",
-      emailVerificationRequired: !isDeveloper,
-      email: userEmail,
+    return NextResponse.json({
+      message: isDeveloper ? "تم إنشاء الحساب بنجاح" : "تم إنشاء الحساب بنجاح. بانتظار موافقة الإدارة",
       user: {
         id: user.id,
         email: user.email,
@@ -191,28 +149,8 @@ export async function POST(request: Request) {
         identifier: user.identifier,
         role: user.role,
         isApproved: user.isApproved,
-        emailVerified: user.emailVerified,
       },
     });
-
-    // 🔑 Set auth-token cookie for developer (no OTP needed) and auto-approved users
-    // Non-developer users will get the cookie after OTP verification
-    if (isDeveloper) {
-      const token = sign(
-        { userId: user.id, identifier: user.identifier, role: user.role, name: user.name, email: user.email, isApproved: true, emailVerified: true, isBlocked: false },
-        JWT_SECRET,
-        { expiresIn: "30d", algorithm: "HS256" }
-      );
-      response.cookies.set("auth-token", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 60 * 60 * 24 * 30,
-        path: "/",
-      });
-    }
-
-    return response;
   } catch (error) {
     console.error("Register error:", error);
     return NextResponse.json(
