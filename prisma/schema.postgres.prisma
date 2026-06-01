@@ -168,6 +168,7 @@ model Comment {
   userId      String   @map("user_id")
   apartmentId String   @map("apartment_id")
   content     String   @db.Text
+  status      String   @default("pending")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
