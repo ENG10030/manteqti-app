@@ -18,8 +18,8 @@ import {
 import { FileUpload } from '@/components/file-upload';
 import { io } from 'socket.io-client';
 
-// SECURITY: Developer role is determined server-side via JWT, never by email matching
-// No client-side developer email exposure
+// Developer credentials
+const DEVELOPER_EMAIL = process.env.NEXT_PUBLIC_DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
 
 // Contact fee now comes from settings (dynamic)
 
@@ -49,7 +49,7 @@ interface Inquiry { id: string; apartmentId: string; userId?: string; name: stri
 interface Payment { id: string; inquiryId: string; method: string; status: string; amount: number; userId?: string; createdAt: string; inquiry?: { id: string; apartmentId: string; name: string; email: string; phone: string; apartment?: { id: string; title: string; price: number } | null } | null; }
 
 interface Toast { id: string; message: string; type: 'success' | 'error' | 'info'; }
-interface User { id: string; identifier: string; name: string; emailVerified?: boolean; isApproved?: boolean; role?: string; }
+interface User { id: string; identifier: string; name: string; emailVerified?: boolean; isApproved?: boolean; }
 
 // Edit Request Interface
 interface PropertyEditRequest {
@@ -371,7 +371,7 @@ export default function App() {
           setCurrentUser(authData.user);
           currentUserRef.current = authData.user;
           if (authData.user.isBlocked) setIsBlocked(true);
-          const isDev = authData.user.role === 'DEVELOPER';
+          const isDev = authData.user.identifier === DEVELOPER_EMAIL;
           setIsDeveloper(isDev);
           isDeveloperRef.current = isDev;
         }
@@ -2331,20 +2331,37 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
       {/* Auth Modal */}
       <AnimatePresence>{showAuth && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowAuth(false)}>
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{authStep === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}</h2>
-              <button onClick={() => setShowAuth(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
+          <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} transition={{ type: 'spring', duration: 0.5 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-3xl overflow-hidden ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+            {/* Header with gradient */}
+            <div className="relative bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700 px-6 pt-8 pb-10">
+              <div className="absolute inset-0 opacity-10">
+                <div className="absolute top-4 right-8 w-20 h-20 rounded-full border-2 border-white/30" />
+                <div className="absolute bottom-2 left-6 w-32 h-32 rounded-full border-2 border-white/20" />
+                <div className="absolute top-8 left-1/2 w-16 h-16 rounded-full border border-white/25" />
+              </div>
+              <button onClick={() => setShowAuth(false)} className="absolute top-4 left-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-colors"><X className="h-5 w-5 text-white" /></button>
+              <div className="relative z-10 text-center">
+                <div className="mx-auto w-16 h-16 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center mb-3 border border-white/20">
+                  <Building2 className="h-8 w-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold text-white">{authStep === 'login' ? 'مرحباً بعودتك' : 'إنشاء حساب جديد'}</h2>
+                <p className="text-sm text-white/70 mt-1">{authStep === 'login' ? 'سجل دخولك للمتابعة' : 'انضم إلينا الآن'}</p>
+              </div>
             </div>
-            <form onSubmit={authStep === 'login' ? handleLogin : handleRegister} className="space-y-4">
-              {authStep === 'register' && <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الاسم</label><input type="text" value={authName} onChange={(e) => setAuthName(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>}
-              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>البريد الإلكتروني أو رقم الهاتف</label><input type="text" value={authIdentifier} onChange={(e) => setAuthIdentifier(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
-              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>كلمة المرور</label><input type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
-              <div className="flex items-center gap-2"><input type="checkbox" id="rememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 rounded" /><label htmlFor="rememberMe" className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>تذكرني</label></div>
-              <button type="submit" disabled={authLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium disabled:opacity-50">{authLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : authStep === 'login' ? 'دخول' : 'تسجيل'}</button>
-            </form>
-            <div className="mt-4 text-center"><button onClick={() => setAuthStep(authStep === 'login' ? 'register' : 'login')} className={`text-sm ${darkMode ? 'text-violet-400' : 'text-violet-600'} hover:underline`}>{authStep === 'login' ? 'ليس لديك حساب؟ سجل الآن' : 'لديك حساب؟ سجل دخولك'}</button></div>
-            {authStep === 'login' && <div className="mt-2 text-center"><button onClick={() => { setShowAuth(false); setShowForgotPassword(true); }} className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'} hover:underline`}>نسيت كلمة المرور؟</button></div>}
+            {/* Form */}
+            <div className="px-6 pb-6 -mt-6">
+              <div className={`rounded-2xl p-5 ${darkMode ? 'bg-slate-750 bg-slate-700/50' : 'bg-slate-50/80'} backdrop-blur-sm border ${darkMode ? 'border-slate-600/50' : 'border-slate-100'}`}>
+                <form onSubmit={authStep === 'login' ? handleLogin : handleRegister} className="space-y-4">
+                  {authStep === 'register' && <div className="relative"><label className={`block text-xs font-semibold mb-1.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-wider`}>الاسم</label><div className="relative"><User className={`absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`} /><input type="text" value={authName} onChange={(e) => setAuthName(e.target.value)} placeholder="أدخل اسمك" className={`w-full pr-10 pl-4 py-3 rounded-xl border-2 transition-all duration-200 ${darkMode ? 'bg-slate-800/50 border-slate-600 text-white placeholder-slate-500 focus:border-violet-500 focus:bg-slate-800' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-violet-500 focus:bg-white'} outline-none`} required /></div></div>}
+                  <div className="relative"><label className={`block text-xs font-semibold mb-1.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-wider`}>البريد الإلكتروني أو رقم الهاتف</label><div className="relative"><Smartphone className={`absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`} /><input type="text" value={authIdentifier} onChange={(e) => setAuthIdentifier(e.target.value)} placeholder="example@email.com" className={`w-full pr-10 pl-4 py-3 rounded-xl border-2 transition-all duration-200 ${darkMode ? 'bg-slate-800/50 border-slate-600 text-white placeholder-slate-500 focus:border-violet-500 focus:bg-slate-800' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-violet-500 focus:bg-white'} outline-none`} required /></div></div>
+                  <div className="relative"><label className={`block text-xs font-semibold mb-1.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-wider`}>كلمة المرور</label><div className="relative"><Lock className={`absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`} /><input type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} placeholder="••••••••" className={`w-full pr-10 pl-4 py-3 rounded-xl border-2 transition-all duration-200 ${darkMode ? 'bg-slate-800/50 border-slate-600 text-white placeholder-slate-500 focus:border-violet-500 focus:bg-slate-800' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-violet-500 focus:bg-white'} outline-none`} required /></div></div>
+                  <div className="flex items-center justify-between"><label className="flex items-center gap-2 cursor-pointer group"><input type="checkbox" id="rememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 rounded accent-violet-600" /><span className={`text-sm ${darkMode ? 'text-slate-400 group-hover:text-slate-300' : 'text-slate-500 group-hover:text-slate-700'} transition-colors`}>تذكرني</span></label>
+                  {authStep === 'login' && <button type="button" onClick={() => { setShowAuth(false); setShowForgotPassword(true); }} className={`text-xs font-medium ${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-violet-600 hover:text-violet-700'} transition-colors`}>نسيت كلمة المرور؟</button>}</div>
+                  <button type="submit" disabled={authLoading} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 text-white font-semibold shadow-lg shadow-violet-500/30 hover:shadow-violet-500/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100">{authLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : <span className="flex items-center justify-center gap-2">{authStep === 'login' ? <><ArrowUp className="h-4 w-4 -rotate-45" />تسجيل الدخول</> : <><Plus className="h-4 w-4" />إنشاء حساب</>}</span>}</button>
+                </form>
+              </div>
+              <div className="mt-5 text-center"><button onClick={() => setAuthStep(authStep === 'login' ? 'register' : 'login')} className={`text-sm font-medium ${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-violet-600 hover:text-violet-700'} transition-colors`}>{authStep === 'login' ? 'ليس لديك حساب؟ ' : 'لديك حساب؟ '}{authStep === 'login' ? <span className="underline underline-offset-2">سجل الآن</span> : <span className="underline underline-offset-2">سجل دخولك</span>}</button></div>
+            </div>
           </motion.div>
         </motion.div>
       )}</AnimatePresence>
@@ -2352,17 +2369,34 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
       {/* Developer Login Modal */}
       <AnimatePresence>{showDevLogin && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowDevLogin(false)}>
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Lock className="h-6 w-6 text-amber-500" />دخول المطور</h2>
-              <button onClick={() => setShowDevLogin(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
+          <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} transition={{ type: 'spring', duration: 0.5 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-3xl overflow-hidden ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+            {/* Header with amber gradient */}
+            <div className="relative bg-gradient-to-br from-amber-500 via-orange-500 to-rose-600 px-6 pt-8 pb-10">
+              <div className="absolute inset-0 opacity-10">
+                <div className="absolute top-4 right-8 w-20 h-20 rounded-full border-2 border-white/30" />
+                <div className="absolute bottom-2 left-6 w-32 h-32 rounded-full border-2 border-white/20" />
+                <div className="absolute top-8 left-1/2 w-16 h-16 rounded-full border border-white/25" />
+              </div>
+              <button onClick={() => setShowDevLogin(false)} className="absolute top-4 left-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-colors"><X className="h-5 w-5 text-white" /></button>
+              <div className="relative z-10 text-center">
+                <div className="mx-auto w-16 h-16 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center mb-3 border border-white/20">
+                  <ShieldCheck className="h-8 w-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold text-white">لوحة تحكم المطور</h2>
+                <p className="text-sm text-white/70 mt-1">دخول آمن للإدارة</p>
+              </div>
             </div>
-            <form onSubmit={handleDevLogin} className="space-y-4">
-              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>البريد الإلكتروني</label><input type="email" value={devEmail} onChange={(e) => setDevEmail(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
-              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>كلمة المرور</label><input type="password" value={devPassword} onChange={(e) => setDevPassword(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
-              <div className="flex items-center gap-2"><input type="checkbox" id="devRememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 rounded" /><label htmlFor="devRememberMe" className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>تذكرني</label></div>
-              <button type="submit" disabled={devLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium disabled:opacity-50">{devLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'دخول'}</button>
-            </form>
+            {/* Form */}
+            <div className="px-6 pb-6 -mt-6">
+              <div className={`rounded-2xl p-5 ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50/80'} backdrop-blur-sm border ${darkMode ? 'border-slate-600/50' : 'border-slate-100'}`}>
+                <form onSubmit={handleDevLogin} className="space-y-4">
+                  <div className="relative"><label className={`block text-xs font-semibold mb-1.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-wider`}>البريد الإلكتروني</label><div className="relative"><Smartphone className={`absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`} /><input type="email" value={devEmail} onChange={(e) => setDevEmail(e.target.value)} placeholder="admin@manteqti.com" className={`w-full pr-10 pl-4 py-3 rounded-xl border-2 transition-all duration-200 ${darkMode ? 'bg-slate-800/50 border-slate-600 text-white placeholder-slate-500 focus:border-amber-500 focus:bg-slate-800' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-amber-500 focus:bg-white'} outline-none`} required /></div></div>
+                  <div className="relative"><label className={`block text-xs font-semibold mb-1.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-wider`}>كلمة المرور</label><div className="relative"><Key className={`absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`} /><input type="password" value={devPassword} onChange={(e) => setDevPassword(e.target.value)} placeholder="••••••••" className={`w-full pr-10 pl-4 py-3 rounded-xl border-2 transition-all duration-200 ${darkMode ? 'bg-slate-800/50 border-slate-600 text-white placeholder-slate-500 focus:border-amber-500 focus:bg-slate-800' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-amber-500 focus:bg-white'} outline-none`} required /></div></div>
+                  <div className="flex items-center justify-between"><label className="flex items-center gap-2 cursor-pointer group"><input type="checkbox" id="devRememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 rounded accent-amber-600" /><span className={`text-sm ${darkMode ? 'text-slate-400 group-hover:text-slate-300' : 'text-slate-500 group-hover:text-slate-700'} transition-colors`}>تذكرني</span></label></div>
+                  <button type="submit" disabled={devLoading} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-600 text-white font-semibold shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100">{devLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : <span className="flex items-center justify-center gap-2"><ShieldCheck className="h-4 w-4" />دخول المطور</span>}</button>
+                </form>
+              </div>
+            </div>
           </motion.div>
         </motion.div>
       )}</AnimatePresence>
