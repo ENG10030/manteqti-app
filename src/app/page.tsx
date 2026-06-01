@@ -16,7 +16,7 @@ import {
   Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
-import { io } from 'socket.io-client';
+// socket.io-client imported dynamically in useEffect to prevent Vercel SSR/hydration issues
 
 // Developer credentials
 const DEVELOPER_EMAIL = process.env.NEXT_PUBLIC_DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
@@ -291,50 +291,37 @@ export default function App() {
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
   useEffect(() => { isDeveloperRef.current = isDeveloper; }, [isDeveloper]);
 
-  // Socket.io - SKIP on Vercel (no realtime service), use refs to prevent re-renders
+  // Socket.io - dynamic import to prevent bundle/hydration issues, skip on Vercel
   useEffect(() => {
-    // Skip socket.io entirely on Vercel deployment
+    // Skip on Vercel deployment (no realtime service)
     if (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) {
-      return; // No socket.io on Vercel
+      return;
     }
-    try {
-      const socket = io('/?XTransformPort=3004', {
-        transports: ['polling'],
-        reconnection: false,
-        timeout: 3000,
-      });
-
-      socketRef.current = socket;
-
-      socket.on('connect', () => { isRealtimeConnectedRef.current = true; });
-      socket.on('disconnect', () => { isRealtimeConnectedRef.current = false; });
-
-      socket.on('apartments-changed', () => {
-        fetchApartmentsRef.current?.(0, false);
-      });
-
-      socket.on('messages-changed', () => {
-        if (currentUserRef.current) fetchMessagesRef.current?.();
-      });
-
-      socket.on('notification', (data: { event: string }) => {
-        if (data.event === 'settings-updated') fetchSettingsRef.current?.();
-      });
-
-      socket.on('online-count', (data: { count: number }) => {
-        onlineCountRef.current = data.count;
-      });
-
-      // Suppress connection errors silently
-      socket.on('connect_error', () => {
-        isRealtimeConnectedRef.current = false;
-      });
-
-      return () => { socket.disconnect(); socketRef.current = null; };
-    } catch {
-      // Socket.io not available - polling fallback handles it
-    }
-  }, []); // Empty deps = connect only ONCE on mount
+    let cancelled = false;
+    (async () => {
+      try {
+        const socketModule = await import('socket.io-client');
+        if (cancelled) return;
+        const socket = socketModule.io('/?XTransformPort=3004', {
+          transports: ['polling'],
+          reconnection: false,
+          timeout: 3000,
+        });
+        socketRef.current = socket;
+        socket.on('connect', () => { isRealtimeConnectedRef.current = true; });
+        socket.on('disconnect', () => { isRealtimeConnectedRef.current = false; });
+        socket.on('apartments-changed', () => { fetchApartmentsRef.current?.(0, false); });
+        socket.on('messages-changed', () => { if (currentUserRef.current) fetchMessagesRef.current?.(); });
+        socket.on('notification', (data: { event: string }) => { if (data.event === 'settings-updated') fetchSettingsRef.current?.(); });
+        socket.on('online-count', (data: { count: number }) => { onlineCountRef.current = data.count; });
+        socket.on('connect_error', () => { isRealtimeConnectedRef.current = false; });
+        if (!cancelled) return () => { socket.disconnect(); socketRef.current = null; };
+      } catch {
+        // Socket.io not available
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // ========== fetchApartments (stable function, ref updated each render) ==========
   const fetchApartments = async (retryCount = 0, isInitial = false) => {
