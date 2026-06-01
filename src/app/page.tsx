@@ -111,10 +111,6 @@ function ConfirmDialog({ isOpen, title, message, confirmText = 'تأكيد', can
 }
 
 function App() {
-  // Mounted guard — prevents hydration mismatch from framer-motion & providers
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
-
   // State
   const [apartments, setApartments] = useState<Apartment[]>([]);
   const [allApartments, setAllApartments] = useState<Apartment[]>([]);
@@ -363,7 +359,8 @@ function App() {
   // Keep ref in sync so socket/polling can call latest version
   useEffect(() => { fetchApartmentsRef.current = fetchApartments; });
 
-  // ========== SINGLE initialization: auth → apartments → dev data ==========
+  // ========== SINGLE initialization: auth → apartments → user data → DONE ==========
+  // All data loads while loading=true → ONE transition to main UI (no 3x flash)
   useEffect(() => {
     let cancelled = false;
     
@@ -383,8 +380,8 @@ function App() {
         }
       } catch {}
 
-      // Step 2: Fetch apartments
-      await fetchApartments(0, true);
+      // Step 2: Fetch apartments (isInitial=false → does NOT setLoading here)
+      await fetchApartments(0, false);
       if (cancelled) return;
 
       // Step 3: Load user-specific data (using refs, no dependency on state)
@@ -425,6 +422,13 @@ function App() {
             setFavorites(likesData.map((l: any) => l.apartmentId));
           }
         } catch {}
+      }
+
+      // Step 5: ALL data loaded — ONE transition to main UI
+      if (!cancelled) {
+        setLoading(false);
+        setInitialLoad(false);
+        initialLoadRef.current = false;
       }
     };
 
@@ -1694,8 +1698,9 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     try { await fetch(`/api/comments/${commentId}`, { method: 'DELETE' }); fetchAllComments(); addToast('تم حذف التعليق', 'success'); } catch { addToast('حدث خطأ', 'error'); }
   };
 
-  // Pre-hydration guard: plain HTML only — NO framer-motion — ensures server HTML === client HTML
-  if (!mounted) return (
+  // Loading state — plain HTML (no framer-motion) to prevent hydration mismatch
+  // Server and client render identical HTML → no flash/refresh
+  if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-violet-50 to-purple-50">
       <div className="text-center">
         <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-violet-600 to-purple-700 flex items-center justify-center mx-auto shadow-2xl shadow-violet-500/30">
@@ -1703,18 +1708,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
         </div>
         <p className="mt-8 text-lg font-medium text-slate-600">جاري التحميل...</p>
       </div>
-    </div>
-  );
-
-  // Loading state (safe after mount — framer-motion OK)
-  if (loading) return (
-    <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-slate-900' : 'bg-gradient-to-br from-slate-50 via-violet-50 to-purple-50'}`}>
-      <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="text-center">
-        <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-violet-600 to-purple-700 flex items-center justify-center mx-auto shadow-2xl shadow-violet-500/30">
-          <Building2 className="h-12 w-12 text-white" />
-        </div>
-        <p className={`mt-8 text-lg font-medium ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>جاري التحميل...</p>
-      </motion.div>
     </div>
   );
 
