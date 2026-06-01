@@ -1,25 +1,10 @@
 import { db } from "./db";
 import { verify } from "jsonwebtoken";
 import { NextRequest } from "next/server";
+import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 
-// CRITICAL: No fallback secret in production — prevents token forgery
-export const JWT_SECRET = (() => {
-  const secret = process.env.JWT_SECRET;
-  if (!secret && process.env.NODE_ENV === "production") {
-    throw new Error("FATAL: JWT_SECRET environment variable is not set!");
-  }
-  return secret || "manteqti-dev-only-secret";
-})();
-
-// CRITICAL: No fallback email in production
-export const DEVELOPER_EMAIL = (() => {
-  const email = process.env.DEVELOPER_EMAIL;
-  if (!email && process.env.NODE_ENV === "production") {
-    throw new Error("FATAL: DEVELOPER_EMAIL environment variable is not set!");
-  }
-  return email || "dev@manteqti.local";
-})();
+export const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 export interface AuthUser {
   id: string;
@@ -31,14 +16,80 @@ export interface AuthUser {
   emailVerified: boolean;
 }
 
-// الحصول على المستخدم الحالي من الطلب (with DB verification)
+// NextAuth Options
+export const authOptions = {
+  providers: [
+    CredentialsProvider({
+      name: "credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      // @ts-ignore - NextAuth typing issue
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          return null;
+        }
+
+        const user = await db.user.findUnique({
+          where: { identifier: credentials.email.toLowerCase() },
+        });
+
+        if (!user) return null;
+
+        const isValid = await bcrypt.compare(credentials.password, user.password);
+        if (!isValid) return null;
+
+        if (user.isBlocked) return null;
+
+        // Check email verification (developers bypass this check)
+        if (!user.emailVerified && user.role !== 'DEVELOPER') {
+          return null;
+        }
+
+        return {
+          id: user.id,
+          email: user.email || "",
+          name: user.name,
+          role: user.role,
+          emailVerified: user.emailVerified,
+        };
+      },
+    }),
+  ],
+  callbacks: {
+    async jwt({ token, user }: { token: any; user: any }) {
+      if (user) {
+        token.id = user.id;
+        token.role = user.role;
+      }
+      return token;
+    },
+    async session({ session, token }: { session: any; token: any }) {
+      if (session.user) {
+        session.user.id = token.id;
+        session.user.role = token.role;
+      }
+      return session;
+    },
+  },
+  pages: {
+    signIn: "/login",
+  },
+  session: {
+    strategy: "jwt" as const,
+  },
+  secret: process.env.NEXTAUTH_SECRET || JWT_SECRET,
+};
+
+// الحصول على المستخدم الحالي من الطلب
 export async function getCurrentUser(request: NextRequest): Promise<AuthUser | null> {
   try {
     const token = request.cookies.get("auth-token")?.value;
+
     if (!token) return null;
 
-    const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as { userId: string };
-    if (!decoded.userId) return null;
+    const decoded = verify(token, JWT_SECRET) as { userId: string };
 
     const user = await db.user.findUnique({
       where: { id: decoded.userId },
@@ -62,9 +113,9 @@ export async function getCurrentUser(request: NextRequest): Promise<AuthUser | n
 }
 
 // التحقق من صلاحيات المطور
-export async function isDeveloperCheck(request: NextRequest): Promise<boolean> {
+export async function isDeveloper(request: NextRequest): Promise<boolean> {
   const user = await getCurrentUser(request);
-  return user?.role === "DEVELOPER" || user?.id === "developer";
+  return user?.role === "DEVELOPER";
 }
 
 // التحقق من تسجيل الدخول (بدون DB - للـ routes الخفيفة)
@@ -73,7 +124,7 @@ export function authenticateRequest(request: NextRequest): { user: { id: string;
     const token = request.cookies.get("auth-token")?.value;
     if (!token) return null;
 
-    const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as { userId: string; role: string };
+    const decoded = verify(token, JWT_SECRET) as { userId: string; role: string };
     if (!decoded.userId) return null;
     return {
       user: { id: decoded.userId, role: decoded.role || 'USER' },
@@ -100,6 +151,7 @@ export async function requireAuth(request: NextRequest): Promise<AuthUser> {
     throw new Error("تم حظر حسابك");
   }
 
+  // Check email verification (developers bypass this check)
   if (!user.emailVerified && user.role !== 'DEVELOPER') {
     throw new Error("يجب تأكيد البريد الإلكتروني أولاً");
   }

@@ -272,8 +272,9 @@ export default function App() {
 
   // ========== Real-time Socket.io Connection ==========
   const socketRef = useRef<any>(null);
-  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
-  const [onlineCount, setOnlineCount] = useState(0);
+  // Use refs instead of state to prevent re-renders from socket.io (not used in JSX)
+  const isRealtimeConnectedRef = useRef(false);
+  const onlineCountRef = useRef(0);
 
   // Refs for stable function references (avoids stale closures in socket/polling)
   const fetchApartmentsRef = useRef<((retry?: number, isInitial?: boolean) => Promise<void>) | undefined>(undefined);
@@ -289,8 +290,12 @@ export default function App() {
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
   useEffect(() => { isDeveloperRef.current = isDeveloper; }, [isDeveloper]);
 
-  // Socket.io - connect ONCE, fail silently on Vercel (no realtime service)
+  // Socket.io - SKIP on Vercel (no realtime service), use refs to prevent re-renders
   useEffect(() => {
+    // Skip socket.io entirely on Vercel deployment
+    if (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) {
+      return; // No socket.io on Vercel
+    }
     try {
       const socket = io('/?XTransformPort=3004', {
         transports: ['polling'],
@@ -300,8 +305,8 @@ export default function App() {
 
       socketRef.current = socket;
 
-      socket.on('connect', () => { setIsRealtimeConnected(true); });
-      socket.on('disconnect', () => { setIsRealtimeConnected(false); });
+      socket.on('connect', () => { isRealtimeConnectedRef.current = true; });
+      socket.on('disconnect', () => { isRealtimeConnectedRef.current = false; });
 
       socket.on('apartments-changed', () => {
         fetchApartmentsRef.current?.(0, false);
@@ -316,17 +321,17 @@ export default function App() {
       });
 
       socket.on('online-count', (data: { count: number }) => {
-        setOnlineCount(data.count);
+        onlineCountRef.current = data.count;
       });
 
-      // Suppress connection errors silently (socket.io not available on Vercel)
+      // Suppress connection errors silently
       socket.on('connect_error', () => {
-        setIsRealtimeConnected(false);
+        isRealtimeConnectedRef.current = false;
       });
 
       return () => { socket.disconnect(); socketRef.current = null; };
     } catch {
- // Socket.io not available - polling fallback handles it
+      // Socket.io not available - polling fallback handles it
     }
   }, []); // Empty deps = connect only ONCE on mount
 
@@ -366,7 +371,7 @@ export default function App() {
           setCurrentUser(authData.user);
           currentUserRef.current = authData.user;
           if (authData.user.isBlocked) setIsBlocked(true);
-          const isDev = authData.user.identifier === DEVELOPER_EMAIL || authData.user.role === 'DEVELOPER';
+          const isDev = authData.user.identifier === DEVELOPER_EMAIL;
           setIsDeveloper(isDev);
           isDeveloperRef.current = isDev;
         }

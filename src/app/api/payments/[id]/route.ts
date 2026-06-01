@@ -1,17 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { getAuthContext, requireDeveloper } from '@/lib/auth-middleware';
+import { cookies } from 'next/headers';
+import { verify } from 'jsonwebtoken';
 
-// Valid inquiryStatus values whitelist
-const VALID_INQUIRY_STATUSES = ['Pending', 'Paid', 'Refunded', 'Contacted', 'Agreement Reached', 'Contract Signed', 'Revoked', 'Cancelled'];
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { auth, errorResponse } = await getAuthContext(request);
-    if (errorResponse) return errorResponse;
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
 
     const { id } = await params;
     
@@ -19,19 +28,15 @@ export async function GET(
       where: { id },
       include: {
         inquiry: {
-          include: { apartment: true }
+          include: {
+            apartment: true
+          }
         }
       }
     });
 
     if (!payment) {
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
-    }
-
-    if (auth!.role !== 'DEVELOPER') {
-      if (payment.userId !== auth!.userId) {
-        return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
-      }
     }
 
     return NextResponse.json({
@@ -70,29 +75,31 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { auth, errorResponse } = await requireDeveloper(request);
-    if (errorResponse) return errorResponse;
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    if (decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+    }
 
     const { id } = await params;
     const data = await request.json();
 
-    const validStatuses = ['Pending', 'Paid', 'Failed', 'Refunded', 'Cancelled'];
-    if (data.status && !validStatuses.includes(data.status)) {
-      return NextResponse.json({ error: 'Invalid status value' }, { status: 400 });
-    }
-
-    // HIGH FIX: Validate inquiryStatus against whitelist
-    if (data.inquiryStatus && !VALID_INQUIRY_STATUSES.includes(data.inquiryStatus)) {
-      return NextResponse.json({ error: 'Invalid inquiryStatus value' }, { status: 400 });
-    }
-
-    const updateData: Record<string, string> = {};
-    if (data.status) updateData.status = data.status;
-    if (data.inquiryStatus) updateData.inquiryStatus = data.inquiryStatus;
-
     const payment = await db.payment.update({
       where: { id },
-      data: updateData,
+      data: {
+        status: data.status,
+        inquiryStatus: data.inquiryStatus
+      }
     });
 
     return NextResponse.json({
@@ -111,29 +118,31 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { auth, errorResponse } = await requireDeveloper(request);
-    if (errorResponse) return errorResponse;
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
+
+    if (decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+    }
 
     const { id } = await params;
     const data = await request.json();
 
-    const validStatuses = ['Pending', 'Paid', 'Failed', 'Refunded', 'Cancelled'];
-    if (data.status && !validStatuses.includes(data.status)) {
-      return NextResponse.json({ error: 'Invalid status value' }, { status: 400 });
-    }
-
-    // HIGH FIX: Validate inquiryStatus against whitelist
-    if (data.inquiryStatus && !VALID_INQUIRY_STATUSES.includes(data.inquiryStatus)) {
-      return NextResponse.json({ error: 'Invalid inquiryStatus value' }, { status: 400 });
-    }
-
-    const updateData: Record<string, string> = {};
-    if (data.status) updateData.status = data.status;
-    if (data.inquiryStatus) updateData.inquiryStatus = data.inquiryStatus;
-
     const payment = await db.payment.update({
       where: { id },
-      data: updateData,
+      data: {
+        status: data.status,
+        inquiryStatus: data.inquiryStatus
+      }
     });
 
     return NextResponse.json({

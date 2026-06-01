@@ -68,6 +68,8 @@ async function ensureSettingsTable(): Promise<boolean> {
             "verified_listing_fee" INTEGER NOT NULL DEFAULT 250,
             "regular_fee" INTEGER NOT NULL DEFAULT 30,
             "vip_fee" INTEGER NOT NULL DEFAULT 300,
+            "min_recharge_amount" INTEGER NOT NULL DEFAULT 10,
+            "max_recharge_amount" INTEGER NOT NULL DEFAULT 50000,
             "currency" TEXT NOT NULL DEFAULT 'ج.م',
             "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
             "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -100,6 +102,8 @@ async function ensureSettingsTable(): Promise<boolean> {
           "highlight_fee": "INTEGER NOT NULL DEFAULT 150",
           "priority_listing_fee": "INTEGER NOT NULL DEFAULT 200",
           "verified_listing_fee": "INTEGER NOT NULL DEFAULT 250",
+          "min_recharge_amount": "INTEGER NOT NULL DEFAULT 10",
+          "max_recharge_amount": "INTEGER NOT NULL DEFAULT 50000",
           "currency": "TEXT NOT NULL DEFAULT 'ج.م'",
         };
 
@@ -111,17 +115,14 @@ async function ensureSettingsTable(): Promise<boolean> {
         }
 
         // CRITICAL: Migrate old random-ID settings rows to fixed "main" ID
-        // This consolidates all settings into ONE row to prevent confusion
         try {
           const oldRows = await db.$queryRawUnsafe<Array<{ id: string }>>('SELECT "id" FROM "settings" WHERE "id" != \'main\' LIMIT 5');
 
           if (oldRows.length > 0) {
-            // Get the first old row's values (most recent one)
             const oldSettings = await db.$queryRawUnsafe<any[]>('SELECT * FROM "settings" WHERE "id" != \'main\' ORDER BY "updated_at" DESC NULLS LAST LIMIT 1');
 
             if (oldSettings.length > 0) {
               const old = oldSettings[0];
-              // Update the "main" row with the old values if they differ from defaults
               await db.$executeRawUnsafe(`
                 UPDATE "settings" SET
                   "contact_fee" = COALESCE(${old.contact_fee}, "contact_fee"),
@@ -135,6 +136,8 @@ async function ensureSettingsTable(): Promise<boolean> {
                   "highlight_fee" = COALESCE(${old.highlight_fee}, "highlight_fee"),
                   "priority_listing_fee" = COALESCE(${old.priority_listing_fee}, "priority_listing_fee"),
                   "verified_listing_fee" = COALESCE(${old.verified_listing_fee}, "verified_listing_fee"),
+                  "min_recharge_amount" = COALESCE(${old.min_recharge_amount}, "min_recharge_amount"),
+                  "max_recharge_amount" = COALESCE(${old.max_recharge_amount}, "max_recharge_amount"),
                   "currency" = COALESCE(${old.currency}, "currency"),
                   "updated_at" = CURRENT_TIMESTAMP
                 WHERE "id" = 'main'
@@ -178,6 +181,8 @@ async function ensureSettingsTable(): Promise<boolean> {
             "highlightFee" INTEGER NOT NULL DEFAULT 150,
             "priorityListingFee" INTEGER NOT NULL DEFAULT 200,
             "verifiedListingFee" INTEGER NOT NULL DEFAULT 250,
+            "minRechargeAmount" INTEGER NOT NULL DEFAULT 10,
+            "maxRechargeAmount" INTEGER NOT NULL DEFAULT 50000,
             "currency" TEXT NOT NULL DEFAULT 'ج.م',
             "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP

@@ -1,6 +1,26 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getAuthContext } from "@/lib/auth-middleware";
+import { verify } from "jsonwebtoken";
+import { notifyApartmentsChanged } from "@/lib/realtime";
+
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
+async function getCurrentUser(request: Request) {
+  const cookieHeader = request.headers.get("cookie");
+  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
+  const token = cookies.get("auth-token");
+
+  if (!token) return null;
+
+  try {
+    const decoded = verify(token, JWT_SECRET) as { userId: string };
+    return await db.user.findUnique({
+      where: { id: decoded.userId },
+    });
+  } catch {
+    return null;
+  }
+}
 
 // GET - جلب العقارات
 export async function GET(request: Request) {
@@ -10,22 +30,23 @@ export async function GET(request: Request) {
     const type = searchParams.get("type");
     const area = searchParams.get("area");
     
-    let authResult: Awaited<ReturnType<typeof getAuthContext>> | null = null;
+    let user: Awaited<ReturnType<typeof getCurrentUser>> = null;
     try {
-      authResult = await getAuthContext(request as any);
+      user = await getCurrentUser(request);
     } catch (authErr: any) {
       console.warn("Auth check failed, continuing as guest:", authErr.message);
     }
-    
-    const isDeveloper = authResult?.auth?.role === "DEVELOPER";
+    const isDeveloper = user?.role === "DEVELOPER";
 
     const where: any = {};
 
+    // المطور يرى جميع العقارات، المستخدم العادي يرى العقارات المتاحة والموافق عليها فقط
     if (status) {
       where.status = status;
     } else if (!isDeveloper) {
       where.status = { in: ["available", "reserved", "sold", "rented"] };
     }
+    // المطور يرى كل الحالات (لا نضيف شرط للحالة)
 
     if (type && type !== "all") {
       where.type = type;
@@ -35,15 +56,16 @@ export async function GET(request: Request) {
       where.area = area;
     }
 
-    // FIX: Use subquery instead of fetching ALL blocked users
+    // استبعاد عقارات المحظورين للمستخدمين العاديين
     if (!isDeveloper) {
       try {
-        const blockedUserIds = (await db.user.findMany({
+        const blockedUsers = await db.user.findMany({
           where: { isBlocked: true },
           select: { id: true },
-        })).map(u => u.id);
-        if (blockedUserIds.length > 0) {
-          where.createdBy = { notIn: blockedUserIds };
+        });
+        const blockedIds = blockedUsers.map((u) => u.id);
+        if (blockedIds.length > 0) {
+          where.createdBy = { notIn: blockedIds };
         }
       } catch (blockErr: any) {
         console.warn("Blocked users check failed:", blockErr.message);
@@ -58,6 +80,7 @@ export async function GET(request: Request) {
         },
       },
       orderBy: [
+        { isVip: "desc" },
         { isFeatured: "desc" },
         { createdAt: "desc" },
       ],
@@ -67,7 +90,10 @@ export async function GET(request: Request) {
   } catch (error: any) {
     console.error("Get apartments error:", error);
     return NextResponse.json(
-      { error: "حدث خطأ أثناء جلب العقارات" },
+      { 
+        error: "حدث خطأ أثناء جلب العقارات",
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      },
       { status: 500 }
     );
   }
@@ -76,14 +102,21 @@ export async function GET(request: Request) {
 // POST - إضافة عقار جديد
 export async function POST(request: Request) {
   try {
-    const { auth, errorResponse } = await getAuthContext(request as any);
-    if (errorResponse) return errorResponse;
-    if (!auth) {
+    const user = await getCurrentUser(request);
+
+    if (!user) {
       return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
     }
 
-    // getAuthContext already checks isBlocked
-    if (!auth.isApproved && auth.role !== 'DEVELOPER') {
+    if (user.isBlocked) {
+      return NextResponse.json(
+        { error: "تم حظر حسابك. لا يمكنك إضافة عقارات" },
+        { status: 403 }
+      );
+    }
+
+    // Only approved users or developers can create apartments
+    if (!user.isApproved && user.role !== 'DEVELOPER') {
       return NextResponse.json(
         { error: "حسابك قيد المراجعة. بانتظار موافقة الإدارة", pendingApproval: true },
         { status: 403 }
@@ -114,7 +147,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const aptStatus = auth.role === "DEVELOPER" ? "available" : "pending";
+    // المطور ينشر مباشرة، المستخدم العادي يرسل للمراجعة
+    const status = user.role === "DEVELOPER" ? "available" : "pending";
 
     const apartment = await db.apartment.create({
       data: {
@@ -129,17 +163,21 @@ export async function POST(request: Request) {
         ownerPhone,
         mapLink: mapLink || null,
         type: type || "rent",
-        status: aptStatus,
+        status,
         images: images || null,
         videos: videos || null,
-        createdBy: auth.userId,
+        createdBy: user.id,
         isFeatured: false,
+        isVip: false,
       },
     });
 
+    // Notify all connected clients
+    notifyApartmentsChanged('created', apartment.id);
+
     return NextResponse.json({
       message:
-        auth.role === "DEVELOPER"
+        user.role === "DEVELOPER"
           ? "تم إضافة العقار بنجاح"
           : "تم إضافة العقار وهو في انتظار المراجعة",
       apartment,

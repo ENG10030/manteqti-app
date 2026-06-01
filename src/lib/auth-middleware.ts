@@ -4,22 +4,7 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 
-// CRITICAL: Use centralized JWT_SECRET — no fallbacks in production
-function getJwtSecret(): string {
-  const secret = process.env.JWT_SECRET;
-  if (!secret && process.env.NODE_ENV === 'production') {
-    throw new Error('FATAL: JWT_SECRET environment variable is not set!');
-  }
-  return secret || 'manteqti-dev-only-secret';
-}
-
-function getDeveloperEmail(): string {
-  const email = process.env.DEVELOPER_EMAIL;
-  if (!email && process.env.NODE_ENV === 'production') {
-    throw new Error('FATAL: DEVELOPER_EMAIL environment variable is not set!');
-  }
-  return email || 'dev@manteqti.local';
-}
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 export interface AuthContext {
   userId: string;
@@ -35,7 +20,7 @@ export interface AuthContext {
 export function isValidId(id: string): boolean {
   const cuidRegex = /^c[a-z0-9]{24}$/;
   const cuid2Regex = /^[a-z0-9]{24,32}$/;
-  return cuidRegex.test(id) || cuid2Regex.test(id);
+  return cuidRegex.test(id) || cuid2Regex.test(id) || id.length >= 10;
 }
 
 /**
@@ -58,7 +43,7 @@ export function sanitizeString(str: string): string {
 }
 
 /**
- * Get authenticated user context with full validation (DB-backed, always fresh)
+ * Get authenticated user context with full validation
  * Returns { auth, errorResponse } - if errorResponse is set, return it immediately
  */
 export async function getAuthContext(request: NextRequest): Promise<{ auth: AuthContext | null; errorResponse: NextResponse | null }> {
@@ -72,8 +57,7 @@ export async function getAuthContext(request: NextRequest): Promise<{ auth: Auth
 
     let decoded: { userId: string; role?: string; identifier?: string };
     try {
-      // CRITICAL: Always specify algorithms to prevent algorithm confusion
-      decoded = verify(token, getJwtSecret(), { algorithms: ['HS256'] }) as typeof decoded;
+      decoded = verify(token, JWT_SECRET) as typeof decoded;
       if (!decoded.userId) {
         return { auth: null, errorResponse: NextResponse.json({ error: 'رمز المصادقة غير صالح' }, { status: 401 }) };
       }
@@ -81,7 +65,7 @@ export async function getAuthContext(request: NextRequest): Promise<{ auth: Auth
       return { auth: null, errorResponse: NextResponse.json({ error: 'انتهت صلاحية الجلسة. يرجى تسجيل الدخول مرة أخرى' }, { status: 401 }) };
     }
 
-    // Get FRESH user data from DB — no stale JWT data
+    // Get fresh user data from DB to check current status
     const user = await db.user.findUnique({
       where: { id: decoded.userId },
       select: {
@@ -97,7 +81,7 @@ export async function getAuthContext(request: NextRequest): Promise<{ auth: Auth
       return { auth: null, errorResponse: NextResponse.json({ error: 'المستخدم غير موجود' }, { status: 401 }) };
     }
 
-    // Check if user is blocked (fresh from DB, not stale JWT)
+    // Check if user is blocked
     if (user.isBlocked) {
       return { auth: null, errorResponse: NextResponse.json({ error: 'تم حظر حسابك. تواصل مع الإدارة', isBlocked: true }, { status: 403 }) };
     }
@@ -120,6 +104,7 @@ export async function getAuthContext(request: NextRequest): Promise<{ auth: Auth
 
 /**
  * Require user to be authenticated AND approved (for user actions)
+ * Use this for: creating apartments, comments, likes, messages, inquiries, etc.
  */
 export async function requireApprovedUser(request: NextRequest): Promise<{ auth: AuthContext; errorResponse: null } | { auth: null; errorResponse: NextResponse }> {
   const { auth, errorResponse } = await getAuthContext(request);
@@ -145,6 +130,7 @@ export async function requireApprovedUser(request: NextRequest): Promise<{ auth:
 
 /**
  * Require developer authentication (for developer-only actions)
+ * Use this for: settings, approvals, deletions, logs, etc.
  */
 export async function requireDeveloper(request: NextRequest): Promise<{ auth: AuthContext; errorResponse: null } | { auth: null; errorResponse: NextResponse }> {
   const { auth, errorResponse } = await getAuthContext(request);

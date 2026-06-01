@@ -1,113 +1,113 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import { Prisma } from '@prisma/client';
-import { requireDeveloper } from '@/lib/auth-middleware';
 
-export async function POST(request: NextRequest) {
+export async function GET() {
   try {
-    const { auth, errorResponse } = await requireDeveloper(request);
-    if (errorResponse) return errorResponse;
-
-    // التحقق من اتصال قاعدة البيانات
+    // الخطوة 1: التحقق من اتصال قاعدة البيانات
     try {
       await db.$connect();
     } catch (connError: any) {
       return NextResponse.json({
         error: 'فشل الاتصال بقاعدة البيانات',
         details: connError?.message || String(connError),
-        hint: 'تأكد من تعيين DATABASE_URL في متغيرات بيئة Vercel'
+        hint: 'تأكد من تعيين DATABASE_URL في متغيرات بيئة Vercel',
+        requiredFormat: 'postgresql://user:password@host:5432/database?sslmode=require'
       }, { status: 500 });
     }
 
-    const developerPassword = process.env.DEVELOPER_PASSWORD;
-    const developerEmail = process.env.DEVELOPER_EMAIL;
-    
-    if (!developerPassword) {
-      return NextResponse.json({
-        error: 'لم يتم تعيين كلمة مرور المطور',
-        hint: 'يجب تعيين DEVELOPER_PASSWORD في متغيرات البيئة'
-      }, { status: 500 });
-    }
-    if (!developerEmail) {
-      return NextResponse.json({
-        error: 'لم يتم تعيين إيميل المطور',
-        hint: 'يجب تعيين DEVELOPER_EMAIL في متغيرات البيئة'
-      }, { status: 500 });
-    }
+    const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
+    const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD || 'admin123';
 
-    const existingAdmin = await db.user.findUnique({
-      where: { identifier: developerEmail }
-    });
+    // الخطوة 2: محاولة إنشاء المطور
+    try {
+      const existingAdmin = await db.user.findUnique({
+        where: { identifier: DEVELOPER_EMAIL }
+      });
 
-    if (existingAdmin) {
+      if (existingAdmin) {
+        return NextResponse.json({
+          success: true,
+          message: 'قاعدة البيانات تمت تهيئتها مسبقاً ✅',
+          admin: { email: existingAdmin.email, name: existingAdmin.name, role: existingAdmin.role }
+        });
+      }
+
+      const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
+      const admin = await db.user.create({
+        data: {
+          email: DEVELOPER_EMAIL,
+          identifier: DEVELOPER_EMAIL,
+          name: 'المطور - أحمد',
+          phone: '+201234567890',
+          password: hashedPassword,
+          role: 'DEVELOPER',
+          isApproved: true,
+          emailVerified: true,
+        }
+      });
+
+      // الخطوة 3: إنشاء الإعدادات
+      try {
+        const existingSettings = await db.settings.findFirst();
+        if (!existingSettings) {
+          await db.settings.create({
+            data: {
+              contactFee: 50,
+              regularFee: 30,
+              featuredFee: 100,
+              premiumFee: 200,
+              vipFee: 300,
+              saleDisplayFee: 100,
+              rentDisplayFee: 75,
+              otherServicesFee: 50,
+              highlightFee: 150,
+              priorityListingFee: 200,
+              verifiedListingFee: 250,
+              currency: 'ج.م',
+            }
+          });
+        }
+      } catch (settingsError: any) {
+        // الإعدادات مش مهمة - المطور أهم
+        console.error('Settings creation warning:', settingsError?.message);
+      }
+
       return NextResponse.json({
         success: true,
-        message: 'قاعدة البيانات تمت تهيئتها مسبقاً ✅',
-        admin: { email: existingAdmin.email, name: existingAdmin.name, role: existingAdmin.role }
+        message: 'تم تهيئة قاعدة البيانات بنجاح! ✅',
+        admin: { email: admin.email, name: admin.name, role: admin.role },
+        loginCredentials: { email: DEVELOPER_EMAIL, password: DEVELOPER_PASSWORD }
       });
-    }
 
-    const hashedPassword = await bcrypt.hash(developerPassword, 10);
-    const admin = await db.user.create({
-      data: {
-        email: developerEmail,
-        identifier: developerEmail,
-        name: 'المطور - أحمد',
-        phone: '+201234567890',
-        password: hashedPassword,
-        role: 'DEVELOPER',
-        isApproved: true,
-        emailVerified: true,
+    } catch (dbError: any) {
+      // لو الجدول مش موجود - نحتاج نعمل migration
+      if (dbError instanceof Prisma.PrismaClientKnownRequestError) {
+        if (dbError.code === 'P2021' || dbError.code === 'P2010' || 
+            dbError.code === 'P1001' || dbError.code === 'P1008') {
+          return NextResponse.json({
+            error: 'الجداول غير موجودة في قاعدة البيانات',
+            details: `Prisma Error ${dbError.code}: ${dbError.message}`,
+            hint: 'يجب تشغيل: npx prisma db push --schema prisma/schema.prisma'
+          }, { status: 500 });
+        }
       }
-    });
 
-    // UPSERT settings with fixed ID "main" — never creates duplicate rows
-    try {
-      await db.settings.upsert({
-        where: { id: "main" },
-        update: {},
-        create: {
-          id: "main",
-          contactFee: 50,
-          regularFee: 30,
-          featuredFee: 100,
-          premiumFee: 200,
-          vipFee: 300,
-          saleDisplayFee: 100,
-          rentDisplayFee: 75,
-          otherServicesFee: 50,
-          highlightFee: 150,
-          priorityListingFee: 200,
-          verifiedListingFee: 250,
-          currency: 'ج.م',
-        },
-      });
-    } catch (settingsError: any) {
-      console.error('Settings creation warning:', settingsError?.message);
+      return NextResponse.json({
+        error: 'خطأ في قاعدة البيانات',
+        details: dbError?.message || String(dbError),
+        prismaCode: dbError?.code || null,
+        hint: 'تأكد أن الجداول موجودة وأن DATABASE_URL صحيح'
+      }, { status: 500 });
     }
-
-    return NextResponse.json({
-      success: true,
-      message: 'تم تهيئة قاعدة البيانات بنجاح! ✅',
-      admin: { email: admin.email, name: admin.name, role: admin.role }
-    });
 
   } catch (error: any) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (['P2021', 'P2010', 'P1001', 'P1008'].includes(error.code)) {
-        return NextResponse.json({
-          error: 'الجداول غير موجودة في قاعدة البيانات',
-          details: `Prisma Error ${error.code}: ${error.message}`,
-          hint: 'يجب تشغيل: npx prisma db push --schema prisma/schema.prisma'
-        }, { status: 500 });
-      }
-    }
-
     return NextResponse.json({
-      error: 'خطأ في قاعدة البيانات',
-      details: error?.message || String(error),
-      prismaCode: error?.code || null,
+      error: 'خطأ غير متوقع',
+      details: error?.message || String(error)
     }, { status: 500 });
+  } finally {
+    await db.$disconnect();
   }
 }

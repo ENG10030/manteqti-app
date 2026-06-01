@@ -326,9 +326,6 @@ export async function sendApartmentRejectedEmail({ to, name, apartmentTitle, rea
   } catch (error: any) { console.error('Error sending rejected email:', error); return { success: false, error: error.message }; }
 }
 
-// ========== إيميل تغيير كلمة المرور ==========
-export async function sendPasswordChangedEmail({ to, name }: { to: string; name: string }) { return { success: true }; }
-
 // ========== إيميل رسالة جديدة ==========
 interface SendNewMessageParams {
   to: string;
@@ -378,4 +375,27 @@ export async function sendNewMessageEmail({ to, name, senderName }: SendNewMessa
     if (error) { console.error('Resend error:', error); return { success: false, error: error.message }; }
     return { success: true, messageId: data?.id };
   } catch (error: any) { console.error('Error sending message email:', error); return { success: false, error: error.message }; }
+}
+
+// Send password changed notification
+export async function sendPasswordChangedEmail({ to, name }: { to: string; name: string }) {
+  try {
+    const { data, error } = await getResend().emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: [to],
+      subject: `🔒 تم تغيير كلمة المرور - ${APP_NAME}`,
+      html: `<div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;">
+        <div style="background:linear-gradient(135deg,#7c3aed,#5b21b6);padding:30px;border-radius:12px 12px 0 0;text-align:center;">
+          <h1 style="color:#fff;margin:0;">🔒 تم تغيير كلمة المرور</h1>
+        </div>
+        <div style="padding:30px;background:#f9fafb;border-radius:0 0 12px 12px;">
+          <p>مرحباً <strong>${name}</strong>،</p>
+          <p>تم تغيير كلمة المرور الخاصة بحسابك بنجاح.</p>
+          <p>إذا لم تقم بهذا التغيير، يرجى التواصل معنا فوراً.</p>
+        </div>
+      </div>`,
+    });
+    if (error) { console.error('Resend error:', error); return { success: false, error: error.message }; }
+    return { success: true, messageId: data?.id };
+  } catch (error: any) { console.error('Error sending password changed email:', error); return { success: false, error: error.message }; }
 }

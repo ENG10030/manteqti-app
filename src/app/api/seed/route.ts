@@ -249,12 +249,13 @@ export async function GET() {
       return NextResponse.json({ error: 'المطور غير موجود، سجل دخولك كمطور أولاً' }, { status: 400 });
     }
 
-    // UPSERT settings with fixed ID "main" — never creates duplicate rows
-    await db.settings.upsert({
-      where: { id: "main" },
-      update: {},
-      create: { id: "main", contactFee: 50, regularFee: 30, featuredFee: 100, premiumFee: 200, vipFee: 300, saleDisplayFee: 100, rentDisplayFee: 75, otherServicesFee: 50, highlightFee: 150, priorityListingFee: 200, verifiedListingFee: 250, currency: "ج.م" },
-    });
+    // إنشاء إعدادات افتراضية إذا لم تكن موجودة
+    const existingSettings = await db.settings.findFirst();
+    if (!existingSettings) {
+      await db.settings.create({
+        data: { contactFee: 50, regularFee: 30, featuredFee: 100, premiumFee: 200, vipFee: 300, saleDisplayFee: 100, rentDisplayFee: 75, otherServicesFee: 50, highlightFee: 150, priorityListingFee: 200, verifiedListingFee: 250, currency: "ج.م" },
+      });
+    }
 
     // إنشاء الإعلانات التي لا تتواجد بعد
     let created = 0;

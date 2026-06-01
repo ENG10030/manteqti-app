@@ -1,32 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { getAuthContext, requireApprovedUser } from '@/lib/auth-middleware';
+import { cookies } from 'next/headers';
+import { verify } from 'jsonwebtoken';
+import { requireApprovedUser } from '@/lib/auth-middleware';
 import { sendNewMessageEmail } from '@/lib/email';
 import { notifyRealtime } from '@/lib/realtime';
 
-export const dynamic = "force-dynamic";
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+
+// Helper: get authenticated user from token
+async function getAuthUser(request: NextRequest) {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('auth-token')?.value;
+  if (!token) return null;
+  try {
+    const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string };
+    return decoded;
+  } catch {
+    return null;
+  }
+}
 
 // جلب الرسائل
 export async function GET(request: NextRequest) {
   try {
-    // CRITICAL FIX: Use getAuthContext — DB-backed isBlocked check
-    const { auth, errorResponse } = await getAuthContext(request);
-    if (errorResponse) return errorResponse;
-    if (!auth) return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    const auth = await getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
 
     const isDeveloper = auth.role === 'DEVELOPER';
     let messages;
 
     if (isDeveloper) {
       messages = await db.message.findMany({
-        where: { OR: [{ receiverId: null }, { senderId: auth.userId }] },
-        include: { sender: { select: { id: true, name: true, identifier: true } } },
+        where: {
+          OR: [
+            { receiverId: null },
+            { senderId: auth.userId }
+          ]
+        },
+        include: {
+          sender: {
+            select: { id: true, name: true, identifier: true }
+          }
+        },
         orderBy: { createdAt: 'desc' }
       });
     } else {
       messages = await db.message.findMany({
-        where: { OR: [{ senderId: auth.userId }, { receiverId: auth.userId }] },
-        include: { sender: { select: { id: true, name: true, identifier: true } } },
+        where: {
+          OR: [
+            { senderId: auth.userId },
+            { receiverId: auth.userId }
+          ]
+        },
+        include: {
+          sender: {
+            select: { id: true, name: true, identifier: true }
+          }
+        },
         orderBy: { createdAt: 'desc' }
       });
     }
@@ -41,8 +74,6 @@ export async function GET(request: NextRequest) {
 // إرسال رسالة جديدة
 export async function POST(request: NextRequest) {
   try {
-    // Rate limiting removed (module not available)
-
     const { auth, errorResponse } = await requireApprovedUser(request);
     if (errorResponse || !auth) return errorResponse!;
 
@@ -53,16 +84,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 });
     }
 
+    // Sanitize content - prevent XSS
     const sanitizedContent = content.trim().replace(/<[^>]*>/g, '').slice(0, 2000);
+
     if (!sanitizedContent) {
       return NextResponse.json({ error: 'محتوى الرسالة غير صالح' }, { status: 400 });
     }
 
     const message = await db.message.create({
-      data: { senderId: auth.userId, receiverId: receiverId || null, content: sanitizedContent },
-      include: { sender: { select: { id: true, name: true, identifier: true } } }
+      data: {
+        senderId: auth.userId,
+        receiverId: receiverId || null,
+        content: sanitizedContent,
+      },
+      include: {
+        sender: {
+          select: { id: true, name: true, identifier: true }
+        }
+      }
     });
 
+    // Send email notification to receiver (if not to self and RESEND_API_KEY is set)
     if (process.env.RESEND_API_KEY && receiverId) {
       const [sender, receiver] = await Promise.all([
         db.user.findUnique({ where: { id: auth.userId }, select: { name: true } }),
@@ -73,7 +115,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Notify connected clients about new message
     notifyRealtime('message-sent', { senderId: auth.userId, receiverId });
+
     return NextResponse.json({ success: true, message });
   } catch (error) {
     console.error('Error sending message:', error);
@@ -84,33 +128,46 @@ export async function POST(request: NextRequest) {
 // حذف رسالة (المطور فقط)
 export async function DELETE(request: NextRequest) {
   try {
-    // CRITICAL FIX: Use getAuthContext for DB-backed auth
-    const { auth, errorResponse } = await getAuthContext(request);
-    if (errorResponse) return errorResponse;
-    if (!auth) return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    const auth = await getAuthUser(request);
+    if (!auth) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
 
+    // Only developer can delete messages
     if (auth.role !== 'DEVELOPER') {
       return NextResponse.json({ error: 'غير مصرح - فقط المطور يمكنه حذف الرسائل' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
     const messageId = searchParams.get('id');
+
     if (!messageId) {
       return NextResponse.json({ error: 'معرف الرسالة مطلوب' }, { status: 400 });
     }
 
-    const message = await db.message.findUnique({ where: { id: messageId } });
+    // Validate message exists
+    const message = await db.message.findUnique({
+      where: { id: messageId },
+    });
+
     if (!message) {
       return NextResponse.json({ error: 'الرسالة غير موجودة' }, { status: 404 });
     }
 
-    await db.message.delete({ where: { id: messageId } });
+    // Delete the message
+    await db.message.delete({
+      where: { id: messageId },
+    });
 
+    // Log the deletion
     try {
       await db.operationLog.create({
         data: {
-          action: 'DELETE_MESSAGE', entityType: 'Message', entityId: messageId,
-          details: `Deleted message from ${message.senderId}`, userId: auth.userId,
+          action: 'DELETE_MESSAGE',
+          entityType: 'Message',
+          entityId: messageId,
+          details: `Deleted message from ${message.senderId}`,
+          userId: auth.userId,
         },
       });
     } catch {}
