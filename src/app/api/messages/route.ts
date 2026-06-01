@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
       messages = await db.message.findMany({
         where: {
           OR: [
-            { receiverId: null },
+            { receiverId: { equals: null } },
             { senderId: auth.userId }
           ]
         },
