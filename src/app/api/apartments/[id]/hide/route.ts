@@ -18,8 +18,15 @@ export async function POST(
     }
 
     const { id: apartmentId } = await params
-    const body = await request.json()
-    const { action } = body // "hide" or "show"
+    
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {
+      body = { action: "hide" };
+    }
+
+    const { action } = body
 
     const apartment = await db.apartment.findUnique({
       where: { id: apartmentId }
@@ -32,12 +39,10 @@ export async function POST(
       )
     }
 
-    if (action === "hide") {
+    if (action === "hide" || !action) {
       const updatedApartment = await db.apartment.update({
         where: { id: apartmentId },
-        data: {
-          status: "hidden"
-        }
+        data: { status: "hidden" }
       })
 
       return NextResponse.json({
@@ -49,9 +54,7 @@ export async function POST(
     } else if (action === "show") {
       const updatedApartment = await db.apartment.update({
         where: { id: apartmentId },
-        data: {
-          status: "available"
-        }
+        data: { status: "available" }
       })
 
       return NextResponse.json({
@@ -62,13 +65,13 @@ export async function POST(
 
     } else {
       return NextResponse.json(
-        { error: "إجراء غير صالح" },
+        { error: "إجراء غير صالح - استخدم action: hide أو show" },
         { status: 400 }
       )
     }
 
-  } catch (error) {
-    console.error("Hide/show apartment error:", error)
+  } catch (error: any) {
+    console.error("Hide/show apartment error:", error?.message || error);
     return NextResponse.json(
       { error: "حدث خطأ أثناء معالجة الطلب" },
       { status: 500 }

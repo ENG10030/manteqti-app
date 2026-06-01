@@ -18,10 +18,15 @@ export async function POST(
     }
 
     const { id: apartmentId } = await params
-    const body = await request.json()
-    const { action, featuredType } = body 
-    // action: "feature" or "unfeature"
-    // featuredType: "featured" or "vip"
+
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {
+      body = { action: "feature", featuredType: "featured" };
+    }
+
+    const { action, featuredType } = body
 
     const apartment = await db.apartment.findUnique({
       where: { id: apartmentId }
@@ -34,7 +39,7 @@ export async function POST(
       )
     }
 
-    if (action === "feature") {
+    if (action === "feature" || !action) {
       const isVip = featuredType === "vip"
       
       const updatedApartment = await db.apartment.update({
@@ -70,13 +75,13 @@ export async function POST(
 
     } else {
       return NextResponse.json(
-        { error: "إجراء غير صالح" },
+        { error: "إجراء غير صالح - استخدم action: feature أو unfeature" },
         { status: 400 }
       )
     }
 
-  } catch (error) {
-    console.error("Feature apartment error:", error)
+  } catch (error: any) {
+    console.error("Feature apartment error:", error?.message || error);
     return NextResponse.json(
       { error: "حدث خطأ أثناء معالجة الطلب" },
       { status: 500 }

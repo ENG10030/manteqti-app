@@ -4,10 +4,14 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
+// Vercel serverless: cache PrismaClient on global to avoid too many connections
 export const db =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+    log: ["error"],
   });
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
+// Always cache on global (even in production) to avoid connection pool exhaustion on Vercel
+if (!globalForPrisma.prisma) {
+  globalForPrisma.prisma = db;
+}

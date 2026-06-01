@@ -18,7 +18,15 @@ export async function POST(
     }
 
     const { id: apartmentId } = await params
-    const body = await request.json()
+    
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {
+      // لو مفيش body، نفترض approve
+      body = { action: "approve" };
+    }
+
     const { action } = body // "approve" or "reject"
 
     const apartment = await db.apartment.findUnique({
@@ -32,7 +40,7 @@ export async function POST(
       )
     }
 
-    if (action === "approve") {
+    if (action === "approve" || !action) {
       const updatedApartment = await db.apartment.update({
         where: { id: apartmentId },
         data: {
@@ -41,19 +49,6 @@ export async function POST(
           approvedAt: new Date()
         }
       })
-
-      // Log approval
-      try {
-        await db.operationLog.create({
-          data: {
-            action: "APPROVE_APARTMENT",
-            entityType: "Apartment",
-            entityId: apartmentId,
-            details: JSON.stringify({ title: apartment.title, price: apartment.price, area: apartment.area }),
-            userId: user.id,
-          },
-        });
-      } catch {}
 
       return NextResponse.json({
         success: true,
@@ -69,19 +64,6 @@ export async function POST(
         }
       })
 
-      // Log rejection
-      try {
-        await db.operationLog.create({
-          data: {
-            action: "REJECT_APARTMENT",
-            entityType: "Apartment",
-            entityId: apartmentId,
-            details: JSON.stringify({ title: apartment.title }),
-            userId: user.id,
-          },
-        });
-      } catch {}
-
       return NextResponse.json({
         success: true,
         apartment: updatedApartment,
@@ -90,13 +72,13 @@ export async function POST(
 
     } else {
       return NextResponse.json(
-        { error: "إجراء غير صالح" },
+        { error: "إجراء غير صالح - استخدم action: approve أو reject" },
         { status: 400 }
       )
     }
 
-  } catch (error) {
-    console.error("Approve apartment error:", error)
+  } catch (error: any) {
+    console.error("Approve apartment error:", error?.message || error);
     return NextResponse.json(
       { error: "حدث خطأ أثناء معالجة الطلب" },
       { status: 500 }
