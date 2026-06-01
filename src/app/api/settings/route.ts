@@ -30,6 +30,8 @@ const DEFAULT_SETTINGS = {
   highlightFee: 150,
   priorityListingFee: 200,
   verifiedListingFee: 250,
+  minRechargeAmount: 10,
+  maxRechargeAmount: 50000,
   currency: "ج.م",
 };
 
