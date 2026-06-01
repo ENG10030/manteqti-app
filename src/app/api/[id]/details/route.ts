@@ -4,8 +4,6 @@ import { verify } from 'jsonwebtoken';
 import { isValidId } from '@/lib/auth-middleware';
 import { JWT_SECRET } from '@/lib/auth';
 
-export const dynamic = "force-dynamic";
-
 async function getCurrentUser(request: Request) {
   const cookieHeader = request.headers.get("cookie");
   const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
@@ -14,7 +12,7 @@ async function getCurrentUser(request: Request) {
   if (!token) return null;
 
   try {
-    const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as unknown as { userId: string };
+    const decoded = verify(token, JWT_SECRET) as { userId: string };
     return await db.user.findUnique({
       where: { id: decoded.userId },
     });
@@ -38,23 +36,7 @@ export async function GET(
     }
 
     const currentUser = await getCurrentUser(request);
-
-    // 🔒 التحقق من تسجيل الدخول — الزائر لا يمكنه رؤية التفاصيل
-    if (!currentUser) {
-      return NextResponse.json(
-        { error: 'يجب تسجيل الدخول لعرض التفاصيل', code: 'AUTH_REQUIRED' },
-        { status: 401 }
-      );
-    }
-
-    if (currentUser.isBlocked) {
-      return NextResponse.json(
-        { error: 'تم حظر حسابك', code: 'BLOCKED' },
-        { status: 403 }
-      );
-    }
-
-    const isDeveloper = currentUser.role === "DEVELOPER";
+    const isDeveloper = currentUser?.role === "DEVELOPER";
 
     const apartment = await db.apartment.findUnique({
       where: { id },

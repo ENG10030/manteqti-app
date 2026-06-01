@@ -12,24 +12,35 @@ datasource db {
 }
 
 model User {
-  id             String    @id @default(cuid())
-  identifier     String    @unique
-  name           String
-  password       String
-  phone          String?
-  email          String?
-  role           String    @default("USER")
-  isBlocked      Boolean   @default(false) @map("is_blocked")
-  blockedAt      DateTime? @map("blocked_at")
-  blockReason    String?   @map("block_reason") @db.Text
-  isApproved     Boolean   @default(true) @map("is_approved")
-  emailVerified  Boolean   @default(false) @map("email_verified")
-  otp            String?
-  otpExpires     DateTime? @map("otp_expires")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
-  inquiries      Inquiry[]
-  payments       Payment[]
+  id                    String    @id @default(cuid())
+  identifier            String    @unique
+  name                  String
+  password              String
+  phone                 String?
+  email                 String?
+  role                  String    @default("user")
+  isBlocked             Boolean   @default(false)
+  blockedAt             DateTime?
+  blockReason           String?
+  isApproved            Boolean   @default(true)
+  passwordResetToken    String?
+  passwordResetExpires  DateTime?
+  otp                   String?
+  otpExpires            DateTime? @map("otp_expires")
+  emailVerified         Boolean   @default(false)
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  apartments      Apartment[]           @relation("ApartmentCreator")
+  inquiries       Inquiry[]
+  payments        Payment[]
+  likes           Like[]
+  comments        Comment[]
+  editRequests    PropertyEditRequest[]
+  messagesSent    Message[]             @relation("MessageSender")
+  messagesRecvd  Message[]             @relation("MessageRecipient")
+  blockedUsers   BlockedUser[]        @relation("BlockedBy")
+  blockedBy       BlockedUser[]        @relation("Blocked")
 
   @@map("users")
 }
@@ -41,6 +52,9 @@ model Apartment {
   area            String
   bedrooms        Int
   bathrooms       Int
+  floor           Int?
+  totalFloors     Int?
+  apartmentSize   Int?
   description     String      @db.Text
   ownerPhone      String      @map("owner_phone")
   mapLink         String?     @map("map_link") @db.Text
@@ -49,7 +63,10 @@ model Apartment {
   videoUrl        String?     @map("video_url") @db.Text
   videos          String?     @db.Text
   amenities       String?     @db.Text
-  featured        Boolean     @default(false)
+  featured        Boolean     @default(false) @map("featured")
+  isFeatured      Boolean     @default(false) @map("is_featured")
+  isVip           Boolean     @default(false) @map("is_vip")
+  contactHidden   Boolean     @default(false) @map("contact_hidden")
   type            String
   status          String      @default("pending")
   statusChangedAt DateTime?   @map("status_changed_at")
@@ -61,11 +78,17 @@ model Apartment {
   approvedAt      DateTime?   @map("approved_at")
   createdAt       DateTime    @default(now()) @map("created_at")
   updatedAt       DateTime    @updatedAt @map("updated_at")
-  inquiries       Inquiry[]
+
+  user          User?      @relation("ApartmentCreator", fields: [createdBy], references: [id])
+  inquiries     Inquiry[]
+  likes         Like[]
+  comments      Comment[]
+  editRequests  PropertyEditRequest[]
 
   @@index([status])
   @@index([type])
   @@index([area])
+  @@index([createdBy])
   @@map("apartments")
 }
 
@@ -80,11 +103,13 @@ model Inquiry {
   lifecycleStatus  String    @default("New") @map("lifecycle_status")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
-  apartment        Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
-  user             User?     @relation(fields: [userId], references: [id])
-  payment          Payment?
+
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user      User?      @relation(fields: [userId], references: [id])
+  payment   Payment?
 
   @@index([apartmentId])
+  @@index([userId])
   @@map("inquiries")
 }
 
@@ -99,11 +124,110 @@ model Payment {
   paymentLink    String?   @map("payment_link") @db.Text
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
-  inquiry        Inquiry   @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
-  user           User?     @relation(fields: [userId], references: [id])
-  userId         String?   @map("user_id")
+
+  inquiry Inquiry @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id])
+  userId  String? @map("user_id")
 
   @@map("payments")
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  senderId   String   @map("sender_id")
+  receiverId String   @map("receiver_id")
+  content    String   @db.Text
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  sender   User @relation("MessageSender", fields: [senderId], references: [id])
+  receiver User @relation("MessageRecipient", fields: [receiverId], references: [id])
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@map("messages")
+}
+
+model Like {
+  id           String    @id @default(cuid())
+  userId       String    @map("user_id")
+  apartmentId  String    @map("apartment_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, apartmentId])
+  @@index([apartmentId])
+  @@map("likes")
+}
+
+model Comment {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  apartmentId String   @map("apartment_id")
+  content     String   @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+
+  @@index([apartmentId])
+  @@map("comments")
+}
+
+model BlockedUser {
+  id          String   @id @default(cuid())
+  blockerId   String   @map("blocker_id")
+  blockedId   String   @map("blocked_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  blocker User @relation("BlockedBy", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@map("blocked_users")
+}
+
+model ApprovalLog {
+  id          String   @id @default(cuid())
+  userId      String?  @map("user_id")
+  action      String
+  userName    String?  @map("user_name")
+  userEmail   String?  @map("user_email")
+  reason      String?  @db.Text
+  performedBy String?  @map("performed_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("approval_logs")
+}
+
+model PropertyEditRequest {
+  id           String    @id @default(cuid())
+  apartmentId  String    @map("apartment_id")
+  userId       String    @map("user_id")
+  editType     String    @default("multiple") @map("edit_type")
+  newImages    String?   @db.Text
+  newVideos    String?   @db.Text
+  newPrice     Int?
+  newStatus    String?   @map("new_status")
+  description  String?   @db.Text
+  status       String    @default("pending")
+  reviewedBy   String?   @map("reviewed_by")
+  reviewedAt   DateTime? @map("reviewed_at")
+  reviewNotes  String?   @db.Text @map("review_notes")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  user      User?      @relation(fields: [userId], references: [id])
+
+  @@index([apartmentId])
+  @@index([userId])
+  @@index([status])
+  @@map("property_edit_requests")
 }
 
 model OtpCode {
