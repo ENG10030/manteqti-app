@@ -158,7 +158,7 @@ model Like {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, apartmentId])
+  @@unique([apartmentId, userId])
   @@index([apartmentId])
   @@map("likes")
 }
