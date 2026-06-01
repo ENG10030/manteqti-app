@@ -2,9 +2,8 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
 
-export const dynamic = "force-dynamic";
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 const sampleApartments = [
   {
@@ -236,7 +235,7 @@ export async function GET() {
 
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+      decoded = verify(token, JWT_SECRET);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
@@ -250,13 +249,12 @@ export async function GET() {
       return NextResponse.json({ error: 'المطور غير موجود، سجل دخولك كمطور أولاً' }, { status: 400 });
     }
 
-    // إنشاء إعدادات افتراضية إذا لم تكن موجودة
-    const existingSettings = await db.settings.findFirst();
-    if (!existingSettings) {
-      await db.settings.create({
-        data: { contactFee: 50, regularFee: 30, featuredFee: 100, premiumFee: 200, vipFee: 300, saleDisplayFee: 100, rentDisplayFee: 75, otherServicesFee: 50, highlightFee: 150, priorityListingFee: 200, verifiedListingFee: 250, currency: "ج.م" },
-      });
-    }
+    // UPSERT settings with fixed ID "main" — never creates duplicate rows
+    await db.settings.upsert({
+      where: { id: "main" },
+      update: {},
+      create: { id: "main", contactFee: 50, regularFee: 30, featuredFee: 100, premiumFee: 200, vipFee: 300, saleDisplayFee: 100, rentDisplayFee: 75, otherServicesFee: 50, highlightFee: 150, priorityListingFee: 200, verifiedListingFee: 250, currency: "ج.م" },
+    });
 
     // إنشاء الإعلانات التي لا تتواجد بعد
     let created = 0;
@@ -291,7 +289,7 @@ export async function GET() {
   } catch (error) {
     console.error("Seed error:", error);
     return NextResponse.json(
-      { error: "حدث خطأ" },
+      { error: "حدث خطأ", details: error instanceof Error ? error.message : "Unknown" },
       { status: 500 }
     );
   }

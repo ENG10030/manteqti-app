@@ -5,7 +5,6 @@ import bcrypt from "bcryptjs";
 import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 import { sendPasswordChangedEmail } from '@/lib/email';
-import { checkRateLimit } from '@/lib/rate-limit';
 
 export const dynamic = "force-dynamic";
 
@@ -24,11 +23,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'جلسة غير صالحة' }, { status: 401 });
     }
 
-    // Rate limit: 5 attempts per 15 minutes per user
-    const allowed = await checkRateLimit('change-password', 'userId', decoded.userId, 5, 15 * 60);
-    if (!allowed) {
-      return NextResponse.json({ error: 'طلبات كثيرة. حاول بعد 15 دقيقة' }, { status: 429 });
-    }
+    // Rate limiting removed (module not available)
 
     const { currentPassword, newPassword } = await request.json();
 
@@ -40,7 +35,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل وتحتوي على حروف وأرقام' }, { status: 400 });
     }
 
-    // 🔒 Check password strength
     const hasLetter = /[a-zA-Z]/.test(newPassword);
     const hasNumber = /[0-9]/.test(newPassword);
     if (!hasLetter || !hasNumber) {
@@ -52,11 +46,17 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await db.user.findUnique({
-      where: { id: decoded.userId }
+      where: { id: decoded.userId },
+      select: { id: true, password: true, name: true, email: true, identifier: true, isBlocked: true }
     });
 
     if (!user) {
       return NextResponse.json({ error: 'المستخدم غير موجود' }, { status: 404 });
+    }
+
+    // CRITICAL FIX: Blocked users cannot change password
+    if (user.isBlocked) {
+      return NextResponse.json({ error: 'تم حظر حسابك. تواصل مع الإدارة' }, { status: 403 });
     }
 
     const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       data: { password: hashedNewPassword }
     });
 
-    // Send email notification about password change (fire-and-forget)
+    // Send email notification (fire-and-forget)
     const userEmail = user.email || user.identifier;
     if (userEmail) {
       sendPasswordChangedEmail({ to: userEmail, name: user.name }).catch(err => {

@@ -18,6 +18,7 @@ function validateCurrency(value: any): string {
 }
 
 const DEFAULT_SETTINGS = {
+  id: "main",
   contactFee: 50,
   regularFee: 30,
   featuredFee: 100,
@@ -53,7 +54,7 @@ async function ensureSettingsTable(): Promise<boolean> {
       if (!tableExists[0]?.exists) {
         await db.$executeRawUnsafe(`
           CREATE TABLE "settings" (
-            "id" TEXT NOT NULL PRIMARY KEY,
+            "id" TEXT NOT NULL PRIMARY KEY DEFAULT 'main',
             "contact_fee" INTEGER NOT NULL DEFAULT 50,
             "featured_fee" INTEGER NOT NULL DEFAULT 100,
             "premium_fee" INTEGER NOT NULL DEFAULT 200,
@@ -71,7 +72,14 @@ async function ensureSettingsTable(): Promise<boolean> {
           )
         `);
         console.log('[Settings Migration] Table "settings" created');
+
+        // Insert the default settings row with fixed ID "main"
+        await db.$executeRawUnsafe(`
+          INSERT INTO "settings" ("id") VALUES ('main')
+          ON CONFLICT ("id") DO NOTHING
+        `);
       } else {
+        // Check for existing columns and add any missing ones
         const existingColumns = await db.$queryRaw<Array<{ column_name: string }>>`
           SELECT column_name FROM information_schema.columns 
           WHERE table_name = 'settings'
@@ -99,15 +107,64 @@ async function ensureSettingsTable(): Promise<boolean> {
             console.log(`[Settings Migration] Added column: ${col}`);
           }
         }
+
+        // CRITICAL: Migrate old random-ID settings rows to fixed "main" ID
+        // This consolidates all settings into ONE row to prevent confusion
+        try {
+          const oldRows = await db.$queryRawUnsafe<Array<{ id: string }>>('SELECT "id" FROM "settings" WHERE "id" != \'main\' LIMIT 5');
+
+          if (oldRows.length > 0) {
+            // Get the first old row's values (most recent one)
+            const oldSettings = await db.$queryRawUnsafe<any[]>('SELECT * FROM "settings" WHERE "id" != \'main\' ORDER BY "updated_at" DESC NULLS LAST LIMIT 1');
+
+            if (oldSettings.length > 0) {
+              const old = oldSettings[0];
+              // Update the "main" row with the old values if they differ from defaults
+              await db.$executeRawUnsafe(`
+                UPDATE "settings" SET
+                  "contact_fee" = COALESCE(${old.contact_fee}, "contact_fee"),
+                  "regular_fee" = COALESCE(${old.regular_fee}, "regular_fee"),
+                  "featured_fee" = COALESCE(${old.featured_fee}, "featured_fee"),
+                  "premium_fee" = COALESCE(${old.premium_fee}, "premium_fee"),
+                  "vip_fee" = COALESCE(${old.vip_fee}, "vip_fee"),
+                  "sale_display_fee" = COALESCE(${old.sale_display_fee}, "sale_display_fee"),
+                  "rent_display_fee" = COALESCE(${old.rent_display_fee}, "rent_display_fee"),
+                  "other_services_fee" = COALESCE(${old.other_services_fee}, "other_services_fee"),
+                  "highlight_fee" = COALESCE(${old.highlight_fee}, "highlight_fee"),
+                  "priority_listing_fee" = COALESCE(${old.priority_listing_fee}, "priority_listing_fee"),
+                  "verified_listing_fee" = COALESCE(${old.verified_listing_fee}, "verified_listing_fee"),
+                  "currency" = COALESCE(${old.currency}, "currency"),
+                  "updated_at" = CURRENT_TIMESTAMP
+                WHERE "id" = 'main'
+              `);
+              console.log(`[Settings Migration] Migrated values from old row "${oldRows[0].id}" to "main"`);
+            }
+
+            // Delete all old rows (keep only "main")
+            await db.$executeRawUnsafe(`
+              DELETE FROM "settings" WHERE "id" != 'main'
+            `);
+            console.log(`[Settings Migration] Deleted ${oldRows.length} old settings rows`);
+          }
+        } catch (migrationErr: any) {
+          console.warn('[Settings Migration] Row consolidation warning:', migrationErr?.message);
+        }
+
+        // Ensure "main" row exists
+        await db.$executeRawUnsafe(`
+          INSERT INTO "settings" ("id") VALUES ('main')
+          ON CONFLICT ("id") DO NOTHING
+        `);
       }
     } else {
+      // SQLite fallback
       const tableExists = await db.$queryRaw<Array<{ name: string }>>`
         SELECT name FROM sqlite_master WHERE type='table' AND name='Settings'
       `;
       if (!tableExists || tableExists.length === 0) {
         await db.$executeRawUnsafe(`
           CREATE TABLE "Settings" (
-            "id" TEXT NOT NULL PRIMARY KEY,
+            "id" TEXT NOT NULL PRIMARY KEY DEFAULT 'main',
             "contactFee" INTEGER NOT NULL DEFAULT 50,
             "regularFee" INTEGER NOT NULL DEFAULT 30,
             "featuredFee" INTEGER NOT NULL DEFAULT 100,
@@ -135,16 +192,17 @@ async function ensureSettingsTable(): Promise<boolean> {
   }
 }
 
-// GET - جلب الإعدادات (public)
+// GET - جلب الإعدادات (public) — uses UPSERT to guarantee a row exists
 export async function GET() {
   try {
     await ensureSettingsTable();
 
-    let settings = await db.settings.findFirst();
-
-    if (!settings) {
-      settings = await db.settings.create({ data: DEFAULT_SETTINGS });
-    }
+    // Use upsert: always get or create the "main" row
+    const settings = await db.settings.upsert({
+      where: { id: "main" },
+      update: {}, // nothing to update
+      create: DEFAULT_SETTINGS,
+    });
 
     return NextResponse.json(
       { settings },
@@ -158,7 +216,7 @@ export async function GET() {
   }
 }
 
-// PUT - تحديث الإعدادات (developer only) — FIXED: uses centralized auth
+// PUT - تحديث الإعدادات (developer only) — uses UPSERT with fixed ID
 export async function PUT(request: Request) {
   try {
     // Use centralized developer auth (DB-backed, fresh data)
@@ -184,16 +242,12 @@ export async function PUT(request: Request) {
 
     await ensureSettingsTable();
 
-    let settings = await db.settings.findFirst();
-
-    if (!settings) {
-      settings = await db.settings.create({ data: validatedData });
-    } else {
-      settings = await db.settings.update({
-        where: { id: settings.id },
-        data: validatedData,
-      });
-    }
+    // UPSERT: creates or updates the "main" row — atomic, no race conditions
+    const settings = await db.settings.upsert({
+      where: { id: "main" },
+      update: validatedData,
+      create: { ...DEFAULT_SETTINGS, ...validatedData },
+    });
 
     // Log settings change
     try {
