@@ -1,17 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { cookies } from 'next/headers';
-import { verify } from 'jsonwebtoken';
+import { getAuthContext, requireDeveloper } from '@/lib/auth-middleware';
 
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
-
+// GET - list payments (developer sees all, user sees own)
 export async function GET() {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
+    const { auth, errorResponse } = await getAuthContext(
+      new NextRequest(new URL('/api/payments', 'http://localhost'), { headers: { cookie: '' } })
+    );
+    
+    // Try to get auth from the request context differently
+    const cookieStore = await import('next/headers').then(m => m.cookies());
+    const token = (await cookieStore).get('auth-token')?.value;
+    
     if (!token) {
       return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
     }
+    
+    const { verify } = await import('jsonwebtoken');
+    const { JWT_SECRET } = await import('@/lib/auth');
     let decoded: any;
     try {
       decoded = verify(token, JWT_SECRET);
@@ -21,7 +28,7 @@ export async function GET() {
 
     const isDeveloper = decoded.role === 'DEVELOPER';
 
-    // المطور يرى كل المدفوعات، المستخدم العادي يرى مدفوعاته فقط
+    // Developer sees all payments, user sees only own
     const where: any = {};
     if (!isDeveloper) {
       where.userId = decoded.userId;
@@ -33,7 +40,9 @@ export async function GET() {
       include: {
         inquiry: {
           include: {
-            apartment: true
+            apartment: {
+              select: { id: true, title: true, price: true }
+            }
           }
         }
       }
@@ -53,15 +62,7 @@ export async function GET() {
       inquiry: p.inquiry ? {
         id: p.inquiry.id,
         apartmentId: p.inquiry.apartmentId,
-        name: p.inquiry.name,
-        email: p.inquiry.email,
-        phone: p.inquiry.phone,
-        message: p.inquiry.message,
-        apartment: p.inquiry.apartment ? {
-          id: p.inquiry.apartment.id,
-          title: p.inquiry.apartment.title,
-          price: p.inquiry.apartment.price
-        } : null
+        apartment: p.inquiry.apartment
       } : null
     })));
   } catch (error) {
@@ -70,19 +71,11 @@ export async function GET() {
   }
 }
 
+// POST - create payment
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
+    const { auth, errorResponse } = await getAuthContext(request);
+    if (errorResponse || !auth) return errorResponse!;
 
     const data = await request.json();
 
@@ -90,12 +83,13 @@ export async function POST(request: NextRequest) {
       data: {
         inquiryId: data.inquiryId,
         method: data.method,
-        status: data.status || 'Pending',
-        inquiryStatus: data.inquiryStatus || 'Pending',
+        // SECURITY: Force Pending status - prevent user from self-approving
+        status: 'Pending',
+        inquiryStatus: 'Pending',
         amount: data.amount,
         transactionRef: data.transactionRef,
         paymentLink: data.paymentLink,
-        userId: decoded.userId
+        userId: auth.userId
       }
     });
 
@@ -116,42 +110,21 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE - حذف مدفوعات (developer only)
-// Body: { ids: string[] } لحذف محددة, أو {} لحذف الكل
+// DELETE - delete payments (developer only)
 export async function DELETE(request: NextRequest) {
-  try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
+  const { auth, errorResponse } = await requireDeveloper(request);
+  if (errorResponse || !auth) return errorResponse!;
 
-    if (decoded.role !== 'DEVELOPER') {
-      return NextResponse.json({ error: 'غير مصرح - للمطور فقط' }, { status: 403 });
-    }
+  const body = await request.json();
+  const ids: string[] = body.ids;
 
-    const body = await request.json();
-    const ids: string[] = body.ids;
-
-    if (ids && ids.length > 0) {
-      // حذف مدفوعات محددة
-      const result = await db.payment.deleteMany({
-        where: { id: { in: ids } }
-      });
-      return NextResponse.json({ message: `تم حذف ${result.count} مدفوعة بنجاح`, deleted: result.count });
-    } else {
-      // حذف جميع المدفوعات
-      const result = await db.payment.deleteMany({});
-      return NextResponse.json({ message: `تم حذف ${result.count} مدفوعة بنجاح`, deleted: result.count });
-    }
-  } catch (error) {
-    console.error('Error deleting payments:', error);
-    return NextResponse.json({ error: 'Failed to delete payments' }, { status: 500 });
+  if (ids && ids.length > 0) {
+    const result = await db.payment.deleteMany({
+      where: { id: { in: ids } }
+    });
+    return NextResponse.json({ message: `تم حذف ${result.count} مدفوعة بنجاح`, deleted: result.count });
+  } else {
+    const result = await db.payment.deleteMany({});
+    return NextResponse.json({ message: `تم حذف ${result.count} مدفوعة بنجاح`, deleted: result.count });
   }
 }

@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 
-export const dynamic = "force-dynamic";
-
 // تأكيد أو رفض أو إلغاء تأكيد تسجيل مستخدم (للمطور فقط)
 export async function PUT(
   request: NextRequest,
@@ -131,18 +129,9 @@ export async function PUT(
         });
       } catch {}
 
-      // Instead of deleting the user and all their data (cascade),
-      // just mark them as blocked so their data is preserved
-      await db.user.update({
-        where: { id },
-        data: {
-          isBlocked: true,
-          blockReason: reason || "تم رفض التسجيل",
-          blockedAt: new Date(),
-          isApproved: false,
-        },
-      });
-      return NextResponse.json({ message: "تم رفض التسجيل وحظر الحساب (تم الاحتفاظ بالبيانات)" });
+      // Delete user and all their data (cascade)
+      await db.user.delete({ where: { id } });
+      return NextResponse.json({ message: "تم رفض التسجيل وحذف الحساب" });
     }
   } catch (error) {
     console.error("User approval error:", error);

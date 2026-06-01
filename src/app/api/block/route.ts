@@ -3,9 +3,7 @@ import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { JWT_SECRET } from "@/lib/auth";
 
-export const dynamic = "force-dynamic";
-
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
 
 async function isDeveloper(request: Request) {
   const cookieHeader = request.headers.get("cookie");
@@ -15,7 +13,7 @@ async function isDeveloper(request: Request) {
   if (!token) return false;
 
   try {
-    const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as unknown as { userId: string; role?: string; identifier?: string };
+    const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
     
     // التحقق من دور DEVELOPER أو بريد المطور
     if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
@@ -187,15 +185,6 @@ export async function DELETE(request: Request) {
         { error: "معرف المستخدم مطلوب" },
         { status: 400 }
       );
-    }
-
-    // 🔒 حماية: التحقق من أن المستخدم المستهدف ليس مطوراً
-    const targetUser = await db.user.findUnique({
-      where: { id: userId },
-      select: { role: true },
-    });
-    if (targetUser?.role === "DEVELOPER") {
-      return NextResponse.json({ error: "لا يمكن تعديل حساب مطور" }, { status: 400 });
     }
 
     const user = await db.user.update({

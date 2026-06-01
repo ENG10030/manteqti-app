@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { notifyApartmentsChanged } from "@/lib/realtime";
-
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+import { JWT_SECRET } from "@/lib/auth";
 
 async function getCurrentUser(request: Request) {
   const cookieHeader = request.headers.get("cookie");
@@ -22,7 +21,7 @@ async function getCurrentUser(request: Request) {
   }
 }
 
-// GET - جلب العقارات
+// GET - fetch apartments (public, but with auth check for developer view)
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -33,20 +32,18 @@ export async function GET(request: Request) {
     let user: Awaited<ReturnType<typeof getCurrentUser>> = null;
     try {
       user = await getCurrentUser(request);
-    } catch (authErr: any) {
-      console.warn("Auth check failed, continuing as guest:", authErr.message);
+    } catch {
+      // Continue as guest
     }
     const isDeveloper = user?.role === "DEVELOPER";
 
     const where: any = {};
 
-    // المطور يرى جميع العقارات، المستخدم العادي يرى العقارات المتاحة والموافق عليها فقط
     if (status) {
       where.status = status;
     } else if (!isDeveloper) {
       where.status = { in: ["available", "reserved", "sold", "rented"] };
     }
-    // المطور يرى كل الحالات (لا نضيف شرط للحالة)
 
     if (type && type !== "all") {
       where.type = type;
@@ -56,7 +53,7 @@ export async function GET(request: Request) {
       where.area = area;
     }
 
-    // استبعاد عقارات المحظورين للمستخدمين العاديين
+    // Exclude blocked users' apartments for regular users
     if (!isDeveloper) {
       try {
         const blockedUsers = await db.user.findMany({
@@ -67,8 +64,8 @@ export async function GET(request: Request) {
         if (blockedIds.length > 0) {
           where.createdBy = { notIn: blockedIds };
         }
-      } catch (blockErr: any) {
-        console.warn("Blocked users check failed:", blockErr.message);
+      } catch {
+        // Continue without block filter
       }
     }
 
@@ -76,7 +73,8 @@ export async function GET(request: Request) {
       where,
       include: {
         user: {
-          select: { id: true, name: true, email: true },
+          // SECURITY: Do NOT expose email in public listings
+          select: { id: true, name: true },
         },
       },
       orderBy: [
@@ -87,19 +85,16 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json(apartments);
-  } catch (error: any) {
+  } catch (error) {
     console.error("Get apartments error:", error);
     return NextResponse.json(
-      { 
-        error: "حدث خطأ أثناء جلب العقارات",
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
-      },
+      { error: "حدث خطأ أثناء جلب العقارات" },
       { status: 500 }
     );
   }
 }
 
-// POST - إضافة عقار جديد
+// POST - create apartment
 export async function POST(request: Request) {
   try {
     const user = await getCurrentUser(request);
@@ -115,7 +110,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Only approved users or developers can create apartments
     if (!user.isApproved && user.role !== 'DEVELOPER') {
       return NextResponse.json(
         { error: "حسابك قيد المراجعة. بانتظار موافقة الإدارة", pendingApproval: true },
@@ -147,8 +141,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // المطور ينشر مباشرة، المستخدم العادي يرسل للمراجعة
-    const status = user.role === "DEVELOPER" ? "available" : "pending";
+    const apartmentStatus = user.role === "DEVELOPER" ? "available" : "pending";
 
     const apartment = await db.apartment.create({
       data: {
@@ -163,7 +156,7 @@ export async function POST(request: Request) {
         ownerPhone,
         mapLink: mapLink || null,
         type: type || "rent",
-        status,
+        status: apartmentStatus,
         images: images || null,
         videos: videos || null,
         createdBy: user.id,
@@ -172,7 +165,6 @@ export async function POST(request: Request) {
       },
     });
 
-    // Notify all connected clients
     notifyApartmentsChanged('created', apartment.id);
 
     return NextResponse.json({

@@ -1,7 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/auth';
-
-export const dynamic = "force-dynamic";
 
 const PLACEHOLDER_IMAGES = [
   'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&q=80',
@@ -15,9 +12,6 @@ const PLACEHOLDER_IMAGES = [
 ];
 
 export async function POST(request: NextRequest) {
-  const auth = authenticateRequest(request);
-  if (!auth) return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
-
   try {
     const { prompt, size = '1344x768' } = await request.json();
 

@@ -1,10 +1,19 @@
 import { db } from "./db";
-import { verify } from "jsonwebtoken";
-import { NextRequest } from "next/server";
+import { verify, sign } from "jsonwebtoken";
+import { NextRequest, NextResponse } from "next/server";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 
-export const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+// CRITICAL: No hardcoded fallback - require JWT_SECRET from environment
+const _JWT_SECRET = process.env.JWT_SECRET;
+if (!_JWT_SECRET || _JWT_SECRET.length < 32) {
+  console.error('FATAL: JWT_SECRET must be set in environment variables and be at least 32 characters');
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET is not configured securely. Server cannot start.');
+  }
+}
+
+export const JWT_SECRET = _JWT_SECRET || 'dev-only-insecure-fallback-' + (process.env.NODE_ENV || 'dev');
 
 export interface AuthUser {
   id: string;
@@ -82,7 +91,7 @@ export const authOptions = {
   secret: process.env.NEXTAUTH_SECRET || JWT_SECRET,
 };
 
-// الحصول على المستخدم الحالي من الطلب
+// Get current user from request with DB verification
 export async function getCurrentUser(request: NextRequest): Promise<AuthUser | null> {
   try {
     const token = request.cookies.get("auth-token")?.value;
@@ -105,6 +114,7 @@ export async function getCurrentUser(request: NextRequest): Promise<AuthUser | n
     });
 
     if (!user) return null;
+    if (user.isBlocked) return null;
 
     return user as AuthUser;
   } catch (error) {
@@ -112,13 +122,14 @@ export async function getCurrentUser(request: NextRequest): Promise<AuthUser | n
   }
 }
 
-// التحقق من صلاحيات المطور
+// Check if user is developer
 export async function isDeveloper(request: NextRequest): Promise<boolean> {
   const user = await getCurrentUser(request);
   return user?.role === "DEVELOPER";
 }
 
-// التحقق من تسجيل الدخول (بدون DB - للـ routes الخفيفة)
+// Authenticate request WITHOUT DB lookup - only for lightweight/non-sensitive routes
+// WARNING: This trusts JWT claims without verifying current DB state
 export function authenticateRequest(request: NextRequest): { user: { id: string; role: string } } | null {
   try {
     const token = request.cookies.get("auth-token")?.value;
@@ -134,12 +145,12 @@ export function authenticateRequest(request: NextRequest): { user: { id: string;
   }
 }
 
-// التحقق من أن المستخدم مطور أو أدمن
+// Check if user is developer or admin
 export function isDeveloperOrAdmin(user: { role: string }): boolean {
   return user.role === 'DEVELOPER' || user.role === 'ADMIN';
 }
 
-// التحقق من تسجيل الدخول
+// Require authenticated user with full DB verification
 export async function requireAuth(request: NextRequest): Promise<AuthUser> {
   const user = await getCurrentUser(request);
   
@@ -159,7 +170,7 @@ export async function requireAuth(request: NextRequest): Promise<AuthUser> {
   return user;
 }
 
-// التحقق من صلاحيات المطور
+// Require developer role with full DB verification
 export async function requireDeveloper(request: NextRequest): Promise<AuthUser> {
   const user = await requireAuth(request);
   
@@ -168,4 +179,22 @@ export async function requireDeveloper(request: NextRequest): Promise<AuthUser> 
   }
   
   return user;
+}
+
+// Create a JWT token helper
+export function createToken(payload: { userId: string; identifier: string; role: string }, expiresIn: string = '24h'): string {
+  return sign(payload, JWT_SECRET, { expiresIn });
+}
+
+// Create auth response with cookie helper
+export function createAuthResponse(data: object, token: string) {
+  const response = NextResponse.json(data);
+  response.cookies.set('auth-token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24, // 24 hours (reduced from 7 days)
+    path: '/',
+  });
+  return response;
 }

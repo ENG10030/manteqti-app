@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import { isStrongPassword } from "@/lib/security";
 
 // قائمة نطاقات البريد المؤقتة المحظورة
 const BLOCKED_DOMAINS = [
@@ -80,9 +81,9 @@ export async function POST(request: Request) {
     }
 
     // التحقق من قوة كلمة المرور
-    if (password.length < 6) {
+    if (!isStrongPassword(password)) {
       return NextResponse.json(
-        { error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" },
+        { error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل وتحتوي على مزيج من الحروف والأرقام" },
         { status: 400 }
       );
     }

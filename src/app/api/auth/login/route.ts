@@ -1,19 +1,14 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
-import { sign } from "jsonwebtoken";
-import { checkRateLimit, recordFailedAttempt } from "@/lib/rate-limit";
-import { JWT_SECRET } from "@/lib/auth";
-
-export const dynamic = "force-dynamic";
-
-const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL;
+import { JWT_SECRET, createToken, createAuthResponse } from "@/lib/auth";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { email, identifier, password } = body;
 
+    // Accept either email or identifier
     const loginIdentifier = (email || identifier || "").toLowerCase().trim();
 
     if (!loginIdentifier || !password) {
@@ -23,33 +18,23 @@ export async function POST(request: Request) {
       );
     }
 
-    // 🔒 Rate limiting — check BEFORE password comparison
-    const allowed = await checkRateLimit("login", "email", loginIdentifier, 10, 15 * 60);
-    if (!allowed) {
-      return NextResponse.json(
-        { error: "محاولات كثيرة. حاول بعد 15 دقيقة" },
-        { status: 429 }
-      );
-    }
-
+    // Find user by identifier
     const user = await db.user.findUnique({
       where: { identifier: loginIdentifier },
     });
 
     if (!user) {
-      await recordFailedAttempt("login", "email", loginIdentifier, request);
       return NextResponse.json(
-        { error: "يجب إنشاء حساب أولاً" },
-        { status: 404 }
+        { error: "البريد الإلكتروني أو كلمة المرور غير صحيحة" },
+        { status: 401 }
       );
     }
 
     const isValidPassword = await bcrypt.compare(password, user.password);
 
     if (!isValidPassword) {
-      await recordFailedAttempt("login", "email", loginIdentifier, request);
       return NextResponse.json(
-        { error: "كلمة المرور أو البريد الإلكتروني غير صحيحة" },
+        { error: "البريد الإلكتروني أو كلمة المرور غير صحيحة" },
         { status: 401 }
       );
     }
@@ -61,24 +46,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Block login if email not verified (developers and pre-existing users exempt)
-    const isDeveloper = user.role === 'DEVELOPER' || (DEVELOPER_EMAIL && user.identifier === DEVELOPER_EMAIL);
-    if (!user.emailVerified && !isDeveloper) {
+    // SECURITY: Do NOT issue JWT token to unapproved users
+    if (!user.isApproved && user.role !== 'DEVELOPER') {
       return NextResponse.json({
-        error: "يجب تأكيد البريد الإلكتروني أولاً",
-        emailVerificationRequired: true,
-        email: user.email || user.identifier,
-      }, { status: 403 });
-    }
-
-    // Check if user is approved (developers are always approved)
-    if (!user.isApproved && !isDeveloper) {
-      const token = sign(
-        { userId: user.id, identifier: user.identifier, role: user.role, name: user.name, email: user.email, isApproved: user.isApproved, emailVerified: user.emailVerified, isBlocked: user.isBlocked },
-        JWT_SECRET,
-        { expiresIn: "30d", algorithm: "HS256" }
-      );
-      const response = NextResponse.json({
         message: "حسابك قيد المراجعة. بانتظار موافقة الإدارة",
         pendingApproval: true,
         user: {
@@ -90,23 +60,14 @@ export async function POST(request: Request) {
           isApproved: false,
         },
       });
-      response.cookies.set("auth-token", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 60 * 60 * 24 * 30,
-        path: "/",
-      });
-      return response;
+      // No cookie is set - user cannot access any protected routes
     }
 
-    const token = sign(
-      { userId: user.id, identifier: user.identifier, role: user.role, name: user.name, email: user.email, isApproved: user.isApproved, emailVerified: user.emailVerified, isBlocked: user.isBlocked },
-      JWT_SECRET,
-      { expiresIn: "30d", algorithm: "HS256" }
+    const token = createToken(
+      { userId: user.id, identifier: user.identifier, role: user.role }
     );
 
-    const response = NextResponse.json({
+    return createAuthResponse({
       message: "تم تسجيل الدخول بنجاح",
       user: {
         id: user.id,
@@ -117,17 +78,8 @@ export async function POST(request: Request) {
         emailVerified: user.emailVerified,
         isApproved: user.isApproved,
       },
-    });
+    }, token);
 
-    response.cookies.set("auth-token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 30,
-      path: "/",
-    });
-
-    return response;
   } catch (error) {
     console.error("Login error:", error);
     return NextResponse.json(

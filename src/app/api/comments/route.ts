@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireApprovedUser } from '@/lib/auth-middleware';
+import { sanitizeString } from '@/lib/security';
 
-// جلب التعليقات
+// Fetch comments
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// إضافة تعليق جديد
+// Create comment
 export async function POST(request: NextRequest) {
   try {
     const { auth, errorResponse } = await requireApprovedUser(request);
@@ -55,14 +56,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 });
     }
 
-    // Sanitize content — strip HTML tags to prevent XSS
-    const sanitizedContent = content.trim().replace(/<[^>]*>/g, '').slice(0, 2000);
-    if (!sanitizedContent) {
-      return NextResponse.json({ error: 'محتوى التعليق غير صالح' }, { status: 400 });
+    if (content.length > 1000) {
+      return NextResponse.json({ error: 'التعليق طويل جداً (الحد الأقصى 1000 حرف)' }, { status: 400 });
     }
 
     const isDeveloper = auth.role === 'DEVELOPER';
     const userId = auth.userId;
+
+    // SECURITY: Sanitize content to prevent XSS
+    const sanitizedContent = sanitizeString(content);
 
     const comment = await db.comment.create({
       data: {

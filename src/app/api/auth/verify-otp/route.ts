@@ -1,21 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { sign } from 'jsonwebtoken';
-import crypto from 'crypto';
-import { checkRateLimit, recordFailedAttempt } from '@/lib/rate-limit';
-import { JWT_SECRET } from '@/lib/auth';
+import { createToken, createAuthResponse } from '@/lib/auth';
+import { safeCompare } from '@/lib/security';
 
-export const dynamic = "force-dynamic";
-
-// 🔒 Timing-safe string comparison
-function safeCompare(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  try {
-    return crypto.timingSafeEqual(Buffer.from(a, 'utf-8'), Buffer.from(b, 'utf-8'));
-  } catch {
-    return false;
-  }
-}
+// OTP attempt rate limiting (in-memory)
+const otpAttempts = new Map<string, { count: number; lockedUntil: number }>();
+const MAX_OTP_ATTEMPTS = 5;
+const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,12 +21,23 @@ export async function POST(request: NextRequest) {
 
     const normalizedIdentifier = identifier.toLowerCase().trim();
 
-    // 🔒 Database-backed rate limiting (works across all serverless instances)
-    if (!(await checkRateLimit("verify-otp", "email", normalizedIdentifier))) {
-      return NextResponse.json({ 
-        error: 'تم تجاوز عدد المحاولات المسموح. يرجى المحاولة بعد 15 دقيقة',
-        tooManyAttempts: true 
-      }, { status: 429 });
+    // Check rate limiting for OTP attempts
+    const attempt = otpAttempts.get(normalizedIdentifier);
+    if (attempt) {
+      if (attempt.lockedUntil && Date.now() < attempt.lockedUntil) {
+        const remainingMinutes = Math.ceil((attempt.lockedUntil - Date.now()) / 60000);
+        return NextResponse.json({ 
+          error: `تم تجاوز عدد المحاولات المسموح. يرجى المحاولة بعد ${remainingMinutes} دقيقة`,
+          tooManyAttempts: true 
+        }, { status: 429 });
+      }
+      if (attempt.count >= MAX_OTP_ATTEMPTS) {
+        otpAttempts.set(normalizedIdentifier, { count: attempt.count, lockedUntil: Date.now() + LOCKOUT_DURATION });
+        return NextResponse.json({ 
+          error: 'تم تجاوز عدد المحاولات المسموح. يرجى المحاولة بعد 15 دقيقة',
+          tooManyAttempts: true 
+        }, { status: 429 });
+      }
     }
 
     // Find user by identifier
@@ -52,23 +54,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'البريد الإلكتروني أو الرمز غير صحيح' }, { status: 400 });
     }
 
-    if (!safeCompare(user.otp || '', otpCode)) {
-      // 🔒 سجل المحاولة الفاشلة في الداتابيز
-      await recordFailedAttempt("verify-otp", "email", normalizedIdentifier, request, "Wrong OTP code");
+    // SECURITY: Use timing-safe comparison for OTP
+    if (!user.otp || !safeCompare(user.otp, otpCode)) {
+      const currentAttempt = otpAttempts.get(normalizedIdentifier) || { count: 0, lockedUntil: 0 };
+      currentAttempt.count += 1;
+      otpAttempts.set(normalizedIdentifier, currentAttempt);
 
-      // احسب المحاولات المتبقية
-      const since = new Date(Date.now() - 15 * 60 * 1000);
-      const count = await db.operationLog.count({
-        where: {
-          action: "rate-limit:verify-otp",
-          entityType: "email",
-          entityId: normalizedIdentifier,
-          createdAt: { gte: since },
-        },
-      });
-      
-      const remaining = 5 - count;
+      const remaining = MAX_OTP_ATTEMPTS - currentAttempt.count;
       if (remaining <= 0) {
+        otpAttempts.set(normalizedIdentifier, { count: currentAttempt.count, lockedUntil: Date.now() + LOCKOUT_DURATION });
         return NextResponse.json({ 
           error: 'تم تجاوز عدد المحاولات المسموح. يرجى المحاولة بعد 15 دقيقة',
           tooManyAttempts: true 
@@ -85,6 +79,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'انتهت صلاحية الرمز' }, { status: 400 });
     }
 
+    // Clear attempt counter on success
+    otpAttempts.delete(normalizedIdentifier);
+
     // Mark email as verified and clear OTP
     const updatedUser = await db.user.update({
       where: { id: user.id },
@@ -95,19 +92,12 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    // Generate JWT token and set auth-token cookie (same as login)
-    const token = sign(
-      { userId: updatedUser.id, identifier: updatedUser.identifier, role: updatedUser.role, name: updatedUser.name, email: updatedUser.email, isApproved: updatedUser.isApproved, emailVerified: true, isBlocked: false },
-      JWT_SECRET,
-      { expiresIn: '30d', algorithm: 'HS256' }
+    const token = createToken(
+      { userId: updatedUser.id, identifier: updatedUser.identifier, role: updatedUser.role }
     );
 
-    const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || '';
-    const isDeveloper = updatedUser.role === 'DEVELOPER' || updatedUser.identifier === DEVELOPER_EMAIL;
-
-    const response = NextResponse.json({
-      message: isDeveloper ? 'تم تأكيد البريد الإلكتروني بنجاح' : 'تم تأكيد البريد الإلكتروني! بانتظار موافقة الإدارة',
-      needsApproval: !isDeveloper && !updatedUser.isApproved,
+    return createAuthResponse({
+      message: 'تم تأكيد البريد الإلكتروني بنجاح',
       user: {
         id: updatedUser.id,
         identifier: updatedUser.identifier,
@@ -115,19 +105,9 @@ export async function POST(request: NextRequest) {
         email: updatedUser.email,
         role: updatedUser.role,
         emailVerified: true,
-        isApproved: updatedUser.isApproved,
       }
-    });
+    }, token);
 
-    response.cookies.set('auth-token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 30,
-      path: '/',
-    });
-
-    return response;
   } catch (error) {
     console.error('Error verifying OTP:', error);
     return NextResponse.json({ error: 'فشل في التحقق من الرمز' }, { status: 500 });

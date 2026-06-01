@@ -1,26 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { cookies } from 'next/headers';
-import { verify } from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+import { getAuthContext, requireDeveloper } from '@/lib/auth-middleware';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
+    const { auth, errorResponse } = await getAuthContext(request);
+    if (errorResponse || !auth) return errorResponse!;
 
     const { id } = await params;
     
@@ -29,7 +17,9 @@ export async function GET(
       include: {
         inquiry: {
           include: {
-            apartment: true
+            apartment: {
+              select: { id: true, title: true, price: true }
+            }
           }
         }
       }
@@ -37,6 +27,11 @@ export async function GET(
 
     if (!payment) {
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
+    }
+
+    // SECURITY: Ownership check - users can only see own payments
+    if (auth.role !== 'DEVELOPER' && payment.userId !== auth.userId) {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
 
     return NextResponse.json({
@@ -53,15 +48,7 @@ export async function GET(
       inquiry: payment.inquiry ? {
         id: payment.inquiry.id,
         apartmentId: payment.inquiry.apartmentId,
-        name: payment.inquiry.name,
-        email: payment.inquiry.email,
-        phone: payment.inquiry.phone,
-        message: payment.inquiry.message,
-        apartment: payment.inquiry.apartment ? {
-          id: payment.inquiry.apartment.id,
-          title: payment.inquiry.apartment.title,
-          price: payment.inquiry.apartment.price
-        } : null
+        apartment: payment.inquiry.apartment
       } : null
     });
   } catch (error) {
@@ -74,84 +61,48 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+  const { auth, errorResponse } = await requireDeveloper(request);
+  if (errorResponse || !auth) return errorResponse!;
+
+  const { id } = await params;
+  const data = await request.json();
+
+  const payment = await db.payment.update({
+    where: { id },
+    data: {
+      status: data.status,
+      inquiryStatus: data.inquiryStatus
     }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
+  });
 
-    if (decoded.role !== 'DEVELOPER') {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
-    }
-
-    const { id } = await params;
-    const data = await request.json();
-
-    const payment = await db.payment.update({
-      where: { id },
-      data: {
-        status: data.status,
-        inquiryStatus: data.inquiryStatus
-      }
-    });
-
-    return NextResponse.json({
-      id: payment.id,
-      status: payment.status,
-      inquiryStatus: payment.inquiryStatus
-    });
-  } catch (error) {
-    console.error('Error updating payment:', error);
-    return NextResponse.json({ error: 'Failed to update payment' }, { status: 500 });
-  }
+  return NextResponse.json({
+    id: payment.id,
+    status: payment.status,
+    inquiryStatus: payment.inquiryStatus
+  });
 }
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+  const { auth, errorResponse } = await requireDeveloper(request);
+  if (errorResponse || !auth) return errorResponse!;
+
+  const { id } = await params;
+  const data = await request.json();
+
+  const payment = await db.payment.update({
+    where: { id },
+    data: {
+      status: data.status,
+      inquiryStatus: data.inquiryStatus
     }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
+  });
 
-    if (decoded.role !== 'DEVELOPER') {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
-    }
-
-    const { id } = await params;
-    const data = await request.json();
-
-    const payment = await db.payment.update({
-      where: { id },
-      data: {
-        status: data.status,
-        inquiryStatus: data.inquiryStatus
-      }
-    });
-
-    return NextResponse.json({
-      id: payment.id,
-      status: payment.status,
-      inquiryStatus: payment.inquiryStatus
-    });
-  } catch (error) {
-    console.error('Error updating payment:', error);
-    return NextResponse.json({ error: 'Failed to update payment' }, { status: 500 });
-  }
+  return NextResponse.json({
+    id: payment.id,
+    status: payment.status,
+    inquiryStatus: payment.inquiryStatus
+  });
 }

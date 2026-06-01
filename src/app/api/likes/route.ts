@@ -3,15 +3,10 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { requireApprovedUser } from '@/lib/auth-middleware';
-import { JWT_SECRET, authenticateRequest } from '@/lib/auth';
-
-export const dynamic = "force-dynamic";
+import { JWT_SECRET } from '@/lib/auth';
 
 // جلب كل الإعجابات أو إعجابات عقار معين
 export async function GET(request: NextRequest) {
-  const auth = authenticateRequest(request);
-  if (!auth) return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
-
   try {
     const { searchParams } = new URL(request.url);
     const apartmentId = searchParams.get('apartmentId');

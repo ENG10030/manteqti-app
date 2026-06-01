@@ -18,8 +18,8 @@ import {
 import { FileUpload } from '@/components/file-upload';
 import { io } from 'socket.io-client';
 
-// Developer credentials
-const DEVELOPER_EMAIL = process.env.NEXT_PUBLIC_DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
+// SECURITY: Developer role is determined server-side via JWT, never by email matching
+// No client-side developer email exposure
 
 // Contact fee now comes from settings (dynamic)
 
@@ -49,7 +49,7 @@ interface Inquiry { id: string; apartmentId: string; userId?: string; name: stri
 interface Payment { id: string; inquiryId: string; method: string; status: string; amount: number; userId?: string; createdAt: string; inquiry?: { id: string; apartmentId: string; name: string; email: string; phone: string; apartment?: { id: string; title: string; price: number } | null } | null; }
 
 interface Toast { id: string; message: string; type: 'success' | 'error' | 'info'; }
-interface User { id: string; identifier: string; name: string; emailVerified?: boolean; isApproved?: boolean; }
+interface User { id: string; identifier: string; name: string; emailVerified?: boolean; isApproved?: boolean; role?: string; }
 
 // Edit Request Interface
 interface PropertyEditRequest {
@@ -371,7 +371,7 @@ export default function App() {
           setCurrentUser(authData.user);
           currentUserRef.current = authData.user;
           if (authData.user.isBlocked) setIsBlocked(true);
-          const isDev = authData.user.identifier === DEVELOPER_EMAIL;
+          const isDev = authData.user.role === 'DEVELOPER';
           setIsDeveloper(isDev);
           isDeveloperRef.current = isDev;
         }

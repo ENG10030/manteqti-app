@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import crypto from 'crypto';
+import { randomBytes } from 'crypto';
 import { sendOTPEmail } from '@/lib/email';
-import { checkRateLimit, recordFailedAttempt } from '@/lib/rate-limit';
+import { hashToken } from '@/lib/security';
 
-export const dynamic = "force-dynamic";
+// Simple in-memory rate limit for forgot-password requests
+const resetAttempts = new Map<string, { count: number; lockedUntil: number }>();
+const MAX_RESET_ATTEMPTS = 3;
+const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
 
-// إرسال طلب استعادة كلمة المرور - OTP-based flow
+// Send password reset request
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -18,14 +21,18 @@ export async function POST(request: NextRequest) {
 
     const normalizedEmail = email.toLowerCase().trim();
 
-    // 🔒 Database-backed rate limiting (works across all serverless instances)
-    if (!(await checkRateLimit("forgot-password", "email", normalizedEmail))) {
-      return NextResponse.json({ 
-        error: 'طلبات كثيرة. حاول بعد 30 دقيقة' 
-      }, { status: 429 });
+    // Rate limiting check
+    const attempt = resetAttempts.get(normalizedEmail);
+    if (attempt) {
+      if (attempt.lockedUntil && Date.now() < attempt.lockedUntil) {
+        const remainingMinutes = Math.ceil((attempt.lockedUntil - Date.now()) / 60000);
+        return NextResponse.json({
+          error: `تم تجاوز عدد المحاولات. يرجى المحاولة بعد ${remainingMinutes} دقيقة`
+        }, { status: 429 });
+      }
     }
 
-    // البحث عن المستخدم بهذا البريد
+    // Find user - don't reveal if email exists
     const user = await db.user.findFirst({
       where: {
         OR: [
@@ -35,45 +42,52 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    // لأسباب أمنية، لا نكشف إذا كان البريد موجود أم لا
     if (!user) {
-      // 🔒 سجل المحاولة حتى لو البريد مش موجود (لمنع enumeration)
-      await recordFailedAttempt("forgot-password", "email", normalizedEmail, request, "Email not found in system");
       return NextResponse.json({
         success: true,
         message: 'إذا كان البريد مسجل، ستصلك رسالة لاستعادة كلمة المرور'
       });
     }
 
-    // إنشاء رمز OTP مكون من 6 أرقام
-    const otp = crypto.randomInt(100000, 999999).toString();
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 دقيقة
+    // Increment rate limit
+    const currentAttempt = attempt || { count: 0, lockedUntil: 0 };
+    currentAttempt.count += 1;
+    if (currentAttempt.count >= MAX_RESET_ATTEMPTS) {
+      currentAttempt.lockedUntil = Date.now() + LOCKOUT_DURATION;
+      resetAttempts.set(normalizedEmail, currentAttempt);
+      return NextResponse.json({
+        error: `تم تجاوز عدد المحاولات. يرجى المحاولة بعد 15 دقيقة`
+      }, { status: 429 });
+    }
+    resetAttempts.set(normalizedEmail, currentAttempt);
 
-    // حفظ الرمز في حقل passwordResetToken
+    // Generate secure reset token
+    const rawToken = randomBytes(32).toString('hex');
+    const otpCode = rawToken.substring(0, 6).toUpperCase();
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    // SECURITY: Hash the token before storing in database
+    const hashedToken = hashToken(rawToken);
+
     await db.user.update({
       where: { id: user.id },
       data: {
-        passwordResetToken: otp,
+        passwordResetToken: hashedToken,
         passwordResetExpires: expiresAt
       }
     });
 
-    // إرسال OTP عبر الإيميل
-    let emailSent = false;
+    // Send email with OTP
     try {
-      const emailTo = user.email || normalizedEmail;
-      const result = await sendOTPEmail({ to: emailTo, otp, name: user.name });
-      emailSent = result.success;
-      console.log(`📧 Reset password OTP email result: ${JSON.stringify(result)}`);
-    } catch (err: unknown) {
-      console.error('Error sending reset OTP email:', err);
+      await sendOTPEmail({ to: normalizedEmail, otp: otpCode, name: user.name });
+    } catch (err) {
+      console.error('Error sending reset email:', err);
     }
 
+    // SECURITY: Never include the raw token in response
     return NextResponse.json({
       success: true,
-      message: emailSent 
-        ? 'تم إرسال رمز الاستعادة إلى بريدك الإلكتروني ✅' 
-        : 'إذا كان البريد مسجل، ستصلك رسالة لاستعادة كلمة المرور',
+      message: 'تم إرسال رمز الاستعادة إلى بريدك الإلكتروني ✅'
     });
 
   } catch (error) {

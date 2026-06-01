@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { sendOTPEmail } from '@/lib/email';
 import crypto from 'crypto';
-import { checkRateLimit, recordFailedAttempt } from '@/lib/rate-limit';
 
-export const dynamic = "force-dynamic";
+// Rate limiting for OTP requests (in-memory)
+const otpRequestCounts = new Map<string, { count: number; lastRequest: number }>();
+const MAX_OTP_REQUESTS = 3; // max 3 requests per 5 minutes
+const OTP_REQUEST_WINDOW = 5 * 60 * 1000;
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,12 +20,22 @@ export async function POST(request: NextRequest) {
 
     const normalizedIdentifier = identifier.toLowerCase().trim();
 
-    // 🔒 Database-backed rate limiting (works across all serverless instances)
-    // 3 requests per 5 minutes
-    if (!(await checkRateLimit("request-otp", "email", normalizedIdentifier, 3, 5 * 60))) {
-      return NextResponse.json({ 
-        error: 'طلبات كثيرة. يرجى المحاولة بعد 5 دقائق' 
-      }, { status: 429 });
+    // Rate limit OTP requests
+    const requestCount = otpRequestCounts.get(normalizedIdentifier);
+    if (requestCount) {
+      const now = Date.now();
+      if (now - requestCount.lastRequest < OTP_REQUEST_WINDOW) {
+        if (requestCount.count >= MAX_OTP_REQUESTS) {
+          return NextResponse.json({ 
+            error: 'طلبات كثيرة. يرجى المحاولة بعد 5 دقائق' 
+          }, { status: 429 });
+        }
+      } else {
+        // Window expired, reset counter
+        otpRequestCounts.set(normalizedIdentifier, { count: 1, lastRequest: now });
+      }
+    } else {
+      otpRequestCounts.set(normalizedIdentifier, { count: 1, lastRequest: Date.now() });
     }
 
     // Find user by identifier or email
@@ -39,7 +51,6 @@ export async function POST(request: NextRequest) {
     // Always return the same success message to prevent email enumeration
     // Even if user doesn't exist, we return "success" to not leak info
     if (!user) {
-      await recordFailedAttempt("request-otp", "email", normalizedIdentifier, request, "Email not found in system");
       return NextResponse.json({ 
         success: true,
         message: 'إذا كان البريد مسجلاً، سيتم إرسال رمز التحقق' 

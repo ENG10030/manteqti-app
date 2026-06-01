@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { requireDeveloper } from '@/lib/auth-middleware';
 
 const fileMap: Record<string, string> = {
   'realtime': 'src/lib/realtime.ts',
@@ -9,17 +10,20 @@ const fileMap: Record<string, string> = {
   'payments': 'src/app/api/payments/route.ts',
   'payments-id': 'src/app/api/payments/[id]/route.ts',
   'schema': 'prisma/schema.prisma',
-  'page': 'src/app/page.tsx.backup', // Original app code (not the download page)
   'fileupload': 'src/components/file-upload.tsx',
 };
 
 export async function GET(request: NextRequest) {
+  // SECURITY: Require developer authentication
+  const { auth, errorResponse } = await requireDeveloper(request);
+  if (errorResponse || !auth) return errorResponse!;
+
   const searchParams = request.nextUrl.searchParams;
   const fileKey = searchParams.get('file') || '';
   const filePath = fileMap[fileKey];
 
   if (!filePath) {
-    return NextResponse.json({ error: 'File not found', available: Object.keys(fileMap) }, { status: 404 });
+    return NextResponse.json({ error: 'File not found' }, { status: 404 });
   }
 
   try {
@@ -29,11 +33,11 @@ export async function GET(request: NextRequest) {
     return new NextResponse(content, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'no-cache',
-        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-store',
+        // SECURITY: No CORS wildcard
       }
     });
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to read file: ' + filePath }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: 'File not found' }, { status: 404 });
   }
 }

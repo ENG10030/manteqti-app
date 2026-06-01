@@ -1,29 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import bcrypt from 'bcryptjs';
-import crypto from 'crypto';
-import { sendPasswordChangedEmail } from '@/lib/email';
-import { checkRateLimit } from '@/lib/rate-limit';
 
-export const dynamic = "force-dynamic";
-
-// 🔒 Timing-safe string comparison
-function safeCompare(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
+export async function GET(request: NextRequest) {
   try {
-    return crypto.timingSafeEqual(Buffer.from(a, 'utf-8'), Buffer.from(b, 'utf-8'));
-  } catch {
-    return false;
+    const { searchParams } = new URL(request.url);
+    const token = searchParams.get('token');
+
+    if (!token) {
+      return NextResponse.json({ error: 'الرمز غير موجود' }, { status: 400 });
+    }
+
+    const user = await db.user.findFirst({
+      where: { passwordResetToken: token }
+    });
+
+    if (!user) {
+      return NextResponse.json({ error: 'الرمز غير صالح' }, { status: 400 });
+    }
+
+    if (!user.passwordResetExpires || user.passwordResetExpires < new Date()) {
+      return NextResponse.json({ error: 'انتهت صلاحية الرمز' }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true, email: user.email });
+
+  } catch (error) {
+    console.error('Error verifying reset token:', error);
+    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }
 
-// POST - Reset password using OTP code
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, otp, newPassword, confirmPassword } = body;
+    const { token, newPassword, confirmPassword } = body;
 
-    if (!email || !otp || !newPassword || !confirmPassword) {
+    if (!token || !newPassword || !confirmPassword) {
       return NextResponse.json({ error: 'جميع الحقول مطلوبة' }, { status: 400 });
     }
 
@@ -31,46 +44,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'كلمتا المرور غير متطابقتين' }, { status: 400 });
     }
 
-    if (newPassword.length < 8) {
-      return NextResponse.json({ error: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل وتحتوي على حروف وأرقام' }, { status: 400 });
-    }
-
-    // 🔒 Check password strength
-    const hasLetter = /[a-zA-Z]/.test(newPassword);
-    const hasNumber = /[0-9]/.test(newPassword);
-    if (!hasLetter || !hasNumber) {
-      return NextResponse.json({ error: 'كلمة المرور يجب أن تحتوي على حروف وأرقام' }, { status: 400 });
-    }
-
-    const normalizedEmail = email.toLowerCase().trim();
-
-    // Rate limit: 5 attempts per 15 minutes per email
-    const allowed = await checkRateLimit('reset-password', 'email', normalizedEmail, 5, 15 * 60);
-    if (!allowed) {
-      return NextResponse.json({ error: 'طلبات كثيرة. حاول بعد 15 دقيقة' }, { status: 429 });
+    if (newPassword.length < 6) {
+      return NextResponse.json({ error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' }, { status: 400 });
     }
 
     const user = await db.user.findFirst({
-      where: {
-        OR: [
-          { email: normalizedEmail },
-          { identifier: normalizedEmail }
-        ]
-      }
+      where: { passwordResetToken: token }
     });
 
     if (!user) {
-      return NextResponse.json({ error: 'البريد الإلكتروني غير مسجل' }, { status: 400 });
+      return NextResponse.json({ error: 'الرمز غير صالح' }, { status: 400 });
     }
 
-    // Verify OTP — 🔒 timing-safe comparison
-    if (!safeCompare(user.passwordResetToken || '', otp)) {
-      return NextResponse.json({ error: 'رمز الاستعادة غير صحيح' }, { status: 400 });
-    }
-
-    // Check expiry
     if (!user.passwordResetExpires || user.passwordResetExpires < new Date()) {
-      return NextResponse.json({ error: 'انتهت صلاحية الرمز. يرجى طلب رمز جديد' }, { status: 400 });
+      return NextResponse.json({ error: 'انتهت صلاحية الرمز' }, { status: 400 });
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -82,14 +69,6 @@ export async function POST(request: NextRequest) {
         passwordResetExpires: null
       }
     });
-
-    // Send password change notification email (fire-and-forget)
-    const userEmail = user.email || user.identifier;
-    if (userEmail) {
-      sendPasswordChangedEmail({ to: userEmail, name: user.name }).catch(err => {
-        console.error('Failed to send password reset notification:', err);
-      });
-    }
 
     return NextResponse.json({ success: true, message: 'تم تغيير كلمة المرور بنجاح' });
 

@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireApprovedUser } from '@/lib/auth-middleware';
 
-export const dynamic = "force-dynamic";
-
 // الموافقة على التعليق أو رفضه
 export async function PUT(
   request: NextRequest,

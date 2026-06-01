@@ -1,13 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
-
-// CRITICAL: Get secret securely
-function getSecret() {
-  const s = process.env.JWT_SECRET;
-  if (!s && process.env.NODE_ENV === "production") throw new Error("JWT_SECRET not set");
-  return s || "manteqti-dev-only-secret";
-}
+import { JWT_SECRET } from "@/lib/auth";
 
 export async function GET(request: Request) {
   try {
@@ -19,13 +13,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ user: null });
     }
 
-    // CRITICAL: Always specify algorithms
-    const decoded = verify(token, getSecret(), { algorithms: ["HS256"] }) as { userId: string };
-    if (!decoded.userId) {
-      return NextResponse.json({ user: null });
-    }
+    const decoded = verify(token, JWT_SECRET) as { userId: string };
 
-    // CRITICAL FIX: Fetch FRESH data from DB — don't trust stale JWT
     const user = await db.user.findUnique({
       where: { id: decoded.userId },
       select: {
@@ -47,11 +36,6 @@ export async function GET(request: Request) {
 
     if (!user) {
       return NextResponse.json({ user: null });
-    }
-
-    // CRITICAL FIX: If user is blocked, return null — force re-login
-    if (user.isBlocked) {
-      return NextResponse.json({ user: null, blocked: true });
     }
 
     return NextResponse.json({ user });

@@ -4,8 +4,6 @@ import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
-export const dynamic = "force-dynamic";
-
 export async function GET(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -15,7 +13,7 @@ export async function GET(request: NextRequest) {
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+      decoded = verify(token, JWT_SECRET);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
@@ -73,7 +71,7 @@ export async function POST(request: NextRequest) {
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+      decoded = verify(token, JWT_SECRET);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
@@ -121,7 +119,7 @@ export async function DELETE(request: NextRequest) {
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+      decoded = verify(token, JWT_SECRET);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }

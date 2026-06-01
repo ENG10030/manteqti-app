@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { db } from "@/lib/db"
 
-export const dynamic = "force-dynamic";
-
 // حظر / إلغاء حظر المستخدم
 export async function POST(
   request: NextRequest,
@@ -138,12 +136,7 @@ export async function GET(
     const { id: userId } = await params
 
     const userRecord = await db.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true, name: true, email: true, phone: true, identifier: true,
-        role: true, isBlocked: true, blockedAt: true, blockReason: true,
-        emailVerified: true, isApproved: true, createdAt: true, updatedAt: true,
-      }
+      where: { id: userId }
     })
 
     if (!userRecord) {

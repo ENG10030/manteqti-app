@@ -7,10 +7,11 @@ export default function DownloadPage() {
 
   const files = [
     { name: 'src/app/page.tsx', path: '/api/get-file?page.tsx' },
-    { name: 'src/app/api/auth/dev-login/route.ts', path: '/api/get-file?dev-login-route.ts' },
-    { name: 'src/app/api/auth/login/route.ts', path: '/api/get-file?login-route.ts' },
-    { name: 'src/app/api/backup/route.ts', path: '/api/get-file?backup-route.ts' },
-    { name: 'src/app/api/users/[id]/approve/route.ts', path: '/api/get-file?approve-route.ts' },
+    { name: 'src/app/api/settings/route.ts', path: '/api/get-file?settings-route.ts' },
+    { name: 'src/app/api/payments/route.ts', path: '/api/get-file?payments-route.ts' },
+    { name: 'src/app/api/payments/[id]/route.ts', path: '/api/get-file?payments-id-route.ts' },
+    { name: 'src/app/api/apartments/[id]/route.ts', path: '/api/get-file?apartments-id-route.ts' },
+    { name: 'prisma/schema.prisma', path: '/api/get-file?schema.prisma' },
   ];
 
   useEffect(() => { setStatus('ready'); }, []);
@@ -44,7 +45,7 @@ export default function DownloadPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'manteqti-v67.zip';
+      a.download = 'manteqti-final-v43.zip';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -72,8 +73,8 @@ export default function DownloadPage() {
     <div style={{ minHeight: '100vh', background: '#0f172a', color: '#e2e8f0', fontFamily: 'system-ui, -apple-system, sans-serif', padding: '20px', direction: 'rtl' }}>
       <div style={{ maxWidth: '700px', margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: '40px', paddingTop: '40px' }}>
-          <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: '#22c55e', marginBottom: '10px' }}>📦 تحميل ملفات منطقتي - v67</h1>
-          <p style={{ color: '#94a3b8', fontSize: '14px' }}>إصلاح تسجيل الدخول + رسائل مختلفة + دخول المطور منفصل + نسخ احتياطي + حماية البيانات</p>
+          <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: '#22c55e', marginBottom: '10px' }}>📦 تحميل ملفات منطقتي - v43</h1>
+          <p style={{ color: '#94a3b8', fontSize: '14px' }}>آخر تحديثات مع إصلاح المدفوعات وتأكيد النشر ورفع صور متعددة</p>
         </div>
 
         {/* ZIP Download Button */}
@@ -98,7 +99,7 @@ export default function DownloadPage() {
           >
             {status === 'loading' ? '⏳ جاري التحميل...' : '⬇️ تحميل ملف ZIP كامل'}
           </button>
-          <p style={{ color: '#64748b', fontSize: '12px', marginTop: '12px' }}>manteqti-v67.zip</p>
+          <p style={{ color: '#64748b', fontSize: '12px', marginTop: '12px' }}>manteqti-final-v43.zip (51 KB)</p>
         </div>
 
         {/* Alternative Methods */}
@@ -139,7 +140,7 @@ export default function DownloadPage() {
 
         {/* Individual Files */}
         <div style={{ background: '#1e293b', borderRadius: '16px', padding: '20px', marginBottom: '24px' }}>
-          <h2 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '16px', color: '#a78bfa' }}>📄 الملفات المعدلة (5 ملفات)</h2>
+          <h2 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '16px', color: '#a78bfa' }}>📄 الملفات المعدلة (6 ملفات)</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {files.map(file => (
               <div key={file.name} style={{ background: '#0f172a', borderRadius: '10px', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>

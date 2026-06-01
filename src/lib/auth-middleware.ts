@@ -3,8 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
-
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+import { JWT_SECRET } from '@/lib/auth';
 
 export interface AuthContext {
   userId: string;
@@ -20,7 +19,7 @@ export interface AuthContext {
 export function isValidId(id: string): boolean {
   const cuidRegex = /^c[a-z0-9]{24}$/;
   const cuid2Regex = /^[a-z0-9]{24,32}$/;
-  return cuidRegex.test(id) || cuid2Regex.test(id) || id.length >= 10;
+  return cuidRegex.test(id) || cuid2Regex.test(id);
 }
 
 /**

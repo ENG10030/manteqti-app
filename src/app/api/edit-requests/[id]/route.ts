@@ -4,8 +4,6 @@ import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
-export const dynamic = "force-dynamic";
-
 // جلب طلب تعديل محدد
 export async function GET(
   request: NextRequest,
@@ -17,9 +15,8 @@ export async function GET(
     if (!token) {
       return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
     }
-    let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+      verify(token, JWT_SECRET);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
@@ -44,13 +41,6 @@ export async function GET(
       return NextResponse.json({ error: 'طلب التعديل غير موجود' }, { status: 404 });
     }
 
-    // IDOR fix: only DEVELOPER or the owner of the edit request can view it
-    const isDeveloper = decoded.role === 'DEVELOPER';
-    const isOwner = editRequest.userId === decoded.userId;
-    if (!isDeveloper && !isOwner) {
-      return NextResponse.json({ error: 'غير مصرح - لا يمكنك عرض هذا الطلب' }, { status: 403 });
-    }
-
     return NextResponse.json(editRequest);
   } catch (error) {
     console.error('Error fetching edit request:', error);
@@ -71,7 +61,7 @@ export async function PUT(
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+      decoded = verify(token, JWT_SECRET);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
@@ -193,7 +183,7 @@ export async function DELETE(
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] });
+      decoded = verify(token, JWT_SECRET);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }

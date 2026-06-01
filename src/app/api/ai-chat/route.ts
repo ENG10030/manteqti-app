@@ -1,8 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/auth';
-import { checkRateLimit } from '@/lib/rate-limit';
-
-export const dynamic = "force-dynamic";
 
 // ردود ذكية مبرمجة للمساعد
 const smartResponses: { keywords: string[]; reply: string }[] = [
@@ -59,15 +55,6 @@ const defaultReply = `🏠 أهلاً بك في منطقتي!
 كيف يمكنني مساعدتك؟`;
 
 export async function POST(request: NextRequest) {
-  const auth = authenticateRequest(request);
-  if (!auth) return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
-
-  // Rate limit: 20 requests per 15 minutes per user
-  const allowed = await checkRateLimit('ai-chat', 'userId', auth.user.id, 20, 15 * 60);
-  if (!allowed) {
-    return NextResponse.json({ error: 'طلبات كثيرة. حاول بعد 15 دقيقة' }, { status: 429 });
-  }
-
   try {
     const body = await request.json();
     const message = (body.message || body.text || '').toLowerCase().trim();
@@ -92,9 +79,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
-  const auth = authenticateRequest(request);
-  if (!auth) return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
-
+export async function GET() {
   return NextResponse.json({ status: 'ok' });
 }

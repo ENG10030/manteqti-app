@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { cookies } from 'next/headers';
-import { verify } from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
+import { requireDeveloper, requireApprovedUser } from '@/lib/auth-middleware';
 
-
-
+// GET - fetch single apartment (public)
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -16,8 +13,8 @@ export async function GET(
     const apartment = await db.apartment.findUnique({
       where: { id },
       include: {
-        inquiries: {
-          orderBy: { createdAt: 'desc' },
+        user: {
+          select: { id: true, name: true },
         },
       },
     });
@@ -33,23 +30,18 @@ export async function GET(
   }
 }
 
+// SECURITY: Removed PATCH - was completely unauthenticated
+
+// PUT - update apartment (DEVELOPER only)
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-    }
+  // SECURITY: Require developer authentication
+  const { auth, errorResponse } = await requireDeveloper(request);
+  if (errorResponse || !auth) return errorResponse!;
 
+  try {
     const { id } = await params;
     const body = await request.json();
 
@@ -65,19 +57,16 @@ export async function PUT(
     let updateData: Record<string, unknown> = {};
 
     if (body.action === 'approve') {
-      // الموافقة على العقار
       updateData = {
         status: 'available',
-        approvedBy: body.approvedBy || 'developer',
+        approvedBy: 'developer',
         approvedAt: new Date(),
       };
     } else if (body.action === 'reject') {
-      // رفض العقار
       updateData = {
         status: 'rejected',
       };
     } else {
-      // تحديث عادي
       updateData = {
         title: body.title,
         description: body.description,
@@ -109,23 +98,16 @@ export async function PUT(
   }
 }
 
+// DELETE - delete apartment (DEVELOPER only)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET);
-    } catch {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
-    }
+  // SECURITY: Require developer authentication
+  const { auth, errorResponse } = await requireDeveloper(request);
+  if (errorResponse || !auth) return errorResponse!;
 
+  try {
     const { id } = await params;
 
     await db.payment.deleteMany({ where: { inquiry: { apartmentId: id } } });
@@ -135,33 +117,6 @@ export async function DELETE(
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting apartment:', error);
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
-  }
-}
-
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
-    const body = await request.json();
-
-    const updateData: Record<string, unknown> = {};
-    
-    if (body.status !== undefined) updateData.status = body.status;
-    if (body.isFeatured !== undefined) updateData.isFeatured = body.isFeatured;
-    if (body.isVip !== undefined) updateData.isVip = body.isVip;
-
-
-    const apartment = await db.apartment.update({
-      where: { id },
-      data: updateData,
-    });
-
-    return NextResponse.json({ success: true, apartment });
-  } catch (error) {
-    console.error('Error patching apartment:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }
