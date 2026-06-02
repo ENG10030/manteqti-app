@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
-import { JWT_SECRET, createToken, createAuthResponse } from "@/lib/auth";
+import { sign } from "jsonwebtoken";
+
+const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { email, identifier, password } = body;
 
-    // Accept either email or identifier
     const loginIdentifier = (email || identifier || "").toLowerCase().trim();
 
     if (!loginIdentifier || !password) {
@@ -18,7 +19,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Find user by identifier
     const user = await db.user.findUnique({
       where: { identifier: loginIdentifier },
     });
@@ -46,28 +46,13 @@ export async function POST(request: Request) {
       );
     }
 
-    // SECURITY: Do NOT issue JWT token to unapproved users
-    if (!user.isApproved && user.role !== 'DEVELOPER') {
-      return NextResponse.json({
-        message: "حسابك قيد المراجعة. بانتظار موافقة الإدارة",
-        pendingApproval: true,
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          identifier: user.identifier,
-          role: user.role,
-          isApproved: false,
-        },
-      });
-      // No cookie is set - user cannot access any protected routes
-    }
-
-    const token = createToken(
-      { userId: user.id, identifier: user.identifier, role: user.role }
+    const token = sign(
+      { userId: user.id, identifier: user.identifier, role: user.role },
+      JWT_SECRET,
+      { expiresIn: "7d" }
     );
 
-    return createAuthResponse({
+    const response = NextResponse.json({
       message: "تم تسجيل الدخول بنجاح",
       user: {
         id: user.id,
@@ -75,11 +60,18 @@ export async function POST(request: Request) {
         name: user.name,
         identifier: user.identifier,
         role: user.role,
-        emailVerified: user.emailVerified,
-        isApproved: user.isApproved,
       },
-    }, token);
+    });
 
+    response.cookies.set("auth-token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7,
+      path: "/",
+    });
+
+    return response;
   } catch (error) {
     console.error("Login error:", error);
     return NextResponse.json(
