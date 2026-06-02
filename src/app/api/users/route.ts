@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { hash } from "bcryptjs"
+import { broadcastEvent, WebhookEvents } from "@/lib/webhook"
 
-// جلب جميع المستخدمين (للمطور فقط)
+// جلب جميع المستخدمين (للمطور)
 export async function GET(request: NextRequest) {
   try {
     const user = await getCurrentUser(request)
@@ -16,6 +18,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const blocked = searchParams.get("blocked")
+    const pending = searchParams.get("pending")
 
     const whereClause: Record<string, unknown> = {}
 
@@ -23,6 +26,11 @@ export async function GET(request: NextRequest) {
       whereClause.isBlocked = true
     } else if (blocked === "false") {
       whereClause.isBlocked = false
+    }
+
+    if (pending === "true") {
+      whereClause.isApproved = false
+      whereClause.role = "USER"
     }
 
     const users = await db.user.findMany({
@@ -38,6 +46,7 @@ export async function GET(request: NextRequest) {
         identifier: true,
         role: true,
         isBlocked: true,
+        isApproved: true,
         blockedAt: true,
         blockReason: true,
         createdAt: true,
@@ -55,11 +64,77 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST محمية - لا يسمح بإنشاء مستخدم مباشرة من هنا
-// التسجيل لازم يتم من /api/auth/register فقط
+// إنشاء مستخدم جديد (تسجيل)
 export async function POST(request: NextRequest) {
-  return NextResponse.json(
-    { error: "يرجى استخدام صفحة التسجيل" },
-    { status: 403 }
-  )
+  try {
+    const body = await request.json()
+    const { name, email, password, phone, identifier } = body
+
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: "البريد الإلكتروني وكلمة المرور مطلوبان" },
+        { status: 400 }
+      )
+    }
+
+    // التحقق من عدم وجود المستخدم (باستخدام email - حقل فريد)
+    const existingUser = await db.user.findUnique({
+      where: { identifier: email.toLowerCase().trim() }
+    })
+
+    if (existingUser) {
+      return NextResponse.json(
+        { error: "البريد الإلكتروني مستخدم بالفعل" },
+        { status: 400 }
+      )
+    }
+
+    // التحقق من عدم وجود المعرف (باستخدام findFirst - ليس فريد)
+    if (identifier) {
+      const existingIdentifier = await db.user.findFirst({
+        where: { identifier: identifier.toLowerCase().trim() }
+      })
+
+      if (existingIdentifier) {
+        return NextResponse.json(
+          { error: "المعرف مستخدم بالفعل" },
+          { status: 400 }
+        )
+      }
+    }
+
+    // تشفير كلمة المرور
+    const hashedPassword = await hash(password, 12)
+
+    // إنشاء المستخدم
+    const user = await db.user.create({
+      data: {
+        identifier: identifier?.toLowerCase().trim() || email.toLowerCase().trim(),
+        name: name || email.split('@')[0],
+        email: email.toLowerCase().trim(),
+        password: hashedPassword,
+        phone: phone || null,
+        role: "USER"
+      }
+    })
+
+    try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
+
+    return NextResponse.json({
+      success: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    })
+
+  } catch (error) {
+    console.error("Create user error:", error)
+    return NextResponse.json(
+      { error: "حدث خطأ أثناء إنشاء الحساب" },
+      { status: 500 }
+    )
+  }
 }

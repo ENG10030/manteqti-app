@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireDeveloper, getAuthContext } from "@/lib/auth-middleware";
 import { sanitizeString } from "@/lib/auth-middleware";
+import { broadcastEvent, WebhookEvents } from "@/lib/webhook";
 
 // Validate fee value - must be non-negative integer
 function validateFee(value: any): number {
@@ -268,6 +269,8 @@ export async function PUT(request: Request) {
         },
       });
     } catch {}
+
+    try { await broadcastEvent(WebhookEvents.SETTINGS_UPDATED); } catch {}
 
     return NextResponse.json({
       message: "تم تحديث الإعدادات بنجاح ✅",

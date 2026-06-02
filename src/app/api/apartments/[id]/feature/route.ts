@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { broadcastEvent, WebhookEvents } from "@/lib/webhook"
 
 // تمييز / إلغاء تمييز عقار
 export async function POST(
@@ -18,15 +19,10 @@ export async function POST(
     }
 
     const { id: apartmentId } = await params
-
-    let body: any = {};
-    try {
-      body = await request.json();
-    } catch {
-      body = { action: "feature", featuredType: "featured" };
-    }
-
-    const { action, featuredType } = body
+    const body = await request.json()
+    const { action, featuredType } = body 
+    // action: "feature" or "unfeature"
+    // featuredType: "featured" or "vip"
 
     const apartment = await db.apartment.findUnique({
       where: { id: apartmentId }
@@ -39,7 +35,7 @@ export async function POST(
       )
     }
 
-    if (action === "feature" || !action) {
+    if (action === "feature") {
       const isVip = featuredType === "vip"
       
       const updatedApartment = await db.apartment.update({
@@ -52,6 +48,7 @@ export async function POST(
 
       const typeLabel = isVip ? "VIP" : "مميز"
       
+      try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
       return NextResponse.json({
         success: true,
         apartment: updatedApartment,
@@ -67,6 +64,8 @@ export async function POST(
         }
       })
 
+      try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
+
       return NextResponse.json({
         success: true,
         apartment: updatedApartment,
@@ -75,13 +74,13 @@ export async function POST(
 
     } else {
       return NextResponse.json(
-        { error: "إجراء غير صالح - استخدم action: feature أو unfeature" },
+        { error: "إجراء غير صالح" },
         { status: 400 }
       )
     }
 
-  } catch (error: any) {
-    console.error("Feature apartment error:", error?.message || error);
+  } catch (error) {
+    console.error("Feature apartment error:", error)
     return NextResponse.json(
       { error: "حدث خطأ أثناء معالجة الطلب" },
       { status: 500 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireApprovedUser } from '@/lib/auth-middleware';
 import { sanitizeString } from '@/lib/security';
+import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
 
 // Fetch comments
 export async function GET(request: NextRequest) {
@@ -83,6 +84,8 @@ export async function POST(request: NextRequest) {
         }
       }
     });
+
+    try { await broadcastEvent(WebhookEvents.NOTIFICATIONS_CHANGED); } catch {}
 
     return NextResponse.json({ 
       success: true, 

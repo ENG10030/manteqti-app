@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
+import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
 
 
 
@@ -37,6 +38,7 @@ export async function PATCH(
       }
     });
 
+    try { await broadcastEvent(WebhookEvents.MESSAGES_CHANGED); } catch {}
     return NextResponse.json({
       id: inquiry.id,
       lifecycleStatus: inquiry.lifecycleStatus

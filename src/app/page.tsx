@@ -283,15 +283,21 @@ function App() {
   const fetchApartmentsRef = useRef<((retry?: number, isInitial?: boolean) => Promise<void>) | undefined>(undefined);
   const fetchMessagesRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const fetchSettingsRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const fetchDevDataRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const fetchEditRequestsRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const tabScrollRef = useRef<HTMLDivElement>(null);
   const tabButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const currentUserRef = useRef<User | null>(null);
   const isDeveloperRef = useRef(false);
   const initialLoadRef = useRef(true);
+  const fetchUserPaymentsRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const recheckAuthRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
   // Keep refs in sync with state (no re-renders, just ref updates)
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
   useEffect(() => { isDeveloperRef.current = isDeveloper; }, [isDeveloper]);
+  useEffect(() => { fetchUserPaymentsRef.current = fetchUserPayments; });
+  useEffect(() => { recheckAuthRef.current = recheckAuth; });
 
   // Socket.io - connect to Render realtime service (or local for dev)
   useEffect(() => {
@@ -324,9 +330,30 @@ function App() {
         socketRef.current = socket;
         socket.on('connect', () => { isRealtimeConnectedRef.current = true; });
         socket.on('disconnect', () => { isRealtimeConnectedRef.current = false; });
-        socket.on('apartments-changed', () => { fetchApartmentsRef.current?.(0, false); });
-        socket.on('messages-changed', () => { if (currentUserRef.current) fetchMessagesRef.current?.(); });
+        // Apartments changed: refresh list + if dev, refresh dev panel data
+        socket.on('apartments-changed', () => { 
+          fetchApartmentsRef.current?.(0, false);
+          if (isDeveloperRef.current) {
+            fetchDevDataRef.current?.();
+            fetchEditRequestsRef.current?.();
+          }
+        });
+        // Messages/inquiries changed: refresh messages + if dev, refresh dev messages
+        socket.on('messages-changed', () => { 
+          if (currentUserRef.current) fetchMessagesRef.current?.();
+          if (isDeveloperRef.current) fetchDevDataRef.current?.();
+        });
         socket.on('notification', (data: { event: string }) => { if (data.event === 'settings-updated') fetchSettingsRef.current?.(); });
+        // User changed (block/unblock/approve/reject/delete): recheck auth + refresh relevant data
+        socket.on('user-changed', () => { 
+          if (currentUserRef.current) recheckAuthRef.current?.();
+          if (isDeveloperRef.current) fetchDevDataRef.current?.();
+        });
+        // Payments/wallet changed: refresh user payments + if dev, refresh dev data
+        socket.on('payments-changed', () => { 
+          if (currentUserRef.current) fetchUserPaymentsRef.current?.();
+          if (isDeveloperRef.current) fetchDevDataRef.current?.();
+        });
         socket.on('online-count', (data: { count: number }) => { onlineCountRef.current = data.count; });
         socket.on('connect_error', () => { isRealtimeConnectedRef.current = false; });
         cleanupFn = () => { socket.disconnect(); socketRef.current = null; };
@@ -445,6 +472,29 @@ function App() {
         setUserPayments(myPayments);
         const paidIds = myPayments.filter((p: Payment) => p.status === 'Paid').map((p: Payment) => p.inquiry?.apartmentId).filter((id): id is string => Boolean(id));
         setUserPaidApartments(paidIds);
+      }
+    } catch {}
+  };
+
+  // Re-check auth — used when user-changed event fires (e.g., user blocked/unblocked)
+  const recheckAuth = async () => {
+    try {
+      const authRes = await fetch('/api/auth/me');
+      const authData = await authRes.json();
+      if (authData.user) {
+        setCurrentUser(authData.user);
+        currentUserRef.current = authData.user;
+        setIsBlocked(!!authData.user.isBlocked);
+        const isDev = authData.user.identifier === DEVELOPER_EMAIL;
+        setIsDeveloper(isDev);
+        isDeveloperRef.current = isDev;
+      } else {
+        // Session expired or user deleted
+        setCurrentUser(null);
+        currentUserRef.current = null;
+        setIsBlocked(false);
+        setIsDeveloper(false);
+        isDeveloperRef.current = false;
       }
     } catch {}
   };
@@ -585,6 +635,8 @@ function App() {
     } catch {}
   };
   useEffect(() => { fetchSettingsRef.current = fetchSettings; });
+  useEffect(() => { fetchDevDataRef.current = fetchDevData; });
+  useEffect(() => { fetchEditRequestsRef.current = fetchEditRequests; });
 
   // Auto-refresh settings every 30 seconds so users see developer changes immediately
   useEffect(() => {

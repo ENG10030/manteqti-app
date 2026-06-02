@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
+import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
 
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET);
+      decoded = verify(token, process.env.JWT_SECRET || "manteqti-secret-key-2024");
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    try { await broadcastEvent(WebhookEvents.MESSAGES_CHANGED); } catch {}
     return NextResponse.json({
       success: true,
       inquiry: {

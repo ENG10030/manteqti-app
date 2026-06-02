@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { JWT_SECRET } from "@/lib/auth";
 import { getClientIp } from "@/lib/rate-limit";
+import { broadcastEvent, WebhookEvents } from "@/lib/webhook";
 
 export const dynamic = "force-dynamic";
 
@@ -333,6 +334,7 @@ export async function PUT(request: NextRequest) {
         });
       } catch {}
 
+      try { await broadcastEvent(WebhookEvents.PAYMENTS_CHANGED); } catch {}
       return NextResponse.json({
         success: true,
         message: `تم تأكيد الشحن بنجاح — رصيد المستخدم الآن ${updatedUser.walletBalance.toLocaleString()} ج.م`,
@@ -373,6 +375,7 @@ export async function PUT(request: NextRequest) {
         });
       } catch {}
 
+      try { await broadcastEvent(WebhookEvents.PAYMENTS_CHANGED); } catch {}
       return NextResponse.json({ success: true, message: "تم رفض طلب الشحن" });
     }
 
@@ -439,6 +442,7 @@ export async function PUT(request: NextRequest) {
         });
       } catch {}
 
+      try { await broadcastEvent(WebhookEvents.PAYMENTS_CHANGED); } catch {}
       return NextResponse.json({ success: true, message: "تم استرداد المبلغ بنجاح" });
     }
 
@@ -494,6 +498,7 @@ export async function PUT(request: NextRequest) {
         });
       } catch {}
 
+      try { await broadcastEvent(WebhookEvents.PAYMENTS_CHANGED); } catch {}
       return NextResponse.json({
         success: true,
         message: `تم تعديل الرصيد بنجاح — الرصيد الجديد: ${updatedUser.walletBalance.toLocaleString()} ج.م`,
@@ -614,6 +619,7 @@ async function handleBulkConfirm(
     });
   } catch {}
 
+  try { await broadcastEvent(WebhookEvents.PAYMENTS_CHANGED); } catch {}
   return NextResponse.json({
     success: true,
     message: `تم تأكيد ${confirmedCount} معاملة بنجاح${skippedCount > 0 ? ` — تم تخطي ${skippedCount}` : ""}`,
@@ -692,6 +698,7 @@ async function handleBulkReject(
     });
   } catch {}
 
+  try { await broadcastEvent(WebhookEvents.PAYMENTS_CHANGED); } catch {}
   return NextResponse.json({
     success: true,
     message: `تم رفض ${rejectedCount} معاملة بنجاح${skippedCount > 0 ? ` — تم تخطي ${skippedCount}` : ""}`,

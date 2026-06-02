@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireDeveloper, requireApprovedUser } from '@/lib/auth-middleware';
+import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
 
 // GET - fetch single apartment (public)
 export async function GET(
@@ -91,6 +92,8 @@ export async function PUT(
       data: updateData,
     });
 
+    try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
+
     return NextResponse.json({ success: true, apartment });
   } catch (error) {
     console.error('Error updating apartment:', error);
@@ -113,6 +116,8 @@ export async function DELETE(
     await db.payment.deleteMany({ where: { inquiry: { apartmentId: id } } });
     await db.inquiry.deleteMany({ where: { apartmentId: id } });
     await db.apartment.delete({ where: { id } });
+
+    try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
 
     return NextResponse.json({ success: true });
   } catch (error) {

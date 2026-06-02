@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
+import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
 
 
 
@@ -54,6 +55,7 @@ export async function DELETE(
       await db.like.delete({ where: { id } });
     }
 
+    try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting like:', error);

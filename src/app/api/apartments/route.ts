@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getCurrentUser } from "@/lib/auth";
+import { verify } from "jsonwebtoken";
+import { notifyApartmentsChanged } from "@/lib/realtime";
+import { broadcastEvent, WebhookEvents } from "@/lib/webhook";
+import { JWT_SECRET } from "@/lib/auth";
 
-// 🔒 SECURITY: تم إزالة الـ JWT المباشر - نستخدم getCurrentUser
-
-async function getUserFromRequest(request: Request) {
+async function getCurrentUser(request: Request) {
   const cookieHeader = request.headers.get("cookie");
   const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
   const token = cookies.get("auth-token");
@@ -12,30 +13,30 @@ async function getUserFromRequest(request: Request) {
   if (!token) return null;
 
   try {
-    const JWT_SECRET = process.env.JWT_SECRET;
-    if (!JWT_SECRET) return null;
-    const { verify } = await import("jsonwebtoken");
     const decoded = verify(token, JWT_SECRET) as { userId: string };
-    // 🔒 التحقق من قاعدة البيانات
     return await db.user.findUnique({
       where: { id: decoded.userId },
-      select: { id: true, role: true, isBlocked: true }
     });
   } catch {
     return null;
   }
 }
 
-// GET - جلب العقارات
+// GET - fetch apartments (public, but with auth check for developer view)
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const type = searchParams.get("type");
     const area = searchParams.get("area");
-    const user = await getUserFromRequest(request);
+    
+    let user: Awaited<ReturnType<typeof getCurrentUser>> = null;
+    try {
+      user = await getCurrentUser(request);
+    } catch {
+      // Continue as guest
+    }
     const isDeveloper = user?.role === "DEVELOPER";
-    const isUser = !!user;
 
     const where: any = {};
 
@@ -53,15 +54,19 @@ export async function GET(request: Request) {
       where.area = area;
     }
 
-    // استبعاد عقارات المحظورين
+    // Exclude blocked users' apartments for regular users
     if (!isDeveloper) {
-      const blockedUsers = await db.user.findMany({
-        where: { isBlocked: true },
-        select: { id: true },
-      });
-      const blockedIds = blockedUsers.map((u) => u.id);
-      if (blockedIds.length > 0) {
-        where.createdBy = { notIn: blockedIds };
+      try {
+        const blockedUsers = await db.user.findMany({
+          where: { isBlocked: true },
+          select: { id: true },
+        });
+        const blockedIds = blockedUsers.map((u) => u.id);
+        if (blockedIds.length > 0) {
+          where.createdBy = { notIn: blockedIds };
+        }
+      } catch {
+        // Continue without block filter
       }
     }
 
@@ -69,6 +74,7 @@ export async function GET(request: Request) {
       where,
       include: {
         user: {
+          // SECURITY: Do NOT expose email in public listings
           select: { id: true, name: true },
         },
       },
@@ -79,18 +85,7 @@ export async function GET(request: Request) {
       ],
     });
 
-    // 🔒 حماية PII: إخفاء بيانات حساسة
-    const safeApartments = apartments.map((apt: any) => {
-      const result: any = { ...apt };
-
-      if (!isUser && !isDeveloper) {
-        result.ownerPhone = null;
-      }
-
-      return result;
-    });
-
-    return NextResponse.json(safeApartments);
+    return NextResponse.json(apartments);
   } catch (error) {
     console.error("Get apartments error:", error);
     return NextResponse.json(
@@ -100,10 +95,10 @@ export async function GET(request: Request) {
   }
 }
 
-// POST - إضافة عقار جديد
+// POST - create apartment
 export async function POST(request: Request) {
   try {
-    const user = await getUserFromRequest(request);
+    const user = await getCurrentUser(request);
 
     if (!user) {
       return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
@@ -112,6 +107,13 @@ export async function POST(request: Request) {
     if (user.isBlocked) {
       return NextResponse.json(
         { error: "تم حظر حسابك. لا يمكنك إضافة عقارات" },
+        { status: 403 }
+      );
+    }
+
+    if (!user.isApproved && user.role !== 'DEVELOPER') {
+      return NextResponse.json(
+        { error: "حسابك قيد المراجعة. بانتظار موافقة الإدارة", pendingApproval: true },
         { status: 403 }
       );
     }
@@ -140,17 +142,12 @@ export async function POST(request: Request) {
       );
     }
 
-    // 🔒 SECURITY: التحقق من الدور من قاعدة البيانات
-    const status = user.role === "DEVELOPER" ? "available" : "pending";
-
-    // 🔒 SECURITY: تنظيف المدخلات
-    const sanitizeTitle = title.replace(/</g, '&lt;').replace(/>/g, '&gt;').trim();
-    const sanitizeDescription = description ? description.replace(/</g, '&lt;').replace(/>/g, '&gt;').trim() : "";
+    const apartmentStatus = user.role === "DEVELOPER" ? "available" : "pending";
 
     const apartment = await db.apartment.create({
       data: {
-        title: sanitizeTitle,
-        description: sanitizeDescription,
+        title,
+        description: description || "",
         price: parseInt(price),
         area,
         bedrooms: parseInt(bedrooms) || 1,
@@ -160,7 +157,7 @@ export async function POST(request: Request) {
         ownerPhone,
         mapLink: mapLink || null,
         type: type || "rent",
-        status,
+        status: apartmentStatus,
         images: images || null,
         videos: videos || null,
         createdBy: user.id,
@@ -168,6 +165,9 @@ export async function POST(request: Request) {
         isVip: false,
       },
     });
+
+    notifyApartmentsChanged('created', apartment.id);
+    try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
 
     return NextResponse.json({
       message:

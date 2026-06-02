@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
+import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
 
 export async function GET() {
   try {
@@ -89,6 +90,8 @@ export async function POST(request: NextRequest) {
         apartment: true
       }
     });
+
+    try { await broadcastEvent(WebhookEvents.NOTIFICATIONS_CHANGED); } catch {}
 
     return NextResponse.json({
       id: inquiry.id,

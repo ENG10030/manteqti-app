@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { JWT_SECRET } from "@/lib/auth";
+import { broadcastEvent, WebhookEvents } from "@/lib/webhook";
 
 const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
 
@@ -132,6 +133,8 @@ export async function POST(request: Request) {
         data: { status: "hidden" },
       });
 
+      try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
+
       return NextResponse.json({
         success: true,
         message: "تم حظر المستخدم وإخفاء عقاراته",
@@ -152,6 +155,8 @@ export async function POST(request: Request) {
         where: { createdBy: userId, status: "hidden" },
         data: { status: "pending" },
       });
+
+      try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
 
       return NextResponse.json({
         success: true,
@@ -201,6 +206,8 @@ export async function DELETE(request: Request) {
       where: { createdBy: userId, status: "hidden" },
       data: { status: "pending" },
     });
+
+    try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
 
     return NextResponse.json({
       success: true,

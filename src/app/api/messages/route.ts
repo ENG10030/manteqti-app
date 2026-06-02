@@ -5,6 +5,7 @@ import { verify } from 'jsonwebtoken';
 import { requireApprovedUser } from '@/lib/auth-middleware';
 import { sendNewMessageEmail } from '@/lib/email';
 import { notifyRealtime } from '@/lib/realtime';
+import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
 import { JWT_SECRET } from '@/lib/auth';
 
 // Helper: get authenticated user from token
@@ -116,6 +117,7 @@ export async function POST(request: NextRequest) {
 
     // Notify connected clients about new message
     notifyRealtime('message-sent', { senderId: auth.userId, receiverId });
+    try { await broadcastEvent(WebhookEvents.MESSAGES_CHANGED); } catch {}
 
     return NextResponse.json({ success: true, message });
   } catch (error) {
@@ -170,6 +172,8 @@ export async function DELETE(request: NextRequest) {
         },
       });
     } catch {}
+
+    try { await broadcastEvent(WebhookEvents.MESSAGES_CHANGED); } catch {}
 
     return NextResponse.json({ success: true, message: 'تم حذف الرسالة' });
   } catch (error) {

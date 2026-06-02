@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getAuthContext, requireDeveloper } from '@/lib/auth-middleware';
+import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
 
 export async function GET(
   request: NextRequest,
@@ -75,6 +76,8 @@ export async function PUT(
     }
   });
 
+  try { await broadcastEvent(WebhookEvents.PAYMENTS_CHANGED); } catch {}
+
   return NextResponse.json({
     id: payment.id,
     status: payment.status,
@@ -99,6 +102,8 @@ export async function PATCH(
       inquiryStatus: data.inquiryStatus
     }
   });
+
+  try { await broadcastEvent(WebhookEvents.PAYMENTS_CHANGED); } catch {}
 
   return NextResponse.json({
     id: payment.id,

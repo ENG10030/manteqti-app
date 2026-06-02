@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { broadcastEvent, WebhookEvents } from "@/lib/webhook"
 
 // حظر / إلغاء حظر المستخدم
 export async function POST(
@@ -69,6 +70,8 @@ export async function POST(
         });
       } catch {}
 
+      try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
+
       return NextResponse.json({
         success: true,
         message: "تم حظر المستخدم وإخفاء جميع عقاراته"
@@ -96,6 +99,8 @@ export async function POST(
           },
         });
       } catch {}
+
+      try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
 
       return NextResponse.json({
         success: true,

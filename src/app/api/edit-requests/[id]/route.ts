@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
+import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
 
 // جلب طلب تعديل محدد
 export async function GET(
@@ -137,6 +138,8 @@ export async function PUT(
         },
       });
 
+      try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
+
       return NextResponse.json({
         success: true,
         editRequest: updatedRequest,
@@ -154,6 +157,8 @@ export async function PUT(
           reviewNotes: body.reviewNotes || null,
         },
       });
+
+      try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
 
       return NextResponse.json({
         success: true,
@@ -209,6 +214,8 @@ export async function DELETE(
     await db.propertyEditRequest.delete({
       where: { id },
     });
+
+    try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
 
     return NextResponse.json({ success: true, message: 'تم حذف طلب التعديل' });
   } catch (error) {

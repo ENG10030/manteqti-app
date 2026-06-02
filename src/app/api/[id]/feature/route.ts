@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { broadcastEvent, WebhookEvents } from "@/lib/webhook"
 
 // تمييز / إلغاء تمييز عقار
 export async function POST(
@@ -45,6 +46,8 @@ export async function POST(
         }
       })
 
+      try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
+
       const typeLabel = isVip ? "VIP" : "مميز"
       
       return NextResponse.json({
@@ -61,6 +64,8 @@ export async function POST(
           isVip: false
         }
       })
+
+      try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
 
       return NextResponse.json({
         success: true,

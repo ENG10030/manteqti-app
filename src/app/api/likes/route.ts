@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { requireApprovedUser } from '@/lib/auth-middleware';
 import { JWT_SECRET } from '@/lib/auth';
+import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
 
 // جلب كل الإعجابات أو إعجابات عقار معين
 export async function GET(request: NextRequest) {
@@ -85,6 +86,8 @@ export async function POST(request: NextRequest) {
         }
       }
     });
+
+    try { await broadcastEvent(WebhookEvents.NOTIFICATIONS_CHANGED); } catch {}
 
     return NextResponse.json({ success: true, like });
   } catch (error) {

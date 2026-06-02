@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { JWT_SECRET } from "@/lib/auth";
 import { checkRateLimit, recordFailedAttempt, getClientIp } from "@/lib/rate-limit";
+import { broadcastEvent, WebhookEvents } from "@/lib/webhook";
 import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
@@ -383,6 +384,7 @@ export async function POST(request: NextRequest) {
       }
 
       // --- Step 12: Return Response ---
+      try { await broadcastEvent(WebhookEvents.PAYMENTS_CHANGED); } catch {}
       return NextResponse.json({
         success: true,
         message: autoConfirm

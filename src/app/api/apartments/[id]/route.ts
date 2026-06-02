@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { notifyApartmentsChanged } from "@/lib/realtime";
+import { broadcastEvent, WebhookEvents } from "@/lib/webhook";
 import { sendApartmentApprovedEmail, sendApartmentRejectedEmail } from "@/lib/email";
 import { JWT_SECRET } from "@/lib/auth";
 
@@ -114,6 +115,7 @@ export async function PUT(
     });
 
     notifyApartmentsChanged('updated', id);
+    try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
 
     return NextResponse.json({
       message: "تم تحديث العقار بنجاح",
@@ -169,6 +171,7 @@ export async function PATCH(
     });
 
     notifyApartmentsChanged('approved', id);
+    try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
 
     if (apartment.createdBy) {
       const owner = await db.user.findUnique({ where: { id: apartment.createdBy }, select: { name: true, email: true } });
@@ -225,6 +228,7 @@ export async function DELETE(
     });
 
     notifyApartmentsChanged('deleted', id);
+    try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
 
     return NextResponse.json({ message: "تم حذف العقار بنجاح" });
   } catch (error) {

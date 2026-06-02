@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { broadcastEvent, WebhookEvents } from "@/lib/webhook"
 
 // جلب تفاصيل المستخدم الكاملة مع كل نشاطاته (للمطور)
 export async function GET(
@@ -295,6 +296,8 @@ export async function DELETE(
         where: { id: userId }
       })
     })
+
+    try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
 
     return NextResponse.json({
       success: true,
