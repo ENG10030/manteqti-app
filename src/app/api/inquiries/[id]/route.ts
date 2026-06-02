@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
+import { sendInquiryApprovedEmail, sendNewInquiryEmail } from '@/lib/email';
 
 
 
@@ -39,6 +40,18 @@ export async function PATCH(
     });
 
     try { await broadcastEvent(WebhookEvents.MESSAGES_CHANGED); } catch {}
+
+    // إرسال إيميل للمستخدم عند الموافقة
+    if (data.lifecycleStatus === 'approved') {
+      const inquiryUser = await db.inquiry.findUnique({
+        where: { id },
+        include: { apartment: { select: { title: true } }, user: { select: { name: true, email: true } } },
+      });
+      if (inquiryUser?.user?.email) {
+        try { await sendInquiryApprovedEmail({ to: inquiryUser.user.email, name: inquiryUser.user.name, apartmentTitle: inquiryUser.apartment?.title }); } catch {}
+      }
+    }
+
     return NextResponse.json({
       id: inquiry.id,
       lifecycleStatus: inquiry.lifecycleStatus

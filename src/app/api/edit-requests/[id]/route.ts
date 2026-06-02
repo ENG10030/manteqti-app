@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
+import { sendEditRequestApprovedEmail, sendEditRequestRejectedEmail } from '@/lib/email';
 
 // جلب طلب تعديل محدد
 export async function GET(
@@ -140,6 +141,17 @@ export async function PUT(
 
       try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
 
+      // إرسال إيميل للمستخدم
+      try {
+        const editUser = await db.propertyEditRequest.findUnique({
+          where: { id },
+          include: { user: { select: { name: true, email: true } }, apartment: { select: { title: true } } },
+        });
+        if (editUser?.user?.email) {
+          await sendEditRequestApprovedEmail({ to: editUser.user.email, name: editUser.user.name, apartmentTitle: editRequest.apartment.title || '' });
+        }
+      } catch {}
+
       return NextResponse.json({
         success: true,
         editRequest: updatedRequest,
@@ -159,6 +171,17 @@ export async function PUT(
       });
 
       try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
+
+      // إرسال إيميل رفض للمستخدم
+      try {
+        const editUser = await db.propertyEditRequest.findUnique({
+          where: { id },
+          include: { user: { select: { name: true, email: true } } },
+        });
+        if (editUser?.user?.email) {
+          await sendEditRequestRejectedEmail({ to: editUser.user.email, name: editUser.user.name, apartmentTitle: editRequest.apartment.title || '', reason: body.reviewNotes || undefined });
+        }
+      } catch {}
 
       return NextResponse.json({
         success: true,

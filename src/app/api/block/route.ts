@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { JWT_SECRET } from "@/lib/auth";
 import { broadcastEvent, WebhookEvents } from "@/lib/webhook";
+import { sendUserBlockedEmail, sendUserUnblockedEmail } from '@/lib/email';
 
 const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
 
@@ -135,6 +136,9 @@ export async function POST(request: Request) {
 
       try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
 
+      // إرسال إيميل حظر
+      try { await sendUserBlockedEmail({ to: user.email || '', name: user.name, reason: reason || 'تم الحظر من قبل الإدارة' }); } catch {}
+
       return NextResponse.json({
         success: true,
         message: "تم حظر المستخدم وإخفاء عقاراته",
@@ -157,6 +161,9 @@ export async function POST(request: Request) {
       });
 
       try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
+
+      // إرسال إيميل إلغاء حظر
+      try { await sendUserUnblockedEmail({ to: user.email || '', name: user.name }); } catch {}
 
       return NextResponse.json({
         success: true,
@@ -208,6 +215,9 @@ export async function DELETE(request: Request) {
     });
 
     try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
+
+    // إرسال إيميل إلغاء حظر
+    try { await sendUserUnblockedEmail({ to: user.email || '', name: user.name }); } catch {}
 
     return NextResponse.json({
       success: true,

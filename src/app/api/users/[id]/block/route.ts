@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { broadcastEvent, WebhookEvents } from "@/lib/webhook"
+import { sendUserBlockedEmail, sendUserUnblockedEmail } from '@/lib/email'
 
 // حظر / إلغاء حظر المستخدم
 export async function POST(
@@ -72,6 +73,9 @@ export async function POST(
 
       try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
 
+      // إرسال إيميل حظر للمستخدم
+      try { await sendUserBlockedEmail({ to: targetUser.email || '', name: targetUser.name, reason: reason || 'تم الحظر من قبل الإدارة' }); } catch {}
+
       return NextResponse.json({
         success: true,
         message: "تم حظر المستخدم وإخفاء جميع عقاراته"
@@ -101,6 +105,9 @@ export async function POST(
       } catch {}
 
       try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
+
+      // إرسال إيميل إلغاء حظر للمستخدم
+      try { await sendUserUnblockedEmail({ to: targetUser.email || '', name: targetUser.name }); } catch {}
 
       return NextResponse.json({
         success: true,

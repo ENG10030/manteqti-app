@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
+import { sendNewInquiryEmail } from '@/lib/email';
 
 export async function POST(request: NextRequest) {
   try {
@@ -68,6 +69,10 @@ export async function POST(request: NextRequest) {
     }
 
     try { await broadcastEvent(WebhookEvents.MESSAGES_CHANGED); } catch {}
+
+    // إشعار المطور بطلب تواصل جديد
+    try { await sendNewInquiryEmail({ senderName: name, senderEmail: email, senderPhone: phone, apartmentTitle: apartment.title }); } catch {}
+
     return NextResponse.json({
       success: true,
       inquiry: {

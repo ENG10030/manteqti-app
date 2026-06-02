@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { isStrongPassword } from "@/lib/security";
+import { sendWelcomeEmail, sendNewUserRegistrationEmail } from '@/lib/email';
 
 // قائمة نطاقات البريد المؤقتة المحظورة
 const BLOCKED_DOMAINS = [
@@ -122,6 +123,14 @@ export async function POST(request: Request) {
         emailVerified: isDeveloper,
       },
     });
+
+    // إرسال إيميل ترحيب للمستخدم
+    try { await sendWelcomeEmail({ to: user.email, name: user.name }); } catch {}
+
+    // إشعار المطور بتسجيل مستخدم جديد (فقط لو مش مطور)
+    if (!isDeveloper) {
+      try { await sendNewUserRegistrationEmail({ userName: user.name, userEmail: user.email, phone: phone || null }); } catch {}
+    }
 
     // Log registration in OperationLog
     try {

@@ -4,6 +4,7 @@ import { verify } from "jsonwebtoken";
 import { JWT_SECRET } from "@/lib/auth";
 import { checkRateLimit, recordFailedAttempt, getClientIp } from "@/lib/rate-limit";
 import { broadcastEvent, WebhookEvents } from "@/lib/webhook";
+import { sendWalletTopUpEmail } from '@/lib/email';
 import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
@@ -388,6 +389,15 @@ export async function POST(request: NextRequest) {
     }
 
     try { await broadcastEvent(WebhookEvents.PAYMENTS_CHANGED); } catch {}
+
+      // إرسال إيميل شحن المحفظة
+      try {
+        const updatedUser = await db.user.findUnique({ where: { id: user.id }, select: { name: true, email: true, walletBalance: true } });
+        if (updatedUser?.email) {
+          await sendWalletTopUpEmail({ to: updatedUser.email, name: updatedUser.name, amount: amount, method: method || undefined, newBalance: updatedUser.walletBalance });
+        }
+      } catch {}
+
     return NextResponse.json({
       success: true,
       message: isAutoConfirm
