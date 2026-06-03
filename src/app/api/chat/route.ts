@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAiClient } from '@/lib/ai';
 
 // System prompt for real estate assistant
 const SYSTEM_PROMPT = `أنت مساعد ذكي متخصص في العقارات والشقق في مصر. اسمك "منطقتي".
@@ -121,10 +122,9 @@ export async function POST(request: NextRequest) {
 
     // Try to use AI SDK
     try {
-      const mod: any = await import('z-ai-web-dev-sdk').catch(() => null);
-      
-      if (mod?.default && typeof mod.default.create === 'function') {
-        const zai = await mod.default.create();
+      const zai = await getAiClient();
+
+      if (zai) {
 
         const completionPromise = zai.chat.completions.create({
           messages: history,

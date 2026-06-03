@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAiClient } from '@/lib/ai';
 
 function generateFallbackDescription(data: {
   type: string;
@@ -38,10 +39,9 @@ export async function POST(request: NextRequest) {
 
     // Try to use AI SDK for generating description
     try {
-      const mod: any = await import('z-ai-web-dev-sdk').catch(() => null);
-      
-      if (mod?.default && typeof mod.default.create === 'function') {
-        const zai = await mod.default.create();
+      const zai = await getAiClient();
+
+      if (zai) {
 
         const prompt = `اكتب وصف عقاري جذاب ومقنع باللغة العربية لهذه الشقة:
 - النوع: ${type === 'rent' ? 'إيجار' : 'بيع'}
