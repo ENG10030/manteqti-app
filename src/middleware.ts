@@ -1,31 +1,63 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-// 🔒 Security Headers Middleware
+// Rate limiting بسيط
+const rateLimit = new Map<string, { count: number; lastRequest: number }>();
+const RATE_LIMIT_WINDOW = 60 * 1000;
+const RATE_LIMIT_MAX = 100;
+
 export function middleware(request: NextRequest) {
   const response = NextResponse.next();
 
-  response.headers.set('X-DNS-Prefetch-Control', 'on');
-  response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
-  response.headers.set('X-Frame-Options', 'SAMEORIGIN');
-  response.headers.set('X-Content-Type-Options', 'nosniff');
-  response.headers.set('Referrer-Policy', 'origin-when-cross-origin');
-  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // Headers أمنية
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("X-XSS-Protection", "1; mode=block");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
 
-  response.headers.set(
-    'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss:; frame-ancestors 'self';"
-  );
+  // Rate limiting للـ API
+  if (request.nextUrl.pathname.startsWith("/api")) {
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
+               request.headers.get("x-real-ip") || 
+               "unknown";
+    const key = `rate-limit-${ip}`;
+    const now = Date.now();
 
-  response.headers.set('X-XSS-Protection', '1; mode=block');
+    const userLimit = rateLimit.get(key);
 
-  response.headers.delete('X-Powered-By');
-  response.headers.delete('Server');
+    if (userLimit) {
+      if (now - userLimit.lastRequest > RATE_LIMIT_WINDOW) {
+        rateLimit.set(key, { count: 1, lastRequest: now });
+      } else if (userLimit.count >= RATE_LIMIT_MAX) {
+        return NextResponse.json(
+          { error: "طلبات كثيرة جداً، يرجى المحاولة لاحقاً" },
+          { status: 429 }
+        );
+      } else {
+        rateLimit.set(key, { count: userLimit.count + 1, lastRequest: userLimit.lastRequest });
+      }
+    } else {
+      rateLimit.set(key, { count: 1, lastRequest: now });
+    }
+
+    // C-10 FIX: Restrict CORS to specific domains
+    const allowedOrigins = process.env.NEXT_PUBLIC_SITE_URL 
+      ? [process.env.NEXT_PUBLIC_SITE_URL, 'http://localhost:3000']
+      : ['http://localhost:3000'];
+    const origin = request.headers.get('origin');
+    if (origin && allowedOrigins.includes(origin)) {
+      response.headers.set("Access-Control-Allow-Origin", origin);
+    }
+    response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+    response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  }
 
   return response;
 }
 
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    "/api/:path*",
+    "/((?!_next/static|_next/image|favicon.ico|public).*)",
   ],
 };

@@ -1,13 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { requireDeveloper } from '@/lib/auth-middleware';
+// ⛔ SECURITY: This endpoint has been DISABLED.
+// Serving source code ZIP files publicly is a security risk.
+import { NextResponse } from 'next/server';
 
-export async function GET(request: NextRequest) {
-  // SECURITY: Require developer authentication
-  const { auth, errorResponse } = await requireDeveloper(request);
-  if (errorResponse || !auth) return errorResponse!;
-
-  // SECURITY: Source code download disabled in production
-  return NextResponse.json({
-    error: 'هذا المسار غير متاح. تحميل الكود المصدري معطل لأسباب أمنية'
-  }, { status: 403 });
+export async function GET() {
+  return NextResponse.json(
+    { error: 'Not found' },
+    { status: 404 }
+  );
 }

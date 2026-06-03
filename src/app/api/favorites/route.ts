@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { authenticateRequest } from '@/lib/auth';
-import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
 
 export async function GET(request: NextRequest) {
   try {
@@ -87,7 +86,6 @@ export async function POST(request: NextRequest) {
         where: { id: existingLike.id },
       });
 
-      try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
       return NextResponse.json({
         message: 'تم إزالة العقار من المفضلة',
         isFavorited: false,
@@ -102,7 +100,6 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
     return NextResponse.json(
       {
         message: 'تم إضافة العقار إلى المفضلة',

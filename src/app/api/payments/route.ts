@@ -1,25 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { getAuthContext, requireDeveloper } from '@/lib/auth-middleware';
-import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
+import { cookies } from 'next/headers';
+import { verify } from 'jsonwebtoken';
 
-// GET - list payments (developer sees all, user sees own)
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
+
 export async function GET() {
   try {
-    const { auth, errorResponse } = await getAuthContext(
-      new NextRequest(new URL('/api/payments', 'http://localhost'), { headers: { cookie: '' } })
-    );
-    
-    // Try to get auth from the request context differently
-    const cookieStore = await import('next/headers').then(m => m.cookies());
-    const token = (await cookieStore).get('auth-token')?.value;
-    
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
     if (!token) {
       return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
     }
-    
-    const { verify } = await import('jsonwebtoken');
-    const { JWT_SECRET } = await import('@/lib/auth');
     let decoded: any;
     try {
       decoded = verify(token, JWT_SECRET);
@@ -29,7 +22,7 @@ export async function GET() {
 
     const isDeveloper = decoded.role === 'DEVELOPER';
 
-    // Developer sees all payments, user sees only own
+    // المطور يرى كل المدفوعات، المستخدم العادي يرى مدفوعاته فقط
     const where: any = {};
     if (!isDeveloper) {
       where.userId = decoded.userId;
@@ -41,9 +34,7 @@ export async function GET() {
       include: {
         inquiry: {
           include: {
-            apartment: {
-              select: { id: true, title: true, price: true }
-            }
+            apartment: true
           }
         }
       }
@@ -63,7 +54,15 @@ export async function GET() {
       inquiry: p.inquiry ? {
         id: p.inquiry.id,
         apartmentId: p.inquiry.apartmentId,
-        apartment: p.inquiry.apartment
+        name: p.inquiry.name,
+        email: p.inquiry.email,
+        phone: p.inquiry.phone,
+        message: p.inquiry.message,
+        apartment: p.inquiry.apartment ? {
+          id: p.inquiry.apartment.id,
+          title: p.inquiry.apartment.title,
+          price: p.inquiry.apartment.price
+        } : null
       } : null
     })));
   } catch (error) {
@@ -72,11 +71,19 @@ export async function GET() {
   }
 }
 
-// POST - create payment
 export async function POST(request: NextRequest) {
   try {
-    const { auth, errorResponse } = await getAuthContext(request);
-    if (errorResponse || !auth) return errorResponse!;
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
 
     const data = await request.json();
 
@@ -84,17 +91,15 @@ export async function POST(request: NextRequest) {
       data: {
         inquiryId: data.inquiryId,
         method: data.method,
-        // SECURITY: Force Pending status - prevent user from self-approving
-        status: 'Pending',
-        inquiryStatus: 'Pending',
+        status: data.status || 'Pending',
+        inquiryStatus: data.inquiryStatus || 'Pending',
         amount: data.amount,
         transactionRef: data.transactionRef,
         paymentLink: data.paymentLink,
-        userId: auth.userId
+        userId: decoded.userId
       }
     });
 
-    try { await broadcastEvent(WebhookEvents.PAYMENTS_CHANGED); } catch {}
     return NextResponse.json({
       id: payment.id,
       inquiryId: payment.inquiryId,
@@ -112,23 +117,42 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE - delete payments (developer only)
+// DELETE - حذف مدفوعات (developer only)
+// Body: { ids: string[] } لحذف محددة, أو {} لحذف الكل
 export async function DELETE(request: NextRequest) {
-  const { auth, errorResponse } = await requireDeveloper(request);
-  if (errorResponse || !auth) return errorResponse!;
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    let decoded: any;
+    try {
+      decoded = verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
+    }
 
-  const body = await request.json();
-  const ids: string[] = body.ids;
+    if (decoded.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح - للمطور فقط' }, { status: 403 });
+    }
 
-  if (ids && ids.length > 0) {
-    const result = await db.payment.deleteMany({
-      where: { id: { in: ids } }
-    });
-    try { await broadcastEvent(WebhookEvents.PAYMENTS_CHANGED); } catch {}
-    return NextResponse.json({ message: `تم حذف ${result.count} مدفوعة بنجاح`, deleted: result.count });
-  } else {
-    const result = await db.payment.deleteMany({});
-    try { await broadcastEvent(WebhookEvents.PAYMENTS_CHANGED); } catch {}
-    return NextResponse.json({ message: `تم حذف ${result.count} مدفوعة بنجاح`, deleted: result.count });
+    const body = await request.json();
+    const ids: string[] = body.ids;
+
+    if (ids && ids.length > 0) {
+      // حذف مدفوعات محددة
+      const result = await db.payment.deleteMany({
+        where: { id: { in: ids } }
+      });
+      return NextResponse.json({ message: `تم حذف ${result.count} مدفوعة بنجاح`, deleted: result.count });
+    } else {
+      // حذف جميع المدفوعات
+      const result = await db.payment.deleteMany({});
+      return NextResponse.json({ message: `تم حذف ${result.count} مدفوعة بنجاح`, deleted: result.count });
+    }
+  } catch (error) {
+    console.error('Error deleting payments:', error);
+    return NextResponse.json({ error: 'Failed to delete payments' }, { status: 500 });
   }
 }

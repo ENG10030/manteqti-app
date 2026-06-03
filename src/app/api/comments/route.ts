@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { cookies } from 'next/headers';
+import { verify } from 'jsonwebtoken';
 import { requireApprovedUser } from '@/lib/auth-middleware';
-import { sanitizeString } from '@/lib/security';
-import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
 
-// Fetch comments
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
+
+// جلب التعليقات
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -44,7 +47,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Create comment
+// إضافة تعليق جديد
 export async function POST(request: NextRequest) {
   try {
     const { auth, errorResponse } = await requireApprovedUser(request);
@@ -57,21 +60,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 });
     }
 
-    if (content.length > 1000) {
-      return NextResponse.json({ error: 'التعليق طويل جداً (الحد الأقصى 1000 حرف)' }, { status: 400 });
-    }
-
     const isDeveloper = auth.role === 'DEVELOPER';
     const userId = auth.userId;
-
-    // SECURITY: Sanitize content to prevent XSS
-    const sanitizedContent = sanitizeString(content);
 
     const comment = await db.comment.create({
       data: {
         apartmentId,
         userId,
-        content: sanitizedContent,
+        content,
         status: isDeveloper ? 'approved' : 'pending',
       },
       include: {
@@ -84,8 +80,6 @@ export async function POST(request: NextRequest) {
         }
       }
     });
-
-    try { await broadcastEvent(WebhookEvents.NOTIFICATIONS_CHANGED); } catch {}
 
     return NextResponse.json({ 
       success: true, 

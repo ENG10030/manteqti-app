@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { broadcastEvent, WebhookEvents } from "@/lib/webhook"
 
 // حذف عقار
 export async function DELETE(
@@ -35,8 +34,6 @@ export async function DELETE(
     await db.apartment.delete({
       where: { id: apartmentId }
     })
-
-    try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
 
     return NextResponse.json({
       success: true,

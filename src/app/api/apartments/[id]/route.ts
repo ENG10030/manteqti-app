@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { notifyApartmentsChanged } from "@/lib/realtime";
-import { broadcastEvent, WebhookEvents } from "@/lib/webhook";
 import { sendApartmentApprovedEmail, sendApartmentRejectedEmail } from "@/lib/email";
-import { JWT_SECRET } from "@/lib/auth";
+
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 
 async function getCurrentUser(request: Request) {
   const cookieHeader = request.headers.get("cookie");
@@ -23,7 +24,7 @@ async function getCurrentUser(request: Request) {
   }
 }
 
-// GET - fetch single apartment
+// GET - جلب عقار واحد
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -35,8 +36,7 @@ export async function GET(
       where: { id },
       include: {
         user: {
-          // SECURITY: Do not expose phone/email in public response
-          select: { id: true, name: true },
+          select: { id: true, name: true, phone: true, email: true },
         },
       },
     });
@@ -55,7 +55,7 @@ export async function GET(
   }
 }
 
-// PUT - update apartment (owner or developer)
+// PUT - تحديث عقار
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -77,45 +77,41 @@ export async function PUT(
       return NextResponse.json({ error: "العقار غير موجود" }, { status: 404 });
     }
 
-    // Ownership check
     if (apartment.createdBy !== user.id && user.role !== "DEVELOPER") {
       return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
     }
 
-    const isDeveloper = user.role === 'DEVELOPER';
-
-    // SECURITY: Build update data explicitly (prevent mass assignment)
-    const updateData: Record<string, unknown> = {};
-    
-    // Fields all authenticated owners can update
-    if (body.title !== undefined) updateData.title = body.title;
-    if (body.description !== undefined) updateData.description = body.description;
-    if (body.area !== undefined) updateData.area = body.area;
-    if (body.bedrooms !== undefined) updateData.bedrooms = body.bedrooms ? parseInt(body.bedrooms) : undefined;
-    if (body.bathrooms !== undefined) updateData.bathrooms = body.bathrooms ? parseInt(body.bathrooms) : undefined;
-    if (body.floor !== undefined) updateData.floor = body.floor !== null ? parseInt(body.floor) : null;
-    if (body.apartmentSize !== undefined) updateData.apartmentSize = body.apartmentSize !== null ? parseInt(body.apartmentSize) : null;
-    if (body.type !== undefined) updateData.type = body.type;
-    if (body.images !== undefined) updateData.images = body.images;
-    if (body.ownerPhone !== undefined) updateData.ownerPhone = body.ownerPhone;
-    if (body.mapLink !== undefined) updateData.mapLink = body.mapLink;
-    if (body.price !== undefined) updateData.price = body.price ? parseFloat(body.price) : undefined;
-    
-    // Developer-only fields
-    if (isDeveloper) {
-      if (body.status !== undefined) updateData.status = body.status;
-      if (body.isFeatured !== undefined) updateData.isFeatured = body.isFeatured;
-      if (body.isVip !== undefined) updateData.isVip = body.isVip;
+    // Prevent non-developers from setting privileged fields
+    if (user.role !== 'DEVELOPER') {
+      delete body.isFeatured;
+      delete body.isVip;
+      delete body.status;
     }
-    // SECURITY: statusChangedAt removed - only set server-side
 
     const updatedApartment = await db.apartment.update({
       where: { id },
-      data: updateData,
+      data: {
+        title: body.title,
+        description: body.description,
+        price: body.price ? parseFloat(body.price) : undefined,
+        area: body.area,
+        bedrooms: body.bedrooms ? parseInt(body.bedrooms) : undefined,
+        bathrooms: body.bathrooms ? parseInt(body.bathrooms) : undefined,
+        floor: body.floor !== undefined && body.floor !== null ? parseInt(body.floor) : null,
+        apartmentSize: body.apartmentSize !== undefined && body.apartmentSize !== null ? parseInt(body.apartmentSize) : null,
+        type: body.type,
+        images: body.images,
+        ownerPhone: body.ownerPhone,
+        mapLink: body.mapLink,
+        status: body.status,
+        statusChangedAt: body.statusChangedAt ? new Date(body.statusChangedAt) : undefined,
+        isFeatured: body.isFeatured,
+        isVip: body.isVip,
+      },
     });
 
+    // Notify all connected clients
     notifyApartmentsChanged('updated', id);
-    try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
 
     return NextResponse.json({
       message: "تم تحديث العقار بنجاح",
@@ -130,7 +126,7 @@ export async function PUT(
   }
 }
 
-// PATCH - approve/feature/reject (developer only)
+// PATCH - الموافقة/التمييز/الرفض
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -170,9 +166,10 @@ export async function PATCH(
       data: updateData,
     });
 
+    // Notify all connected clients
     notifyApartmentsChanged('approved', id);
-    try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
 
+    // Send email notification to apartment owner
     if (apartment.createdBy) {
       const owner = await db.user.findUnique({ where: { id: apartment.createdBy }, select: { name: true, email: true } });
       if (owner?.email && process.env.RESEND_API_KEY) {
@@ -197,7 +194,7 @@ export async function PATCH(
   }
 }
 
-// DELETE - delete apartment (owner or developer)
+// DELETE - حذف عقار
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -218,7 +215,6 @@ export async function DELETE(
       return NextResponse.json({ error: "العقار غير موجود" }, { status: 404 });
     }
 
-    // Ownership check
     if (apartment.createdBy !== user.id && user.role !== "DEVELOPER") {
       return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
     }
@@ -227,8 +223,8 @@ export async function DELETE(
       where: { id },
     });
 
+    // Notify all connected clients
     notifyApartmentsChanged('deleted', id);
-    try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
 
     return NextResponse.json({ message: "تم حذف العقار بنجاح" });
   } catch (error) {

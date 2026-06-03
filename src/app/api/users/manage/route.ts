@@ -3,7 +3,6 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
-import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
 
 // Comprehensive user management (developer only)
 export async function POST(request: NextRequest) {
@@ -59,7 +58,6 @@ export async function POST(request: NextRequest) {
           data: { status: 'hidden' },
         });
         await db.message.deleteMany({ where: { senderId: userId } });
-        try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
         return NextResponse.json({ success: true, message: 'تم حظر المستخدم وإخفاء عقاراته' });
       }
 
@@ -72,7 +70,6 @@ export async function POST(request: NextRequest) {
           where: { createdBy: userId, status: 'hidden' },
           data: { status: 'pending' },
         });
-        try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
         return NextResponse.json({ success: true, message: 'تم إلغاء حظر المستخدم' });
       }
 
@@ -85,7 +82,6 @@ export async function POST(request: NextRequest) {
           where: { userId, status: 'Paid' },
           data: { status: 'Refunded', inquiryStatus: 'Revoked' },
         });
-        try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
         return NextResponse.json({ 
           success: true, 
           message: `تم إلغاء صلاحيات بيانات التواصل (${revoked.count} طلب)`,
@@ -97,7 +93,6 @@ export async function POST(request: NextRequest) {
           where: { createdBy: userId },
           data: { status: 'hidden' },
         });
-        try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
         return NextResponse.json({ success: true, message: `تم إخفاء ${result.count} عقار` });
       }
 
@@ -106,7 +101,6 @@ export async function POST(request: NextRequest) {
           where: { createdBy: userId, status: 'hidden' },
           data: { status: 'pending' },
         });
-        try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
         return NextResponse.json({ success: true, message: `تم إعادة ${result.count} عقار للمراجعة` });
       }
 
@@ -134,7 +128,6 @@ export async function POST(request: NextRequest) {
         await db.apartment.deleteMany({ where: { createdBy: userId } });
         await db.blockedUser.deleteMany({ where: { userId } });
         await db.user.delete({ where: { id: userId } });
-        try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
         return NextResponse.json({ success: true, message: 'تم حذف المستخدم وكل بياناته نهائياً' });
       }
 

@@ -3,8 +3,9 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { requireApprovedUser } from '@/lib/auth-middleware';
-import { JWT_SECRET } from '@/lib/auth';
-import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
+
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 
 // جلب كل الإعجابات أو إعجابات عقار معين
 export async function GET(request: NextRequest) {
@@ -86,8 +87,6 @@ export async function POST(request: NextRequest) {
         }
       }
     });
-
-    try { await broadcastEvent(WebhookEvents.NOTIFICATIONS_CHANGED); } catch {}
 
     return NextResponse.json({ success: true, like });
   } catch (error) {

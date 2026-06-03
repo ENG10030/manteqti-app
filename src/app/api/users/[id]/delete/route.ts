@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { broadcastEvent, WebhookEvents } from "@/lib/webhook";
 
 // حذف مستخدم (المطور فقط)
 export async function DELETE(
@@ -57,8 +56,6 @@ export async function DELETE(
         },
       });
     } catch {}
-
-    try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
 
     return NextResponse.json({
       success: true,

@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomInt, timingSafeEqual } from 'crypto';
+import { createHash, randomBytes, randomInt } from 'crypto';
 
 /**
  * Validate Egyptian phone number
@@ -17,36 +17,25 @@ export function isValidEmail(email: string): boolean {
 }
 
 /**
- * Validate password strength (at least 8 chars with 3 complexity types)
+ * Validate password strength (at least 6 chars with complexity)
  */
 export function isStrongPassword(password: string): boolean {
-  if (password.length < 8) return false;
+  if (password.length < 6) return false;
   let score = 0;
   if (/[a-z]/.test(password)) score++;
   if (/[A-Z]/.test(password)) score++;
   if (/[0-9]/.test(password)) score++;
   if (/[^a-zA-Z0-9]/.test(password)) score++;
-  return score >= 3; // At least 3 character types
-}
-
-/**
- * Timing-safe string comparison (prevents timing attacks)
- */
-export function safeCompare(a: string, b: string): boolean {
-  if (typeof a !== 'string' || typeof b !== 'string') return false;
-  const aBuf = Buffer.from(a);
-  const bBuf = Buffer.from(b);
-  if (aBuf.length !== bBuf.length) return false;
-  return timingSafeEqual(aBuf, bBuf);
+  return score >= 2; // At least 2 character types
 }
 
 /**
  * Hash password using bcrypt (secure)
- * @deprecated Use bcryptjs directly instead: import bcrypt from 'bcryptjs'; bcrypt.hash(password, 12)
+ * @deprecated Use bcryptjs directly instead: import bcrypt from 'bcryptjs'; bcrypt.hash(password, 10)
  */
 export async function hashPassword(password: string): Promise<string> {
   const bcrypt = await import('bcryptjs');
-  return bcrypt.hash(password, 12); // Increased from 10 to 12
+  return bcrypt.hash(password, 10);
 }
 
 /**
@@ -66,21 +55,14 @@ export function generateToken(length: number = 32): string {
 }
 
 /**
- * Generate OTP code (6 digits)
+ * Generate OTP code
  */
 export function generateOTP(): string {
   return randomInt(100000, 999999).toString();
 }
 
 /**
- * Hash a token for secure storage (use for OTPs and reset tokens)
- */
-export function hashToken(token: string): string {
-  return createHash('sha256').update(token).digest('hex');
-}
-
-/**
- * Sanitize string input to prevent XSS
+ * Sanitize string input
  */
 export function sanitizeString(str: string): string {
   return str
@@ -91,7 +73,7 @@ export function sanitizeString(str: string): string {
 }
 
 /**
- * Validate CUID format (strict - no fallback)
+ * Validate CUID format
  */
 export function isValidId(id: string): boolean {
   const cuidRegex = /^c[a-z0-9]{24}$/;

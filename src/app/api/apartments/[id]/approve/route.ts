@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { broadcastEvent, WebhookEvents } from "@/lib/webhook"
 
 // الموافقة على / رفض عقار
 export async function POST(
@@ -56,8 +55,6 @@ export async function POST(
         });
       } catch {}
 
-      try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
-
       return NextResponse.json({
         success: true,
         apartment: updatedApartment,
@@ -84,8 +81,6 @@ export async function POST(
           },
         });
       } catch {}
-
-      try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
 
       return NextResponse.json({
         success: true,

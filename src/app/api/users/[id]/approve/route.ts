@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { broadcastEvent, WebhookEvents } from "@/lib/webhook";
-import { sendUserApprovedEmail, sendUserRejectedEmail } from '@/lib/email';
 
 // تأكيد أو رفض أو إلغاء تأكيد تسجيل مستخدم (للمطور فقط)
 export async function PUT(
@@ -66,11 +64,6 @@ export async function PUT(
         });
       } catch {}
 
-      try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
-
-      // إرسال إيميل إشعار للمستخدم
-      try { await sendUserApprovedEmail({ to: updated.email || user.email || '', name: updated.name }); } catch {}
-
       return NextResponse.json({ message: "تم تأكيد التسجيل", user: updated });
     } else if (action === "revoke") {
       // Revoke approval - set isApproved to false
@@ -107,8 +100,6 @@ export async function PUT(
         });
       } catch {}
 
-      try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
-
       return NextResponse.json({ message: "تم إلغاء تأكيد التسجيل", user: updated });
     } else {
       // Log rejection before deletion
@@ -138,12 +129,8 @@ export async function PUT(
         });
       } catch {}
 
-      // إرسال إيميل رفض للمستخدم قبل الحذف
-      try { await sendUserRejectedEmail({ to: user.email || '', name: user.name, reason }); } catch {}
-
       // Delete user and all their data (cascade)
       await db.user.delete({ where: { id } });
-      try { await broadcastEvent(WebhookEvents.USER_CHANGED); } catch {}
       return NextResponse.json({ message: "تم رفض التسجيل وحذف الحساب" });
     }
   } catch (error) {

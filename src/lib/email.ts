@@ -496,6 +496,125 @@ export async function sendPasswordChangedEmail({ to, name }: SendPasswordChanged
   } catch (error: any) { console.error('Error sending password changed email:', error); return { success: false, error: error.message }; }
 }
 
+// ========== إيميل حظر مستخدم ==========
+interface SendUserBlockedParams {
+  to: string;
+  name: string;
+  reason?: string;
+}
+
+export async function sendUserBlockedEmail({ to, name, reason }: SendUserBlockedParams) {
+  try {
+    const { data, error } = await getResend().emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: [to],
+      subject: `🚫 تم حظر حسابك - ${APP_NAME}`,
+      html: `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head><meta charset="UTF-8"><style>
+          body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; direction: rtl; }
+          .container { max-width: 480px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+          .header { background: linear-gradient(135deg, #dc2626, #b91c1c); padding: 32px; text-align: center; }
+          .header h1 { color: white; margin: 0; font-size: 22px; }
+          .content { padding: 32px; text-align: center; }
+          .content p { color: #475569; font-size: 15px; line-height: 1.8; }
+          .alert-box { background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 20px; margin: 20px 0; }
+          .alert-box p { color: #991b1b; font-size: 14px; margin: 0; line-height: 1.6; }
+          .info-box { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; padding: 16px; margin: 16px 0; }
+          .info-box p { color: #9a3412; font-size: 13px; margin: 0; line-height: 1.6; }
+          .footer { background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0; }
+          .footer p { color: #94a3b8; font-size: 12px; margin: 4px 0; }
+        </style></head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>🚫 تم حظر حسابك</h1>
+              <p style="color: rgba(255,255,255,0.9); margin-top: 8px;">تم اتخاذ إجراء إداري على حسابك</p>
+            </div>
+            <div class="content">
+              <p>مرحباً <strong>${sanitizeHtml(name)}</strong>،</p>
+              <p>نود إبلاغك بأنه تم حظر حسابك على منصة <strong>${APP_NAME}</strong>.</p>
+              ${reason ? `<div class="alert-box"><p>📝 <strong>سبب الحظر:</strong> ${sanitizeHtml(reason)}</p></div>` : ''}
+              <div class="info-box">
+                <p>ℹ️ إذا كنت تعتقد أن هذا الإجراء تم بالخطأ، يمكنك التواصل مع إدارة الموقع عبر صفحة التواصل في الموقع.</p>
+              </div>
+            </div>
+            <div class="footer">
+              <p>${APP_NAME} - لوحة الشقق الذكية</p>
+              <p>إذا كان لديك استفسار، تواصل مع الدعم الفني</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+    });
+    if (error) { console.error('Resend error:', error); return { success: false, error: error.message }; }
+    console.log(`📧 User blocked email sent to ${to}, ID: ${data?.id}`);
+    return { success: true, messageId: data?.id };
+  } catch (error: any) { console.error('Error sending blocked email:', error); return { success: false, error: error.message }; }
+}
+
+// ========== إيميل إلغاء حظر مستخدم ==========
+interface SendUserUnblockedParams {
+  to: string;
+  name: string;
+}
+
+export async function sendUserUnblockedEmail({ to, name }: SendUserUnblockedParams) {
+  try {
+    const { data, error } = await getResend().emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: [to],
+      subject: `✅ تم إلغاء حظر حسابك - ${APP_NAME}`,
+      html: `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head><meta charset="UTF-8"><style>
+          body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; direction: rtl; }
+          .container { max-width: 480px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+          .header { background: linear-gradient(135deg, #059669, #10b981); padding: 32px; text-align: center; }
+          .header h1 { color: white; margin: 0; font-size: 22px; }
+          .content { padding: 32px; text-align: center; }
+          .content p { color: #475569; font-size: 15px; line-height: 1.8; }
+          .success-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; margin: 20px 0; }
+          .success-box p { color: #166534; font-size: 14px; margin: 0; }
+          .info-box { background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 12px; padding: 16px; margin: 16px 0; }
+          .info-box p { color: #5b21b6; font-size: 13px; margin: 0; line-height: 1.6; }
+          .footer { background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0; }
+          .footer p { color: #94a3b8; font-size: 12px; margin: 4px 0; }
+        </style></head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>✅ تم إلغاء حظر حسابك</h1>
+              <p style="color: rgba(255,255,255,0.9); margin-top: 8px;">حسابك نشط مرة أخرى</p>
+            </div>
+            <div class="content">
+              <p>مرحباً <strong>${sanitizeHtml(name)}</strong>،</p>
+              <p>بناءً على مراجعة حسابك، تم إلغاء الحظر ويمكنك استخدام حسابك مرة أخرى 🎉</p>
+              <div class="success-box">
+                <p>✅ حسابك الآن <strong>نشط ومتاح للاستخدام</strong></p>
+              </div>
+              <div class="info-box">
+                <p>📝 ملاحظة: عقاراتك السابقة تم إعادتها للحالة معلّقة بانتظار مراجعتها. ستحتاج لإعادة نشر أي عقار ترغب في عرضه.</p>
+              </div>
+              <p>سجل دخولك الآن واستمتع بالخدمة 🏠</p>
+            </div>
+            <div class="footer">
+              <p>${APP_NAME} - لوحة الشقق الذكية</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+    });
+    if (error) { console.error('Resend error:', error); return { success: false, error: error.message }; }
+    console.log(`📧 User unblocked email sent to ${to}, ID: ${data?.id}`);
+    return { success: true, messageId: data?.id };
+  } catch (error: any) { console.error('Error sending unblocked email:', error); return { success: false, error: error.message }; }
+}
+
 // ========== إيميل رسالة جديدة ==========
 interface SendNewMessageParams {
   to: string;

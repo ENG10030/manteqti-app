@@ -3,7 +3,6 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
-import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
 
 // Toggle contact visibility for an apartment (developer only)
 export async function POST(
@@ -57,8 +56,6 @@ export async function POST(
         data: { lifecycleStatus: 'Revoked' }
       });
     }
-
-    try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
 
     return NextResponse.json({
       success: true,

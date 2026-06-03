@@ -104,7 +104,87 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Use mock analysis (AI SDK not available in production)
+    // Try AI-powered analysis first, fallback to mock
+    try {
+      const sdk = await import("z-ai-web-dev-sdk").then((m) => m.default);
+      const client = await sdk.create();
+
+      const apartmentsInfo = apartments
+        .map(
+          (a, i) => `
+الشقة ${i + 1}: ${a.title}
+- النوع: ${a.type === "بيع" ? "للبيع" : "للإيجار"}
+- السعر: ${a.price.toLocaleString("ar-EG")} ج.م${a.type === "إيجار" ? "/شهر" : ""}
+- المساحة: ${a.area} م²
+- غرف النوم: ${a.bedrooms}
+- الحمامات: ${a.bathrooms}
+- الدور: ${a.floor}
+- الموقع: ${a.location}، ${a.city}
+- التشطيب: ${a.furnishing}
+- التقييم: ${a.rating}/5
+- المميزات: ${a.amenities.map((am) => am.label).join("، ")}
+- الوصف: ${a.description}`
+        )
+        .join("\n");
+
+      const prompt = `أنت خبير عقاري مصري متخصص في تحليل الشقق. قم بتحليل الشقق التالية ومقارنتها:
+
+${apartmentsInfo}
+
+أجب بالتالي بالعربية وبنظام JSON فقط (بدون أي نص إضافي أو markdown):
+{
+  "recommendation": "توصيتك الأفضل مع الأسباب (فقرتين)",
+  "pros": [
+    {
+      "apartmentId": "id",
+      "title": "اسم الشقة",
+      "points": ["ميزة 1", "ميزة 2", "ميزة 3", "ميزة 4"]
+    }
+  ],
+  "cons": [
+    {
+      "apartmentId": "id",
+      "title": "اسم الشقة",
+      "points": ["عيب 1", "عيب 2", "عيب 3"]
+    }
+  ],
+  "verdict": "الحكم النهائي والتوصية النهائية (فقرتين) مع مقارنة أسعار المتر المربع"
+}`;
+
+      const completion = await client.chat.completions.create({
+        messages: [
+          {
+            role: "system",
+            content:
+              "أنت خبير عقاري مصري. أجب بتنسيق JSON صالح فقط بدون أي نص إضافي أو backticks أو markdown.",
+          },
+          { role: "user", content: prompt },
+        ],
+      });
+
+      let aiContent = completion.choices[0].message.content.trim();
+      // Clean up markdown code blocks if present
+      aiContent = aiContent
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+
+      const analysis = JSON.parse(aiContent);
+
+      // Validate structure
+      if (
+        analysis.recommendation &&
+        analysis.pros &&
+        analysis.cons &&
+        analysis.verdict
+      ) {
+        return NextResponse.json({ analysis });
+      }
+    } catch (aiError) {
+      console.error("AI analysis failed, using mock:", aiError);
+    }
+
+    // Fallback to mock analysis
     const result = generateMockAnalysis(apartments);
     return NextResponse.json(result);
   } catch (error) {

@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
-import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
-import { sendNewInquiryEmail } from '@/lib/email';
+
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest) {
 
     let decoded: any;
     try {
-      decoded = verify(token, process.env.JWT_SECRET || "manteqti-secret-key-2024");
+      decoded = verify(token, JWT_SECRET);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
@@ -67,11 +68,6 @@ export async function POST(request: NextRequest) {
         },
       });
     }
-
-    try { await broadcastEvent(WebhookEvents.MESSAGES_CHANGED); } catch {}
-
-    // إشعار المطور بطلب تواصل جديد
-    try { await sendNewInquiryEmail({ senderName: name, senderEmail: email, senderPhone: phone, apartmentTitle: apartment.title }); } catch {}
 
     return NextResponse.json({
       success: true,

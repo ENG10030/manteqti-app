@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { notifyApartmentsChanged } from "@/lib/realtime";
-import { broadcastEvent, WebhookEvents } from "@/lib/webhook";
-import { JWT_SECRET } from "@/lib/auth";
+
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 
 async function getCurrentUser(request: Request) {
   const cookieHeader = request.headers.get("cookie");
@@ -22,7 +23,7 @@ async function getCurrentUser(request: Request) {
   }
 }
 
-// GET - fetch apartments (public, but with auth check for developer view)
+// GET - جلب العقارات
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -33,18 +34,20 @@ export async function GET(request: Request) {
     let user: Awaited<ReturnType<typeof getCurrentUser>> = null;
     try {
       user = await getCurrentUser(request);
-    } catch {
-      // Continue as guest
+    } catch (authErr: any) {
+      console.warn("Auth check failed, continuing as guest:", authErr.message);
     }
     const isDeveloper = user?.role === "DEVELOPER";
 
     const where: any = {};
 
+    // المطور يرى جميع العقارات، المستخدم العادي يرى العقارات المتاحة والموافق عليها فقط
     if (status) {
       where.status = status;
     } else if (!isDeveloper) {
       where.status = { in: ["available", "reserved", "sold", "rented"] };
     }
+    // المطور يرى كل الحالات (لا نضيف شرط للحالة)
 
     if (type && type !== "all") {
       where.type = type;
@@ -54,7 +57,7 @@ export async function GET(request: Request) {
       where.area = area;
     }
 
-    // Exclude blocked users' apartments for regular users
+    // استبعاد عقارات المحظورين للمستخدمين العاديين
     if (!isDeveloper) {
       try {
         const blockedUsers = await db.user.findMany({
@@ -65,8 +68,8 @@ export async function GET(request: Request) {
         if (blockedIds.length > 0) {
           where.createdBy = { notIn: blockedIds };
         }
-      } catch {
-        // Continue without block filter
+      } catch (blockErr: any) {
+        console.warn("Blocked users check failed:", blockErr.message);
       }
     }
 
@@ -74,8 +77,7 @@ export async function GET(request: Request) {
       where,
       include: {
         user: {
-          // SECURITY: Do NOT expose email in public listings
-          select: { id: true, name: true },
+          select: { id: true, name: true, email: true },
         },
       },
       orderBy: [
@@ -86,16 +88,19 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json(apartments);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Get apartments error:", error);
     return NextResponse.json(
-      { error: "حدث خطأ أثناء جلب العقارات" },
+      { 
+        error: "حدث خطأ أثناء جلب العقارات",
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      },
       { status: 500 }
     );
   }
 }
 
-// POST - create apartment
+// POST - إضافة عقار جديد
 export async function POST(request: Request) {
   try {
     const user = await getCurrentUser(request);
@@ -111,6 +116,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // Only approved users or developers can create apartments
     if (!user.isApproved && user.role !== 'DEVELOPER') {
       return NextResponse.json(
         { error: "حسابك قيد المراجعة. بانتظار موافقة الإدارة", pendingApproval: true },
@@ -142,7 +148,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const apartmentStatus = user.role === "DEVELOPER" ? "available" : "pending";
+    // المطور ينشر مباشرة، المستخدم العادي يرسل للمراجعة
+    const status = user.role === "DEVELOPER" ? "available" : "pending";
 
     const apartment = await db.apartment.create({
       data: {
@@ -157,7 +164,7 @@ export async function POST(request: Request) {
         ownerPhone,
         mapLink: mapLink || null,
         type: type || "rent",
-        status: apartmentStatus,
+        status,
         images: images || null,
         videos: videos || null,
         createdBy: user.id,
@@ -166,8 +173,8 @@ export async function POST(request: Request) {
       },
     });
 
+    // Notify all connected clients
     notifyApartmentsChanged('created', apartment.id);
-    try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
 
     return NextResponse.json({
       message:

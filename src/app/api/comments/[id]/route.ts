@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireApprovedUser } from '@/lib/auth-middleware';
-import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
 
 // الموافقة على التعليق أو رفضه
 export async function PUT(
@@ -35,7 +34,6 @@ export async function PUT(
       }
     });
 
-    try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
     return NextResponse.json({ 
       success: true, 
       comment,
@@ -63,7 +61,6 @@ export async function DELETE(
       where: { id },
     });
 
-    try { await broadcastEvent(WebhookEvents.APARTMENTS_CHANGED); } catch {}
     return NextResponse.json({ success: true, message: 'تم حذف التعليق' });
   } catch (error) {
     console.error('Error deleting comment:', error);

@@ -5,8 +5,9 @@ import { verify } from 'jsonwebtoken';
 import { requireApprovedUser } from '@/lib/auth-middleware';
 import { sendNewMessageEmail } from '@/lib/email';
 import { notifyRealtime } from '@/lib/realtime';
-import { broadcastEvent, WebhookEvents } from '@/lib/webhook';
-import { JWT_SECRET } from '@/lib/auth';
+
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 
 // Helper: get authenticated user from token
 async function getAuthUser(request: NextRequest) {
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
       messages = await db.message.findMany({
         where: {
           OR: [
-            { receiverId: { equals: null } },
+            { receiverId: null },
             { senderId: auth.userId }
           ]
         },
@@ -117,7 +118,6 @@ export async function POST(request: NextRequest) {
 
     // Notify connected clients about new message
     notifyRealtime('message-sent', { senderId: auth.userId, receiverId });
-    try { await broadcastEvent(WebhookEvents.MESSAGES_CHANGED); } catch {}
 
     return NextResponse.json({ success: true, message });
   } catch (error) {
@@ -172,8 +172,6 @@ export async function DELETE(request: NextRequest) {
         },
       });
     } catch {}
-
-    try { await broadcastEvent(WebhookEvents.MESSAGES_CHANGED); } catch {}
 
     return NextResponse.json({ success: true, message: 'تم حذف الرسالة' });
   } catch (error) {
