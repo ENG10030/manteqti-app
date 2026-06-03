@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { sign } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
+import { sendWelcomeEmail } from '@/lib/email';
 
 // OTP attempt rate limiting (in-memory)
 const otpAttempts = new Map<string, { count: number; lockedUntil: number }>();
@@ -104,6 +105,12 @@ export async function POST(request: NextRequest) {
       JWT_SECRET,
       { expiresIn: '7d' }
     );
+
+    // 📧 Send welcome email after successful verification (fire-and-forget)
+    const userEmail = updatedUser.email || normalizedIdentifier;
+    sendWelcomeEmail({ to: userEmail, name: updatedUser.name }).catch((err) => {
+      console.error('Failed to send welcome email after OTP verification:', err?.message);
+    });
 
     const response = NextResponse.json({
       message: 'تم تأكيد البريد الإلكتروني بنجاح',
