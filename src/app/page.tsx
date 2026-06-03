@@ -2406,8 +2406,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <Building2 className="h-6 w-6 text-white" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold text-white">{authStep === 'login' ? 'مرحباً بعودتك' : 'إنشاء حساب جديد'}</h2>
-                    <p className="text-white/70 text-xs mt-0.5">{authStep === 'login' ? 'سجل دخولك للاستمرار • Login to continue' : 'انضم إلينا الآن • Join us now'}</p>
+                    <h2 className="text-xl font-bold text-white">{authStep === 'login' ? 'مرحباً بعودتك!' : 'انضم إلينا'}</h2>
+                    <p className="text-white/70 text-xs mt-0.5">{authStep === 'login' ? '👋 سجل دخولك لاستكشاف أفضل العقارات' : '✨ أنشئ حسابك وابدأ رحلتك في عالم العقارات'}</p>
                   </div>
                 </div>
                 <button onClick={() => setShowAuth(false)} className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"><X className="h-5 w-5 text-white" /></button>
@@ -2435,7 +2435,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                   <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رقم الهاتف</label>
                   <div className="relative">
                     <Phone className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-                    <input type="tel" value={authPhone} onChange={(e) => setAuthPhone(e.target.value)} placeholder="01xxxxxxxxx" className={`w-full px-4 py-3 pr-10 rounded-xl border transition-all duration-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 ${darkMode ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400' : 'bg-white border-slate-200 placeholder-slate-400'}`} />
+                    <input type="tel" value={authPhone} onChange={(e) => setAuthPhone(e.target.value)} placeholder="01xxxxxxxxx" className={`w-full px-4 py-3 pr-10 rounded-xl border transition-all duration-200 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 ${darkMode ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400' : 'bg-white border-slate-200 placeholder-slate-400'}`} required />
                   </div>
                 </div>
               )}
