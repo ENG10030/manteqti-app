@@ -106,8 +106,11 @@ export async function POST(request: NextRequest) {
 
     // Try AI-powered analysis first, fallback to mock
     try {
-      const sdk = await import("z-ai-web-dev-sdk").then((m) => m.default);
-      const client = await sdk.create();
+      const mod = await import("z-ai-web-dev-sdk").catch(() => null);
+      if (!mod?.default || typeof mod.default.create !== 'function') {
+        throw new Error('SDK not available');
+      }
+      const client = await mod.default.create();
 
       const apartmentsInfo = apartments
         .map(
