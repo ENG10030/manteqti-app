@@ -17,8 +17,8 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  // Fix z-ai-web-dev-sdk ESM warning
-  serverExternalPackages: [],
+  // External packages - don't bundle, resolve at runtime (with .catch fallback)
+  serverExternalPackages: ["z-ai-web-dev-sdk"],
 };
 
 export default nextConfig;
