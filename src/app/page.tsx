@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, MapPin, Bed, Bath, Phone, ExternalLink, X,
-  CreditCard, MessageSquare, Loader2, Eye, EyeOff, Lock,
+  CreditCard, MessageSquare, Loader2, Eye, Lock,
   Sun, Moon, Check, AlertCircle, RefreshCw, Star,
   TrendingUp, Filter, Heart, User, MessageCircle, ThumbsUp,
   BarChart3, DollarSign, Settings, LogOut, Menu, AlertTriangle, 
@@ -16,7 +17,7 @@ import {
   Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
-import { io } from 'socket.io-client';
+// socket.io-client imported dynamically in useEffect to prevent Vercel SSR/hydration issues
 
 // Developer credentials
 const DEVELOPER_EMAIL = process.env.NEXT_PUBLIC_DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
@@ -109,7 +110,7 @@ function ConfirmDialog({ isOpen, title, message, confirmText = 'تأكيد', can
   );
 }
 
-export default function App() {
+function App() {
   // State
   const [apartments, setApartments] = useState<Apartment[]>([]);
   const [allApartments, setAllApartments] = useState<Apartment[]>([]);
@@ -119,6 +120,7 @@ export default function App() {
   const [initialLoad, setInitialLoad] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [darkMode, setDarkMode] = useState(false);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'rent' | 'sale'>('all');
   const [areaFilter, setAreaFilter] = useState<string>('all');
@@ -158,6 +160,7 @@ export default function App() {
   // Form states
   const [authStep, setAuthStep] = useState<'login' | 'register'>('login');
   const [authIdentifier, setAuthIdentifier] = useState('');
+  const [authPhone, setAuthPhone] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authName, setAuthName] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
@@ -178,8 +181,6 @@ export default function App() {
   const [devEmail, setDevEmail] = useState('');
   const [devPassword, setDevPassword] = useState('');
   const [devLoading, setDevLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showDevPassword, setShowDevPassword] = useState(false);
   const [aptForm, setAptForm] = useState({ title: '', price: '', area: '', bedrooms: '1', bathrooms: '1', floor: '', apartmentSize: '', description: '', ownerPhone: '', mapLink: '', type: 'rent' as 'rent' | 'sale', listingType: 'regular' as 'regular' | 'featured' | 'vip' });
   const [aptSubmitting, setAptSubmitting] = useState(false);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
@@ -274,63 +275,94 @@ export default function App() {
 
   // ========== Real-time Socket.io Connection ==========
   const socketRef = useRef<any>(null);
-  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
-  const [onlineCount, setOnlineCount] = useState(0);
+  // Use refs instead of state to prevent re-renders from socket.io (not used in JSX)
+  const isRealtimeConnectedRef = useRef(false);
+  const onlineCountRef = useRef(0);
 
   // Refs for stable function references (avoids stale closures in socket/polling)
   const fetchApartmentsRef = useRef<((retry?: number, isInitial?: boolean) => Promise<void>) | undefined>(undefined);
   const fetchMessagesRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const fetchSettingsRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const fetchDevDataRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const fetchEditRequestsRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const tabScrollRef = useRef<HTMLDivElement>(null);
+  const tabButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const currentUserRef = useRef<User | null>(null);
   const isDeveloperRef = useRef(false);
   const initialLoadRef = useRef(true);
+  const fetchUserPaymentsRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const recheckAuthRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
   // Keep refs in sync with state (no re-renders, just ref updates)
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
   useEffect(() => { isDeveloperRef.current = isDeveloper; }, [isDeveloper]);
+  useEffect(() => { fetchUserPaymentsRef.current = fetchUserPayments; });
+  useEffect(() => { recheckAuthRef.current = recheckAuth; });
 
-  // Socket.io - connect ONCE only, uses refs to avoid stale closures
+  // Socket.io - connect to Render realtime service (or local for dev)
   useEffect(() => {
-    try {
-      const socket = io('/?XTransformPort=3004', {
-        transports: ['polling', 'websocket'],
-        reconnection: true,
-        reconnectionAttempts: 3,
-        reconnectionDelay: 5000,
-        timeout: 5000,
-      });
-
-      socketRef.current = socket;
-
-      socket.on('connect', () => { setIsRealtimeConnected(true); });
-      socket.on('disconnect', () => { setIsRealtimeConnected(false); });
-
-      socket.on('apartments-changed', () => {
-        fetchApartmentsRef.current?.(0, false);
-      });
-
-      socket.on('messages-changed', () => {
-        if (currentUserRef.current) fetchMessagesRef.current?.();
-      });
-
-      socket.on('notification', (data: { event: string }) => {
-        if (data.event === 'settings-updated') fetchSettingsRef.current?.();
-      });
-
-      socket.on('online-count', (data: { count: number }) => {
-        setOnlineCount(data.count);
-      });
-
-      // Suppress connection errors silently (socket.io not available on Vercel)
-      socket.on('connect_error', () => {
-        setIsRealtimeConnected(false);
-      });
-
-      return () => { socket.disconnect(); socketRef.current = null; };
-    } catch {
- // Socket.io not available - polling fallback handles it
-    }
-  }, []); // Empty deps = connect only ONCE on mount
+    let cancelled = false;
+    let cleanupFn: (() => void) | undefined;
+    (async () => {
+      try {
+        const socketModule = await import('socket.io-client');
+        if (cancelled) return;
+        
+        // Determine socket URL:
+        // - Render: NEXT_PUBLIC_SOCKET_URL (e.g. https://manteqti-realtime.onrender.com)
+        // - Local dev: use gateway proxy /?XTransformPort=3004
+        const isVercel = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
+        const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || (isVercel ? '' : '/?XTransformPort=3004');
+        
+        if (isVercel && !socketUrl) {
+          // No Render service configured — skip silently
+          console.log('[Socket] No NEXT_PUBLIC_SOCKET_URL configured, realtime disabled');
+          return;
+        }
+        
+        const socket = socketModule.io(socketUrl, {
+          transports: ['polling', 'websocket'],
+          reconnection: true,
+          reconnectionAttempts: 5,
+          reconnectionDelay: 2000,
+          timeout: 5000,
+        });
+        socketRef.current = socket;
+        socket.on('connect', () => { isRealtimeConnectedRef.current = true; });
+        socket.on('disconnect', () => { isRealtimeConnectedRef.current = false; });
+        // Apartments changed: refresh list + if dev, refresh dev panel data
+        socket.on('apartments-changed', () => { 
+          fetchApartmentsRef.current?.(0, false);
+          if (isDeveloperRef.current) {
+            fetchDevDataRef.current?.();
+            fetchEditRequestsRef.current?.();
+          }
+        });
+        // Messages/inquiries changed: refresh messages + if dev, refresh dev messages
+        socket.on('messages-changed', () => { 
+          if (currentUserRef.current) fetchMessagesRef.current?.();
+          if (isDeveloperRef.current) fetchDevDataRef.current?.();
+        });
+        socket.on('notification', (data: { event: string }) => { if (data.event === 'settings-updated') fetchSettingsRef.current?.(); });
+        // User changed (block/unblock/approve/reject/delete): recheck auth + refresh relevant data
+        socket.on('user-changed', () => { 
+          if (currentUserRef.current) recheckAuthRef.current?.();
+          if (isDeveloperRef.current) fetchDevDataRef.current?.();
+        });
+        // Payments/wallet changed: refresh user payments + if dev, refresh dev data
+        socket.on('payments-changed', () => { 
+          if (currentUserRef.current) fetchUserPaymentsRef.current?.();
+          if (isDeveloperRef.current) fetchDevDataRef.current?.();
+        });
+        socket.on('online-count', (data: { count: number }) => { onlineCountRef.current = data.count; });
+        socket.on('connect_error', () => { isRealtimeConnectedRef.current = false; });
+        cleanupFn = () => { socket.disconnect(); socketRef.current = null; };
+      } catch {
+        // Socket.io not available
+      }
+    })();
+    return () => { cancelled = true; cleanupFn?.(); };
+  }, []);
 
   // ========== fetchApartments (stable function, ref updated each render) ==========
   const fetchApartments = async (retryCount = 0, isInitial = false) => {
@@ -354,7 +386,8 @@ export default function App() {
   // Keep ref in sync so socket/polling can call latest version
   useEffect(() => { fetchApartmentsRef.current = fetchApartments; });
 
-  // ========== SINGLE initialization: auth → apartments → dev data ==========
+  // ========== SINGLE initialization: auth → apartments → user data → DONE ==========
+  // All data loads while loading=true → ONE transition to main UI (no 3x flash)
   useEffect(() => {
     let cancelled = false;
     
@@ -374,8 +407,8 @@ export default function App() {
         }
       } catch {}
 
-      // Step 2: Fetch apartments
-      await fetchApartments(0, true);
+      // Step 2: Fetch apartments (isInitial=false → does NOT setLoading here)
+      await fetchApartments(0, false);
       if (cancelled) return;
 
       // Step 3: Load user-specific data (using refs, no dependency on state)
@@ -417,6 +450,13 @@ export default function App() {
           }
         } catch {}
       }
+
+      // Step 5: ALL data loaded — ONE transition to main UI
+      if (!cancelled) {
+        setLoading(false);
+        setInitialLoad(false);
+        initialLoadRef.current = false;
+      }
     };
 
     init();
@@ -432,6 +472,29 @@ export default function App() {
         setUserPayments(myPayments);
         const paidIds = myPayments.filter((p: Payment) => p.status === 'Paid').map((p: Payment) => p.inquiry?.apartmentId).filter((id): id is string => Boolean(id));
         setUserPaidApartments(paidIds);
+      }
+    } catch {}
+  };
+
+  // Re-check auth — used when user-changed event fires (e.g., user blocked/unblocked)
+  const recheckAuth = async () => {
+    try {
+      const authRes = await fetch('/api/auth/me');
+      const authData = await authRes.json();
+      if (authData.user) {
+        setCurrentUser(authData.user);
+        currentUserRef.current = authData.user;
+        setIsBlocked(!!authData.user.isBlocked);
+        const isDev = authData.user.identifier === DEVELOPER_EMAIL;
+        setIsDeveloper(isDev);
+        isDeveloperRef.current = isDev;
+      } else {
+        // Session expired or user deleted
+        setCurrentUser(null);
+        currentUserRef.current = null;
+        setIsBlocked(false);
+        setIsDeveloper(false);
+        isDeveloperRef.current = false;
       }
     } catch {}
   };
@@ -572,6 +635,8 @@ export default function App() {
     } catch {}
   };
   useEffect(() => { fetchSettingsRef.current = fetchSettings; });
+  useEffect(() => { fetchDevDataRef.current = fetchDevData; });
+  useEffect(() => { fetchEditRequestsRef.current = fetchEditRequests; });
 
   // Auto-refresh settings every 30 seconds so users see developer changes immediately
   useEffect(() => {
@@ -1060,7 +1125,7 @@ export default function App() {
     e.preventDefault();
     setAuthLoading(true);
     try {
-      const res = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), name: authName.trim(), password: authPassword }) });
+      const res = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), name: authName.trim(), password: authPassword, phone: authPhone.trim() }) });
       const data = await res.json();
       if (res.ok) {
         if (data.emailVerificationRequired) {
@@ -1685,15 +1750,16 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     try { await fetch(`/api/comments/${commentId}`, { method: 'DELETE' }); fetchAllComments(); addToast('تم حذف التعليق', 'success'); } catch { addToast('حدث خطأ', 'error'); }
   };
 
-  // Loading state
+  // Loading state — plain HTML (no framer-motion) to prevent hydration mismatch
+  // Server and client render identical HTML → no flash/refresh
   if (loading) return (
-    <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-slate-900' : 'bg-gradient-to-br from-slate-50 via-violet-50 to-purple-50'}`}>
-      <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="text-center">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-violet-50 to-purple-50">
+      <div className="text-center">
         <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-violet-600 to-purple-700 flex items-center justify-center mx-auto shadow-2xl shadow-violet-500/30">
           <Building2 className="h-12 w-12 text-white" />
         </div>
-        <p className={`mt-8 text-lg font-medium ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>جاري التحميل...</p>
-      </motion.div>
+        <p className="mt-8 text-lg font-medium text-slate-600">جاري التحميل...</p>
+      </div>
     </div>
   );
 
@@ -2328,20 +2394,44 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
       {/* Auth Modal */}
       <AnimatePresence>{showAuth && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowAuth(false)}>
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{authStep === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}</h2>
-              <button onClick={() => setShowAuth(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
+          <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} transition={{ type: 'spring', duration: 0.5 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-3xl overflow-hidden ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+            {/* Header with gradient */}
+            <div className="relative bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700 px-6 pt-8 pb-10">
+              <div className="absolute inset-0 opacity-10">
+                <div className="absolute top-4 right-8 w-20 h-20 rounded-full border-2 border-white/30" />
+                <div className="absolute bottom-2 left-6 w-32 h-32 rounded-full border-2 border-white/20" />
+                <div className="absolute top-8 left-1/2 w-16 h-16 rounded-full border border-white/25" />
+              </div>
+              <button onClick={() => setShowAuth(false)} className="absolute top-4 left-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-colors"><X className="h-5 w-5 text-white" /></button>
+              <div className="relative z-10 text-center">
+                <div className="mx-auto w-16 h-16 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center mb-3 border border-white/20">
+                  <Building2 className="h-8 w-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold text-white">{authStep === 'login' ? 'مرحباً بعودتك! 👋' : 'انضم إلينا ✨'}</h2>
+                <p className="text-sm text-white/80 mt-1.5 leading-relaxed">{authStep === 'login' ? 'سجل دخولك لاستكشاف أفضل العقارات' : 'أنشئ حسابك وابدأ رحلتك في عالم العقارات'}</p>
+              </div>
             </div>
-            <form onSubmit={authStep === 'login' ? handleLogin : handleRegister} className="space-y-4">
-              {authStep === 'register' && <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الاسم</label><input type="text" value={authName} onChange={(e) => setAuthName(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>}
-              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>البريد الإلكتروني أو رقم الهاتف</label><input type="text" value={authIdentifier} onChange={(e) => setAuthIdentifier(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
-              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>كلمة المرور</label><div className="relative"><input type={showPassword ? 'text' : 'password'} value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /><button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">{showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</button></div></div>
-              <div className="flex items-center gap-2"><input type="checkbox" id="rememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 rounded" /><label htmlFor="rememberMe" className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>تذكرني</label></div>
-              <button type="submit" disabled={authLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium disabled:opacity-50">{authLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : authStep === 'login' ? 'دخول' : 'تسجيل'}</button>
-            </form>
-            <div className="mt-4 text-center"><button onClick={() => setAuthStep(authStep === 'login' ? 'register' : 'login')} className={`text-sm ${darkMode ? 'text-violet-400' : 'text-violet-600'} hover:underline`}>{authStep === 'login' ? 'ليس لديك حساب؟ سجل الآن' : 'لديك حساب؟ سجل دخولك'}</button></div>
-            {authStep === 'login' && <div className="mt-2 text-center"><button onClick={() => { setShowAuth(false); setShowForgotPassword(true); }} className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'} hover:underline`}>نسيت كلمة المرور؟</button></div>}
+            {/* Form */}
+            <div className="px-6 pb-6 -mt-6">
+              <div className={`rounded-2xl p-5 ${darkMode ? 'bg-slate-750 bg-slate-700/50' : 'bg-slate-50/80'} backdrop-blur-sm border ${darkMode ? 'border-slate-600/50' : 'border-slate-100'}`}>
+                <form onSubmit={authStep === 'login' ? handleLogin : handleRegister} className="space-y-4">
+                  {authStep === 'register' && <div className="relative"><label className={`block text-xs font-semibold mb-1.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-wider`}>الاسم</label><div className="relative"><User className={`absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`} /><input type="text" value={authName} onChange={(e) => setAuthName(e.target.value)} placeholder="أدخل اسمك الكامل" className={`w-full pr-10 pl-4 py-3 rounded-xl border-2 transition-all duration-200 ${darkMode ? 'bg-slate-800/50 border-slate-600 text-white placeholder-slate-500 focus:border-violet-500 focus:bg-slate-800' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-violet-500 focus:bg-white'} outline-none`} required /></div></div>}
+                  {authStep === 'register' ? (
+                    <>
+                      <div className="relative"><label className={`block text-xs font-semibold mb-1.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-wider`}>البريد الإلكتروني</label><div className="relative"><Smartphone className={`absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`} /><input type="email" value={authIdentifier} onChange={(e) => setAuthIdentifier(e.target.value)} placeholder="example@email.com" className={`w-full pr-10 pl-4 py-3 rounded-xl border-2 transition-all duration-200 ${darkMode ? 'bg-slate-800/50 border-slate-600 text-white placeholder-slate-500 focus:border-violet-500 focus:bg-slate-800' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-violet-500 focus:bg-white'} outline-none`} required /></div></div>
+                      <div className="relative"><label className={`block text-xs font-semibold mb-1.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-wider`}>رقم الهاتف</label><div className="relative"><Phone className={`absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`} /><input type="tel" value={authPhone} onChange={(e) => setAuthPhone(e.target.value)} placeholder="01xxxxxxxxx" className={`w-full pr-10 pl-4 py-3 rounded-xl border-2 transition-all duration-200 ${darkMode ? 'bg-slate-800/50 border-slate-600 text-white placeholder-slate-500 focus:border-violet-500 focus:bg-slate-800' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-violet-500 focus:bg-white'} outline-none`} required /></div></div>
+                    </>
+                  ) : (
+                    <div className="relative"><label className={`block text-xs font-semibold mb-1.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-wider`}>البريد الإلكتروني أو رقم الهاتف</label><div className="relative"><Smartphone className={`absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`} /><input type="text" value={authIdentifier} onChange={(e) => setAuthIdentifier(e.target.value)} placeholder="example@email.com" className={`w-full pr-10 pl-4 py-3 rounded-xl border-2 transition-all duration-200 ${darkMode ? 'bg-slate-800/50 border-slate-600 text-white placeholder-slate-500 focus:border-violet-500 focus:bg-slate-800' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-violet-500 focus:bg-white'} outline-none`} required /></div></div>
+                  )}
+                  <div className="relative"><label className={`block text-xs font-semibold mb-1.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-wider`}>كلمة المرور</label><div className="relative"><Lock className={`absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`} /><input type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} placeholder="••••••••" className={`w-full pr-10 pl-4 py-3 rounded-xl border-2 transition-all duration-200 ${darkMode ? 'bg-slate-800/50 border-slate-600 text-white placeholder-slate-500 focus:border-violet-500 focus:bg-slate-800' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-violet-500 focus:bg-white'} outline-none`} required /></div></div>
+                  <div className="flex items-center justify-between"><label className="flex items-center gap-2 cursor-pointer group"><input type="checkbox" id="rememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 rounded accent-violet-600" /><span className={`text-sm ${darkMode ? 'text-slate-400 group-hover:text-slate-300' : 'text-slate-500 group-hover:text-slate-700'} transition-colors`}>تذكرني</span></label>
+                  {authStep === 'login' && <button type="button" onClick={() => { setShowAuth(false); setShowForgotPassword(true); }} className={`text-xs font-medium ${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-violet-600 hover:text-violet-700'} transition-colors`}>نسيت كلمة المرور؟</button>}</div>
+                  <button type="submit" disabled={authLoading} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 text-white font-semibold shadow-lg shadow-violet-500/30 hover:shadow-violet-500/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100">{authLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : <span className="flex items-center justify-center gap-2">{authStep === 'login' ? <><ArrowUp className="h-4 w-4 -rotate-45" />تسجيل الدخول</> : <><Plus className="h-4 w-4" />إنشاء حساب</>}</span>}</button>
+                </form>
+              </div>
+              <div className="mt-5 text-center"><button onClick={() => setAuthStep(authStep === 'login' ? 'register' : 'login')} className={`text-sm font-medium ${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-violet-600 hover:text-violet-700'} transition-colors`}>{authStep === 'login' ? 'ليس لديك حساب؟ ' : 'لديك حساب؟ '}{authStep === 'login' ? <span className="underline underline-offset-2">سجل الآن</span> : <span className="underline underline-offset-2">سجل دخولك</span>}</button></div>
+            </div>
           </motion.div>
         </motion.div>
       )}</AnimatePresence>
@@ -2349,17 +2439,34 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
       {/* Developer Login Modal */}
       <AnimatePresence>{showDevLogin && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowDevLogin(false)}>
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Lock className="h-6 w-6 text-amber-500" />دخول المطور</h2>
-              <button onClick={() => setShowDevLogin(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
+          <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} transition={{ type: 'spring', duration: 0.5 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-3xl overflow-hidden ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
+            {/* Header with amber gradient */}
+            <div className="relative bg-gradient-to-br from-amber-500 via-orange-500 to-rose-600 px-6 pt-8 pb-10">
+              <div className="absolute inset-0 opacity-10">
+                <div className="absolute top-4 right-8 w-20 h-20 rounded-full border-2 border-white/30" />
+                <div className="absolute bottom-2 left-6 w-32 h-32 rounded-full border-2 border-white/20" />
+                <div className="absolute top-8 left-1/2 w-16 h-16 rounded-full border border-white/25" />
+              </div>
+              <button onClick={() => setShowDevLogin(false)} className="absolute top-4 left-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-colors"><X className="h-5 w-5 text-white" /></button>
+              <div className="relative z-10 text-center">
+                <div className="mx-auto w-16 h-16 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center mb-3 border border-white/20">
+                  <ShieldCheck className="h-8 w-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold text-white">لوحة تحكم المطور</h2>
+                <p className="text-sm text-white/70 mt-1">دخول آمن للإدارة</p>
+              </div>
             </div>
-            <form onSubmit={handleDevLogin} className="space-y-4">
-              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>البريد الإلكتروني</label><input type="email" value={devEmail} onChange={(e) => setDevEmail(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
-              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>كلمة المرور</label><div className="relative"><input type={showDevPassword ? 'text' : 'password'} value={devPassword} onChange={(e) => setDevPassword(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /><button type="button" onClick={() => setShowDevPassword(!showDevPassword)} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">{showDevPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</button></div></div>
-              <div className="flex items-center gap-2"><input type="checkbox" id="devRememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 rounded" /><label htmlFor="devRememberMe" className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>تذكرني</label></div>
-              <button type="submit" disabled={devLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium disabled:opacity-50">{devLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'دخول'}</button>
-            </form>
+            {/* Form */}
+            <div className="px-6 pb-6 -mt-6">
+              <div className={`rounded-2xl p-5 ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50/80'} backdrop-blur-sm border ${darkMode ? 'border-slate-600/50' : 'border-slate-100'}`}>
+                <form onSubmit={handleDevLogin} className="space-y-4">
+                  <div className="relative"><label className={`block text-xs font-semibold mb-1.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-wider`}>البريد الإلكتروني</label><div className="relative"><Smartphone className={`absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`} /><input type="email" value={devEmail} onChange={(e) => setDevEmail(e.target.value)} placeholder="admin@manteqti.com" className={`w-full pr-10 pl-4 py-3 rounded-xl border-2 transition-all duration-200 ${darkMode ? 'bg-slate-800/50 border-slate-600 text-white placeholder-slate-500 focus:border-amber-500 focus:bg-slate-800' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-amber-500 focus:bg-white'} outline-none`} required /></div></div>
+                  <div className="relative"><label className={`block text-xs font-semibold mb-1.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'} uppercase tracking-wider`}>كلمة المرور</label><div className="relative"><Key className={`absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`} /><input type="password" value={devPassword} onChange={(e) => setDevPassword(e.target.value)} placeholder="••••••••" className={`w-full pr-10 pl-4 py-3 rounded-xl border-2 transition-all duration-200 ${darkMode ? 'bg-slate-800/50 border-slate-600 text-white placeholder-slate-500 focus:border-amber-500 focus:bg-slate-800' : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400 focus:border-amber-500 focus:bg-white'} outline-none`} required /></div></div>
+                  <div className="flex items-center justify-between"><label className="flex items-center gap-2 cursor-pointer group"><input type="checkbox" id="devRememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 rounded accent-amber-600" /><span className={`text-sm ${darkMode ? 'text-slate-400 group-hover:text-slate-300' : 'text-slate-500 group-hover:text-slate-700'} transition-colors`}>تذكرني</span></label></div>
+                  <button type="submit" disabled={devLoading} className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-600 text-white font-semibold shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100">{devLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : <span className="flex items-center justify-center gap-2"><ShieldCheck className="h-4 w-4" />دخول المطور</span>}</button>
+                </form>
+              </div>
+            </div>
           </motion.div>
         </motion.div>
       )}</AnimatePresence>
@@ -2569,9 +2676,9 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><ShieldCheck className="h-6 w-6 text-amber-500" />لوحة تحكم المطور</h2>
                 <button onClick={() => setShowDevPanel(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
               </div>
-              <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
+              <div ref={tabScrollRef} className="flex gap-2 mt-4 overflow-x-auto pb-2 pr-4 scrollbar-thin">
                 {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل' }, { id: 'userApprovals', icon: ShieldCheck, label: 'تأكيد المستخدمين', count: pendingUsers.length }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'userLogs', icon: BookOpen, label: 'سجل المستخدمين', count: approvalLogs.length }, { id: 'editRequests', icon: FilePen, label: 'طلبات التعديل', count: editRequests.filter(e => e.status === 'pending').length }, { id: 'blocked', icon: Ban, label: 'محظورين' }, { id: 'settings', icon: Settings, label: 'الإعدادات' }, { id: 'logs', icon: Activity, label: 'السجل' } ].map(tab => (
-                  <button key={tab.id} onClick={() => setDevTab(tab.id as any)} className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-all ${devTab === tab.id ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                  <button key={tab.id} ref={el => { tabButtonRefs.current[tab.id] = el; }} onClick={() => { setDevTab(tab.id as any); setTimeout(() => { const btn = tabButtonRefs.current[tab.id]; if (btn) { btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); } }, 50); }} style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }} className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-all cursor-pointer select-none ${devTab === tab.id ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/25' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600 active:bg-slate-500' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 active:bg-slate-300'}`}>
                     <tab.icon className="h-4 w-4" />{tab.label}
                     {tab.count !== undefined && tab.count > 0 && <span className={`px-2 py-0.5 rounded-full text-xs ${devTab === tab.id ? 'bg-white/20' : 'bg-amber-500 text-white'}`}>{tab.count}</span>}
                   </button>
@@ -3066,47 +3173,47 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>💰 رسوم بيانات التواصل</label>
-                      <input type="number" min="0" value={settings.contactFee} onChange={(e) => setSettings({ ...settings, contactFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                      <input type="text" inputMode="decimal" min="0" value={settings.contactFee} onChange={(e) => setSettings({ ...settings, contactFee: Math.max(0, parseInt(e.target.value) || 0) })} onWheel={(e) => (e.target as HTMLInputElement).blur()} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                     <div>
                       <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>🏠 رسوم العقار العادي</label>
-                      <input type="number" min="0" value={settings.regularFee} onChange={(e) => setSettings({ ...settings, regularFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                      <input type="text" inputMode="decimal" min="0" value={settings.regularFee} onChange={(e) => setSettings({ ...settings, regularFee: Math.max(0, parseInt(e.target.value) || 0) })} onWheel={(e) => (e.target as HTMLInputElement).blur()} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                     <div>
                       <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>⭐ رسوم العقار المميز</label>
-                      <input type="number" min="0" value={settings.featuredFee} onChange={(e) => setSettings({ ...settings, featuredFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                      <input type="text" inputMode="decimal" min="0" value={settings.featuredFee} onChange={(e) => setSettings({ ...settings, featuredFee: Math.max(0, parseInt(e.target.value) || 0) })} onWheel={(e) => (e.target as HTMLInputElement).blur()} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                     <div>
                       <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>👑 رسوم VIP</label>
-                      <input type="number" min="0" value={settings.vipFee} onChange={(e) => setSettings({ ...settings, vipFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                      <input type="text" inputMode="decimal" min="0" value={settings.vipFee} onChange={(e) => setSettings({ ...settings, vipFee: Math.max(0, parseInt(e.target.value) || 0) })} onWheel={(e) => (e.target as HTMLInputElement).blur()} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                     <div>
                       <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📋 رسوم عرض البيع</label>
-                      <input type="number" min="0" value={settings.saleDisplayFee} onChange={(e) => setSettings({ ...settings, saleDisplayFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                      <input type="text" inputMode="decimal" min="0" value={settings.saleDisplayFee} onChange={(e) => setSettings({ ...settings, saleDisplayFee: Math.max(0, parseInt(e.target.value) || 0) })} onWheel={(e) => (e.target as HTMLInputElement).blur()} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                     <div>
                       <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>🔑 رسوم عرض الإيجار</label>
-                      <input type="number" min="0" value={settings.rentDisplayFee} onChange={(e) => setSettings({ ...settings, rentDisplayFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                      <input type="text" inputMode="decimal" min="0" value={settings.rentDisplayFee} onChange={(e) => setSettings({ ...settings, rentDisplayFee: Math.max(0, parseInt(e.target.value) || 0) })} onWheel={(e) => (e.target as HTMLInputElement).blur()} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                     <div>
                       <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>✨ رسوم إبراز العقار</label>
-                      <input type="number" min="0" value={settings.highlightFee} onChange={(e) => setSettings({ ...settings, highlightFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                      <input type="text" inputMode="decimal" min="0" value={settings.highlightFee} onChange={(e) => setSettings({ ...settings, highlightFee: Math.max(0, parseInt(e.target.value) || 0) })} onWheel={(e) => (e.target as HTMLInputElement).blur()} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                     <div>
                       <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>🔝 رسوم أولوية العرض</label>
-                      <input type="number" min="0" value={settings.priorityListingFee} onChange={(e) => setSettings({ ...settings, priorityListingFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                      <input type="text" inputMode="decimal" min="0" value={settings.priorityListingFee} onChange={(e) => setSettings({ ...settings, priorityListingFee: Math.max(0, parseInt(e.target.value) || 0) })} onWheel={(e) => (e.target as HTMLInputElement).blur()} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                     <div>
                       <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>✅ رسوم التحقق من العقار</label>
-                      <input type="number" min="0" value={settings.verifiedListingFee} onChange={(e) => setSettings({ ...settings, verifiedListingFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                      <input type="text" inputMode="decimal" min="0" value={settings.verifiedListingFee} onChange={(e) => setSettings({ ...settings, verifiedListingFee: Math.max(0, parseInt(e.target.value) || 0) })} onWheel={(e) => (e.target as HTMLInputElement).blur()} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                     <div>
                       <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>💎 رسوم الباقة المميزة</label>
-                      <input type="number" min="0" value={settings.premiumFee} onChange={(e) => setSettings({ ...settings, premiumFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                      <input type="text" inputMode="decimal" min="0" value={settings.premiumFee} onChange={(e) => setSettings({ ...settings, premiumFee: Math.max(0, parseInt(e.target.value) || 0) })} onWheel={(e) => (e.target as HTMLInputElement).blur()} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                     <div>
                       <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>🛠️ رسوم خدمات أخرى</label>
-                      <input type="number" min="0" value={settings.otherServicesFee} onChange={(e) => setSettings({ ...settings, otherServicesFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                      <input type="text" inputMode="decimal" min="0" value={settings.otherServicesFee} onChange={(e) => setSettings({ ...settings, otherServicesFee: Math.max(0, parseInt(e.target.value) || 0) })} onWheel={(e) => (e.target as HTMLInputElement).blur()} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                     <div>
                       <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>💱 العملة</label>
@@ -3441,3 +3548,17 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     </div>
   );
 }
+
+// Export with ssr:false to completely prevent server-side rendering and hydration mismatch
+const AppLoader = () => (
+  <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-violet-50 to-purple-50">
+    <div className="text-center">
+      <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-violet-600 to-purple-700 flex items-center justify-center mx-auto shadow-2xl shadow-violet-500/30">
+        <svg className="h-12 w-12 text-white animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
+      </div>
+      <p className="mt-8 text-lg font-medium text-slate-600">جاري التحميل...</p>
+    </div>
+  </div>
+);
+
+export default dynamic(() => Promise.resolve({ default: App }), { ssr: false, loading: () => <AppLoader /> });
