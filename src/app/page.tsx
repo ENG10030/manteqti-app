@@ -2454,11 +2454,11 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     {authStep === 'login' && <button type="button" onClick={() => { setShowAuth(false); setShowForgotPassword(true); }} className={`text-xs ${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-violet-600 hover:text-violet-500'} transition-colors`}>نسيت كلمة المرور؟</button>}
                   </div>
                   <button type="submit" disabled={authLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-semibold shadow-lg shadow-violet-500/30 hover:shadow-violet-500/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2">
-                    {authLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : authStep === 'login' ? <><span>تسجيل الدخول</span><ArrowUp className="h-4 w-4 -rotate-45" /></> : <><span>إنشاء حساب</span><Plus className="h-4 w-4" /></>}
+                    {authLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : authStep === 'login' ? <><span>تسجيل الدخول</span><span className='text-lg'>🔑</span></> : <><span>إنشاء حساب</span><Plus className="h-4 w-4" /></>}
                   </button>
                 </form>
                 <div className="mt-4 text-center">
-                  <button onClick={() => setAuthStep(authStep === 'login' ? 'register' : 'login')} className={`text-sm ${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-violet-600 hover:text-violet-500'} transition-colors`}>{authStep === 'login' ? 'ليس لديك حساب؟ سجل الآن' : 'لديك حساب؟ سجل دخولك'}</button>
+                  <button onClick={() => setAuthStep(authStep === 'login' ? 'register' : 'login')} className={`text-sm ${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-violet-600 hover:text-violet-500'} transition-colors`}>{authStep === 'login' ? <>ليس لديك حساب؟ <span className={darkMode ? 'text-cyan-400 font-semibold' : 'text-cyan-600 font-semibold'}>سجل الآن</span></> : 'لديك حساب؟ سجل دخولك'}</button>
                 </div>
               </div>
             </div>
@@ -2507,7 +2507,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                   </div>
                   <div className="flex items-center gap-2"><input type="checkbox" id="devRememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 rounded accent-amber-500" /><label htmlFor="devRememberMe" className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>تذكرني</label></div>
                   <button type="submit" disabled={devLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2">
-                    {devLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <><span>دخول للوحة التحكم</span><ArrowUp className="h-4 w-4 -rotate-45" /></>}
+                    {devLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <><span>دخول للوحة التحكم</span><span className='text-lg'>🛡️</span></>}
                   </button>
                 </form>
               </div>
