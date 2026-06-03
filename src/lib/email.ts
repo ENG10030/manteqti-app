@@ -615,6 +615,136 @@ export async function sendUserUnblockedEmail({ to, name }: SendUserUnblockedPara
   } catch (error: any) { console.error('Error sending unblocked email:', error); return { success: false, error: error.message }; }
 }
 
+// ========== إيميل شحن المحفظة ==========
+interface SendWalletTopUpParams {
+  to: string;
+  name: string;
+  amount: number;
+  newBalance: number;
+  method?: string;
+}
+
+export async function sendWalletTopUpEmail({ to, name, amount, newBalance, method }: SendWalletTopUpParams) {
+  try {
+    const { data, error } = await getResend().emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: [to],
+      subject: `💰 تم شحن محفظتك بنجاح - ${APP_NAME}`,
+      html: `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head><meta charset="UTF-8"><style>
+          body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; direction: rtl; }
+          .container { max-width: 480px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+          .header { background: linear-gradient(135deg, #059669, #10b981); padding: 32px; text-align: center; }
+          .header h1 { color: white; margin: 0; font-size: 22px; }
+          .header p { color: rgba(255,255,255,0.9); margin: 8px 0 0; font-size: 14px; }
+          .content { padding: 32px; text-align: center; }
+          .content p { color: #475569; font-size: 15px; line-height: 1.8; }
+          .success-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px; margin: 20px 0; }
+          .success-box p { color: #166534; font-size: 14px; margin: 0; }
+          .info-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin: 16px 0; }
+          .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
+          .info-row:last-child { border-bottom: none; }
+          .info-label { color: #6b7280; font-size: 14px; }
+          .info-value { color: #166534; font-weight: 600; font-size: 14px; }
+          .footer { background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0; }
+          .footer p { color: #94a3b8; font-size: 12px; margin: 4px 0; }
+        </style></head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>💰 تم شحن محفظتك!</h1>
+              <p>تم إضافة رصيد إلى محفظتك بنجاح</p>
+            </div>
+            <div class="content">
+              <p>مرحباً <strong>${sanitizeHtml(name)}</strong>،</p>
+              <div class="success-box">
+                <p>✅ تم شحن محفظتك بنجاح</p>
+              </div>
+              <div class="info-box">
+                <div class="info-row"><span class="info-label">المبلغ المُضاف</span><span class="info-value">+${amount.toLocaleString()} ج.م</span></div>
+                ${method ? `<div class="info-row"><span class="info-label">طريقة الدفع</span><span class="info-value">${sanitizeHtml(method)}</span></div>` : ''}
+                <div class="info-row"><span class="info-label">الرصيد الحالي</span><span class="info-value">${newBalance.toLocaleString()} ج.م</span></div>
+              </div>
+              <p>يمكنك الآن استخدام رصيدك في الدفع على المنصة 🏠</p>
+            </div>
+            <div class="footer">
+              <p>${APP_NAME} - لوحة الشقق الذكية</p>
+              <p>إذا واجهت أي مشكلة، تواصل مع الدعم الفني</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+    });
+    if (error) { console.error('Resend error:', error); return { success: false, error: error.message }; }
+    console.log(`📧 Wallet top-up email sent to ${to}, ID: ${data?.id}`);
+    return { success: true, messageId: data?.id };
+  } catch (error: any) { console.error('Error sending wallet top-up email:', error); return { success: false, error: error.message }; }
+}
+
+// ========== إيميل سحب من المحفظة ==========
+interface SendWalletWithdrawalParams {
+  to: string;
+  name: string;
+  amount: number;
+  newBalance: number;
+}
+
+export async function sendWalletWithdrawalEmail({ to, name, amount, newBalance }: SendWalletWithdrawalParams) {
+  try {
+    const { data, error } = await getResend().emails.send({
+      from: `${APP_NAME} <${FROM_EMAIL}>`,
+      to: [to],
+      subject: `📤 تم سحب من محفظتك - ${APP_NAME}`,
+      html: `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="ar">
+        <head><meta charset="UTF-8"><style>
+          body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; direction: rtl; }
+          .container { max-width: 480px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+          .header { background: linear-gradient(135deg, #d97706, #f59e0b); padding: 32px; text-align: center; }
+          .header h1 { color: white; margin: 0; font-size: 22px; }
+          .header p { color: rgba(255,255,255,0.9); margin: 8px 0 0; font-size: 14px; }
+          .content { padding: 32px; text-align: center; }
+          .content p { color: #475569; font-size: 15px; line-height: 1.8; }
+          .info-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 16px; margin: 16px 0; }
+          .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #fef3c7; }
+          .info-row:last-child { border-bottom: none; }
+          .info-label { color: #6b7280; font-size: 14px; }
+          .info-value { color: #92400e; font-weight: 600; font-size: 14px; }
+          .footer { background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0; }
+          .footer p { color: #94a3b8; font-size: 12px; margin: 4px 0; }
+        </style></head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>📤 تم سحب من محفظتك</h1>
+              <p>تم خصم مبلغ من رصيد محفظتك</p>
+            </div>
+            <div class="content">
+              <p>مرحباً <strong>${sanitizeHtml(name)}</strong>،</p>
+              <p>تم خصم مبلغ من محفظتك بنجاح.</p>
+              <div class="info-box">
+                <div class="info-row"><span class="info-label">المبلغ المخصوم</span><span class="info-value">-${amount.toLocaleString()} ج.م</span></div>
+                <div class="info-row"><span class="info-label">الرصيد المتبقي</span><span class="info-value">${newBalance.toLocaleString()} ج.م</span></div>
+              </div>
+              <p>سجل دخولك لمتابعة رصيدك ومعاملاتك 📊</p>
+            </div>
+            <div class="footer">
+              <p>${APP_NAME} - لوحة الشقق الذكية</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+    });
+    if (error) { console.error('Resend error:', error); return { success: false, error: error.message }; }
+    return { success: true, messageId: data?.id };
+  } catch (error: any) { console.error('Error sending wallet withdrawal email:', error); return { success: false, error: error.message }; }
+}
+
 // ========== إيميل رسالة جديدة ==========
 interface SendNewMessageParams {
   to: string;
