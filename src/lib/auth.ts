@@ -1,29 +1,14 @@
 import { db } from "./db";
-import { verify, sign } from "jsonwebtoken";
-import { NextRequest, NextResponse } from "next/server";
+import { verify } from "jsonwebtoken";
+import { NextRequest } from "next/server";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 
-// 🔒 SECURITY: JWT Secret - getter ديناميكي
-// Build time: يرجع placeholder عشان الـ build يكمل
-// Runtime: يرجع الـ env var الحقيقي
-function _getJwtSecret(): string {
-  return process.env.JWT_SECRET || 'build-time-placeholder';
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable is not set");
 }
-// تصدير ثابت للمتصفح/next-auth بس يتعمل override في الـ runtime
-export const JWT_SECRET: string = typeof process !== 'undefined'
-  ? (process.env.JWT_SECRET || 'build-time-placeholder')
-  : 'build-time-placeholder';
 
-// 🔒 للـ runtime: نستخدم الـ env var الحقيقي دائماً
-export function getRuntimeJwtSecret(): string {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    console.error('⚠️ FATAL: JWT_SECRET مش معرف في متغيرات البيئة');
-    return 'build-time-placeholder';
-  }
-  return secret;
-}
+export const JWT_SECRET = process.env.JWT_SECRET;
 
 export interface AuthUser {
   id: string;
@@ -101,7 +86,7 @@ export const authOptions = {
   secret: process.env.NEXTAUTH_SECRET || JWT_SECRET,
 };
 
-// Get current user from request with DB verification
+// الحصول على المستخدم الحالي من الطلب
 export async function getCurrentUser(request: NextRequest): Promise<AuthUser | null> {
   try {
     const token = request.cookies.get("auth-token")?.value;
@@ -124,7 +109,6 @@ export async function getCurrentUser(request: NextRequest): Promise<AuthUser | n
     });
 
     if (!user) return null;
-    if (user.isBlocked) return null;
 
     return user as AuthUser;
   } catch (error) {
@@ -132,14 +116,13 @@ export async function getCurrentUser(request: NextRequest): Promise<AuthUser | n
   }
 }
 
-// Check if user is developer
+// التحقق من صلاحيات المطور
 export async function isDeveloper(request: NextRequest): Promise<boolean> {
   const user = await getCurrentUser(request);
   return user?.role === "DEVELOPER";
 }
 
-// Authenticate request WITHOUT DB lookup - only for lightweight/non-sensitive routes
-// WARNING: This trusts JWT claims without verifying current DB state
+// التحقق من تسجيل الدخول (بدون DB - للـ routes الخفيفة)
 export function authenticateRequest(request: NextRequest): { user: { id: string; role: string } } | null {
   try {
     const token = request.cookies.get("auth-token")?.value;
@@ -155,12 +138,12 @@ export function authenticateRequest(request: NextRequest): { user: { id: string;
   }
 }
 
-// Check if user is developer or admin
+// التحقق من أن المستخدم مطور أو أدمن
 export function isDeveloperOrAdmin(user: { role: string }): boolean {
   return user.role === 'DEVELOPER' || user.role === 'ADMIN';
 }
 
-// Require authenticated user with full DB verification
+// التحقق من تسجيل الدخول
 export async function requireAuth(request: NextRequest): Promise<AuthUser> {
   const user = await getCurrentUser(request);
   
@@ -180,7 +163,7 @@ export async function requireAuth(request: NextRequest): Promise<AuthUser> {
   return user;
 }
 
-// Require developer role with full DB verification
+// التحقق من صلاحيات المطور
 export async function requireDeveloper(request: NextRequest): Promise<AuthUser> {
   const user = await requireAuth(request);
   
@@ -189,22 +172,4 @@ export async function requireDeveloper(request: NextRequest): Promise<AuthUser> 
   }
   
   return user;
-}
-
-// Create a JWT token helper
-export function createToken(payload: { userId: string; identifier: string; role: string }, expiresIn: string = '24h'): string {
-  return sign(payload, JWT_SECRET, { expiresIn });
-}
-
-// Create auth response with cookie helper
-export function createAuthResponse(data: object, token: string) {
-  const response = NextResponse.json(data);
-  response.cookies.set('auth-token', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 60 * 60 * 24, // 24 hours (reduced from 7 days)
-    path: '/',
-  });
-  return response;
 }

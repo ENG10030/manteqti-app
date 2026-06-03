@@ -38,6 +38,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ user: null });
     }
 
+    // Return null for blocked users (security)
+    if (user.isBlocked) {
+      return NextResponse.json({ user: null });
+    }
+
     return NextResponse.json({ user });
   } catch (error) {
     return NextResponse.json({ user: null });

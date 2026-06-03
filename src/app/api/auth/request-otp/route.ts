@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { sendOTPEmail } from '@/lib/email';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 
 // Rate limiting for OTP requests (in-memory)
 const otpRequestCounts = new Map<string, { count: number; lastRequest: number }>();
@@ -30,6 +31,8 @@ export async function POST(request: NextRequest) {
             error: 'طلبات كثيرة. يرجى المحاولة بعد 5 دقائق' 
           }, { status: 429 });
         }
+        requestCount.count += 1;
+        requestCount.lastRequest = now;
       } else {
         // Window expired, reset counter
         otpRequestCounts.set(normalizedIdentifier, { count: 1, lastRequest: now });
@@ -57,20 +60,23 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Generate new OTP
-    const otp = crypto.randomInt(100000, 999999).toString();
+    // Generate new 8-digit OTP
+    const otp = crypto.randomInt(10000000, 99999999).toString();
     const otpExpires = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
 
-    // Update user with new OTP
+    // Hash OTP with bcrypt before storing
+    const hashedOtp = await bcrypt.hash(otp, 10);
+
+    // Update user with hashed OTP
     await db.user.update({
       where: { id: user.id },
       data: {
-        otp,
+        otp: hashedOtp,
         otpExpires
       }
     });
 
-    // Send OTP via email
+    // Send OTP via email (send the plain OTP)
     const emailTo = user.email || normalizedIdentifier;
     await sendOTPEmail({ to: emailTo, otp, name: user.name });
 
@@ -79,7 +85,6 @@ export async function POST(request: NextRequest) {
       message: 'تم إرسال رمز التحقق',
     });
   } catch (error) {
-    console.error('Error requesting OTP:', error);
     return NextResponse.json({ error: 'فشل في إرسال رمز التحقق' }, { status: 500 });
   }
 }

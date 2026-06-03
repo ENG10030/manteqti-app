@@ -26,7 +26,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: true, email: user.email });
 
   } catch (error) {
-    console.error('Error verifying reset token:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }
@@ -44,8 +43,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'كلمتا المرور غير متطابقتين' }, { status: 400 });
     }
 
-    if (newPassword.length < 6) {
-      return NextResponse.json({ error: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' }, { status: 400 });
+    if (newPassword.length < 8) {
+      return NextResponse.json({ error: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل' }, { status: 400 });
+    }
+
+    if (newPassword.length > 128) {
+      return NextResponse.json({ error: 'كلمة المرور طويلة جداً' }, { status: 400 });
     }
 
     const user = await db.user.findFirst({
@@ -73,7 +76,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, message: 'تم تغيير كلمة المرور بنجاح' });
 
   } catch (error) {
-    console.error('Error resetting password:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
   }
 }

@@ -27,8 +27,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'جميع الحقول مطلوبة' }, { status: 400 });
     }
 
-    if (newPassword.length < 6) {
-      return NextResponse.json({ error: 'كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل' }, { status: 400 });
+    if (newPassword.length < 8) {
+      return NextResponse.json({ error: 'كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل' }, { status: 400 });
     }
 
     if (newPassword.length > 128) {
@@ -62,7 +62,6 @@ export async function POST(request: NextRequest) {
       message: 'تم تغيير كلمة المرور بنجاح'
     });
   } catch (error) {
-    console.error('Error changing password:', error);
     return NextResponse.json({ error: 'حدث خطأ في تغيير كلمة المرور' }, { status: 500 });
   }
 }

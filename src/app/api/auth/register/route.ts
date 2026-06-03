@@ -2,52 +2,51 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
-
-const JWT_SECRET = process.env.JWT_SECRET || "manteqti-secret-key-2024";
+import { JWT_SECRET } from "@/lib/auth";
 
 export async function POST(request: Request) {
   try {
-    console.log('[REGISTER] Starting...');
-    console.log('[REGISTER] DATABASE_URL exists:', !!process.env.DATABASE_URL);
-
     const body = await request.json();
     const { name, email, identifier, password, phone } = body;
 
     const userEmail = (email || identifier || "").toLowerCase().trim();
 
-    console.log('[REGISTER] Name:', name);
-    console.log('[REGISTER] Email:', userEmail);
-    console.log('[REGISTER] Phone:', phone || 'not provided');
-    console.log('[REGISTER] Password:', password ? 'yes (6+ chars)' : 'NO');
-
     if (!name || !userEmail || !password) {
       return NextResponse.json({ error: "الاسم والبريد الإلكتروني وكلمة المرور مطلوبون" }, { status: 400 });
     }
 
-    if (password.length < 6) {
-      return NextResponse.json({ error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" }, { status: 400 });
+    // Input length validation
+    if (userEmail.length > 254) {
+      return NextResponse.json({ error: "البريد الإلكتروني طويل جداً" }, { status: 400 });
+    }
+    if (name.trim().length > 100) {
+      return NextResponse.json({ error: "الاسم طويل جداً" }, { status: 400 });
+    }
+    if (password.length > 128) {
+      return NextResponse.json({ error: "كلمة المرور طويلة جداً" }, { status: 400 });
+    }
+    if (phone && phone.length > 20) {
+      return NextResponse.json({ error: "رقم الهاتف طويل جداً" }, { status: 400 });
+    }
+
+    if (password.length < 8) {
+      return NextResponse.json({ error: "كلمة المرور يجب أن تكون 8 أحرف على الأقل" }, { status: 400 });
     }
 
     if (name.trim().length < 2) {
       return NextResponse.json({ error: "الاسم يجب أن يكون حرفين على الأقل" }, { status: 400 });
     }
 
-    console.log('[REGISTER] Checking if user exists:', userEmail);
     const existingUser = await db.user.findUnique({
       where: { identifier: userEmail },
     });
-    console.log('[REGISTER] Existing user:', !!existingUser);
 
     if (existingUser) {
       return NextResponse.json({ error: "البريد الإلكتروني مستخدم بالفعل" }, { status: 400 });
     }
 
-    console.log('[REGISTER] Hashing password...');
     const hashedPassword = await bcrypt.hash(password, 10);
-    const isDeveloper = userEmail === "ahmadmamdouh10030@gmail.com";
-    console.log('[REGISTER] Is developer:', isDeveloper);
 
-    console.log('[REGISTER] Creating user in DB...');
     const user = await db.user.create({
       data: {
         name,
@@ -55,13 +54,11 @@ export async function POST(request: Request) {
         password: hashedPassword,
         phone: phone || null,
         identifier: userEmail,
-        role: isDeveloper ? "DEVELOPER" : "USER",
+        role: "USER",
         isApproved: true,
         emailVerified: true,
       },
     });
-
-    console.log('[REGISTER] User created:', user.id, 'role:', user.role);
 
     // Generate JWT and set cookie so user stays logged in after registration
     const token = sign(
@@ -78,17 +75,13 @@ export async function POST(request: Request) {
     response.cookies.set("auth-token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: "strict",
       maxAge: 60 * 60 * 24 * 7,
       path: "/",
     });
 
     return response;
-  } catch (error: any) {
-    console.error("[REGISTER] FATAL ERROR:", error?.message || error);
-    return NextResponse.json({
-      error: "حدث خطأ أثناء إنشاء الحساب",
-      details: error?.message,
-    }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ error: "حدث خطأ أثناء إنشاء الحساب" }, { status: 500 });
   }
 }

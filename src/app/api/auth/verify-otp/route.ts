@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { createToken, createAuthResponse } from '@/lib/auth';
-import { safeCompare } from '@/lib/security';
+import { sign } from 'jsonwebtoken';
+import { JWT_SECRET } from '@/lib/auth';
+import bcrypt from 'bcryptjs';
 
 // OTP attempt rate limiting (in-memory)
 const otpAttempts = new Map<string, { count: number; lockedUntil: number }>();
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest) {
         }, { status: 429 });
       }
       if (attempt.count >= MAX_OTP_ATTEMPTS) {
+        // Lock for 15 minutes
         otpAttempts.set(normalizedIdentifier, { count: attempt.count, lockedUntil: Date.now() + LOCKOUT_DURATION });
         return NextResponse.json({ 
           error: 'تم تجاوز عدد المحاولات المسموح. يرجى المحاولة بعد 15 دقيقة',
@@ -54,8 +56,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'البريد الإلكتروني أو الرمز غير صحيح' }, { status: 400 });
     }
 
-    // SECURITY: Use timing-safe comparison for OTP
-    if (!user.otp || !safeCompare(user.otp, otpCode)) {
+    // Check expiry BEFORE checking OTP value
+    if (!user.otpExpires || user.otpExpires < new Date()) {
+      return NextResponse.json({ error: 'انتهت صلاحية الرمز' }, { status: 400 });
+    }
+
+    // Use bcrypt.compare for OTP verification (since we now hash it)
+    const isOtpValid = await bcrypt.compare(otpCode, user.otp);
+
+    if (!isOtpValid) {
+      // Increment attempt counter
       const currentAttempt = otpAttempts.get(normalizedIdentifier) || { count: 0, lockedUntil: 0 };
       currentAttempt.count += 1;
       otpAttempts.set(normalizedIdentifier, currentAttempt);
@@ -75,10 +85,6 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    if (!user.otpExpires || user.otpExpires < new Date()) {
-      return NextResponse.json({ error: 'انتهت صلاحية الرمز' }, { status: 400 });
-    }
-
     // Clear attempt counter on success
     otpAttempts.delete(normalizedIdentifier);
 
@@ -92,11 +98,14 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    const token = createToken(
-      { userId: updatedUser.id, identifier: updatedUser.identifier, role: updatedUser.role }
+    // Generate JWT token and set auth-token cookie (same as login)
+    const token = sign(
+      { userId: updatedUser.id, identifier: updatedUser.identifier, role: updatedUser.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
     );
 
-    return createAuthResponse({
+    const response = NextResponse.json({
       message: 'تم تأكيد البريد الإلكتروني بنجاح',
       user: {
         id: updatedUser.id,
@@ -106,10 +115,18 @@ export async function POST(request: NextRequest) {
         role: updatedUser.role,
         emailVerified: true,
       }
-    }, token);
+    });
 
+    response.cookies.set('auth-token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 60 * 60 * 24 * 7,
+      path: '/',
+    });
+
+    return response;
   } catch (error) {
-    console.error('Error verifying OTP:', error);
     return NextResponse.json({ error: 'فشل في التحقق من الرمز' }, { status: 500 });
   }
 }
