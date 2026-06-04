@@ -1134,7 +1134,7 @@ function App() {
       const res = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), name: authName.trim(), password: authPassword, phone: authPhone.trim() || undefined }) });
       const data = await res.json();
       if (res.ok) {
-        if (data.emailVerificationRequired) {
+        if (data.requiresVerification || data.emailVerificationRequired) {
           setShowAuth(false);
           setShowOtpVerification(true);
           setOtpEmail(authIdentifier.trim().toLowerCase());
