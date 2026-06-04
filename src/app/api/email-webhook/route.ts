@@ -75,17 +75,12 @@ export async function POST(request: NextRequest) {
       if (user) {
         await db.approvalLog.create({
           data: {
-            entityType: 'EmailEvent',
-            entityId: emailId || 'unknown',
             action: `EMAIL_${status.toUpperCase()}`,
             userId: user.id,
-            details: JSON.stringify({
-              event: eventType,
-              email: toEmail,
-              from: fromEmail,
-              reason,
-              timestamp: new Date().toISOString(),
-            }),
+            userName: user.name || toEmail,
+            userEmail: toEmail,
+            reason: `${eventType}: ${reason || 'No reason'}`,
+            performedBy: fromEmail || 'webhook',
           },
         });
 
