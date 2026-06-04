@@ -1,5 +1,5 @@
 // Manteqti - PostgreSQL Schema for Vercel production
-// This file gets copied to schema.prisma during build
+// For local SQLite development, change provider to "sqlite"
 
 generator client {
   provider = "prisma-client-js"
@@ -28,17 +28,19 @@ model User {
   otp                   String?
   otpExpires            DateTime?
   emailVerified         Boolean   @default(false)
+  walletBalance         Int       @default(0)
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
-  apartments    Apartment[]
-  inquiries     Inquiry[]
-  payments      Payment[]
-  likes         Like[]
-  comments      Comment[]
-  messages      Message[]
-  editRequests  PropertyEditRequest[]
-  blockedUsers  BlockedUser[]  @relation("BlockedUserRelation")
+  apartments         Apartment[]
+  inquiries          Inquiry[]
+  payments           Payment[]
+  likes              Like[]
+  comments           Comment[]
+  messages           Message[]
+  editRequests       PropertyEditRequest[]
+  blockedUsers       BlockedUser[]  @relation("BlockedUserRelation")
+  walletTransactions WalletTransaction[]
 
   @@map("User")
 }
@@ -217,6 +219,24 @@ model Settings {
   @@map("Settings")
 }
 
+model WalletTransaction {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String   // recharge, payment, refund
+  amount      Int
+  balance     Int      @default(0)
+  method      String?  // vodafone_cash, orange_cash, bank_transfer, instapay, usdt_trc20, visa
+  description String?
+  reference   String?
+  status      String   @default("pending") // pending, completed, failed, cancelled
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("WalletTransaction")
+}
+
 model OperationLog {
   id         String   @id @default(cuid())
   action     String
@@ -234,7 +254,7 @@ model OperationLog {
 model ApprovalLog {
   id            String    @id @default(cuid())
   userId        String
-  action        String
+  action        String    // approve, reject, revoke
   userName      String
   userEmail     String?
   reason        String?
