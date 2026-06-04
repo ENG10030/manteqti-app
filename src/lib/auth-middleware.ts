@@ -60,7 +60,7 @@ export async function getAuthContext(request: NextRequest): Promise<{ auth: Auth
 
     let decoded: { userId: string; role?: string; identifier?: string };
     try {
-      decoded = verify(token, JWT_SECRET) as typeof decoded;
+      decoded = verify(token, JWT_SECRET) as unknown as typeof decoded;
       if (!decoded.userId) {
         return { auth: null, errorResponse: NextResponse.json({ error: 'رمز المصادقة غير صالح' }, { status: 401 }) };
       }

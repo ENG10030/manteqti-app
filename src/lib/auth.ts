@@ -93,7 +93,7 @@ export async function getCurrentUser(request: NextRequest): Promise<AuthUser | n
 
     if (!token) return null;
 
-    const decoded = verify(token, JWT_SECRET) as { userId: string };
+    const decoded = verify(token, JWT_SECRET) as unknown as { userId: string };
 
     const user = await db.user.findUnique({
       where: { id: decoded.userId },
@@ -128,7 +128,7 @@ export function authenticateRequest(request: NextRequest): { user: { id: string;
     const token = request.cookies.get("auth-token")?.value;
     if (!token) return null;
 
-    const decoded = verify(token, JWT_SECRET) as { userId: string; role: string };
+    const decoded = verify(token, JWT_SECRET) as unknown as { userId: string; role: string };
     if (!decoded.userId) return null;
     return {
       user: { id: decoded.userId, role: decoded.role || 'USER' },

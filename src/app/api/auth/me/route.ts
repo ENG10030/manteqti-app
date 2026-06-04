@@ -13,7 +13,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ user: null });
     }
 
-    const decoded = verify(token, JWT_SECRET) as { userId: string };
+    const decoded = verify(token, JWT_SECRET) as unknown as { userId: string };
 
     const user = await db.user.findUnique({
       where: { id: decoded.userId },

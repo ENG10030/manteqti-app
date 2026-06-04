@@ -10,7 +10,7 @@ async function verifyWebhookSignature(body: string, signature: string | null, ti
   const RESEND_WEBHOOK_SECRET = process.env.RESEND_WEBHOOK_SECRET;
   if (!RESEND_WEBHOOK_SECRET || !signature) return false;
   try {
-    const crypto = await import('crypto');
+    const crypto = await import('crypto').catch(() => null);
     const expectedSig = crypto
       .createHmac('sha256', RESEND_WEBHOOK_SECRET)
       .update(`${timestamp}.${body}`)
