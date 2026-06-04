@@ -1024,6 +1024,9 @@ function App() {
       const devEmailSaved = localStorage.getItem('manteqti_dev_email');
       const devRemember = localStorage.getItem('manteqti_dev_remember');
       if (devEmailSaved && devRemember === 'true') { setDevEmail(devEmailSaved); }
+      // Restore pending OTP verification
+      const pendingOtp = localStorage.getItem('manteqti_pending_otp');
+      if (pendingOtp) { setOtpEmail(pendingOtp); setShowOtpVerification(true); }
     } catch {}
   }, []);
 
@@ -1120,7 +1123,9 @@ function App() {
         // البريد الإلكتروني غير مؤكد - إظهار نافذة التأكيد
         setShowAuth(false);
         setShowOtpVerification(true);
-        setOtpEmail(data.email || authIdentifier.trim().toLowerCase());
+        const pendingEmail = data.email || authIdentifier.trim().toLowerCase();
+        setOtpEmail(pendingEmail);
+        localStorage.setItem('manteqti_pending_otp', pendingEmail);
         addToast('يجب تأكيد البريد الإلكتروني أولاً! تم إرسال رمز التحقق', 'info');
       } else addToast(data.error || 'خطأ في تسجيل الدخول', 'error');
     } catch { addToast('حدث خطأ في الاتصال', 'error'); }
@@ -1137,7 +1142,9 @@ function App() {
         if (data.requiresVerification || data.emailVerificationRequired) {
           setShowAuth(false);
           setShowOtpVerification(true);
-          setOtpEmail(authIdentifier.trim().toLowerCase());
+          const pendingEmail = authIdentifier.trim().toLowerCase();
+          setOtpEmail(pendingEmail);
+          localStorage.setItem('manteqti_pending_otp', pendingEmail);
           addToast('تم إنشاء الحساب! يرجى تأكيد البريد الإلكتروني', 'info');
         } else {
           // Check if user needs approval
@@ -1172,6 +1179,7 @@ function App() {
         setCurrentUser(data.user);
         setShowAuth(false);
         setOtpCode('');
+        localStorage.removeItem('manteqti_pending_otp');
         addToast('تم تأكيد البريد الإلكتروني بنجاح! 🎉', 'success');
       } else {
         addToast(data.error || 'رمز التأكيد غير صحيح', 'error');
@@ -2111,7 +2119,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                         <span>عرض التفاصيل</span>
                       </button>
                       {/* زر المقارنة */}
-                      <button onClick={() => { if (selectedForCompare.includes(apartment.id)) { setSelectedForCompare(prev => prev.filter(id => id !== apartment.id)); } else { if (selectedForCompare.length >= 4) { addToast('الحد الأقصى 4 شقق للمقارنة', 'info'); return; } setSelectedForCompare(prev => [...prev, apartment.id]); } }} className={`py-2.5 px-3 rounded-xl font-medium text-sm transition-all ${selectedForCompare.includes(apartment.id) ? 'bg-gradient-to-r from-violet-600 to-purple-700 text-white shadow-lg shadow-violet-500/30' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-violet-600/20 hover:text-violet-400' : 'bg-slate-100 text-slate-600 hover:bg-violet-50 hover:text-violet-600'}`}>
+                      <button onClick={() => { if (!currentUser) { addToast('يجب تسجيل الدخول أولاً لاستخدام المقارنة', 'error'); setShowAuth(true); return; } if (selectedForCompare.includes(apartment.id)) { setSelectedForCompare(prev => prev.filter(id => id !== apartment.id)); } else { if (selectedForCompare.length >= 4) { addToast('الحد الأقصى 4 شقق للمقارنة', 'info'); return; } const existingType = selectedForCompare.length > 0 ? apartments.find(a => a.id === selectedForCompare[0])?.type : null; if (existingType && existingType !== apartment.type) { addToast(`لا يمكنك مقارنة عقار ${apartment.type === 'rent' ? 'للإيجار' : 'للبيع'} مع عقار ${existingType === 'rent' ? 'للإيجار' : 'للبيع'} — يرجى اختيار عقارات من نفس النوع`, 'error'); return; } setSelectedForCompare(prev => [...prev, apartment.id]); } }} className={`py-2.5 px-3 rounded-xl font-medium text-sm transition-all ${selectedForCompare.includes(apartment.id) ? 'bg-gradient-to-r from-violet-600 to-purple-700 text-white shadow-lg shadow-violet-500/30' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-violet-600/20 hover:text-violet-400' : 'bg-slate-100 text-slate-600 hover:bg-violet-50 hover:text-violet-600'}`}>
                         <GitCompareArrows className="h-4 w-4" />
                       </button>
                       {isDeveloper && (
@@ -3701,6 +3709,24 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               {(() => {
                 const compareApts = selectedForCompare.map(id => apartments.find(a => a.id === id)).filter(Boolean) as Apartment[];
                 if (compareApts.length < 2) return <div className="text-center py-8"><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>اختر شقتين على الأقل للمقارنة</p></div>;
+                const types = [...new Set(compareApts.map(a => a.type))];
+                if (types.length > 1) {
+                  return (
+                    <div className="text-center py-12">
+                      <div className={`w-20 h-20 rounded-2xl mx-auto mb-6 flex items-center justify-center ${darkMode ? 'bg-violet-900/30' : 'bg-violet-100'}`}>
+                        <GitCompareArrows className="h-10 w-10 text-violet-500" />
+                      </div>
+                      <h3 className={`text-xl font-bold mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>لا يمكن مقارنة عقارات من أنواع مختلفة</h3>
+                      <p className={`max-w-md mx-auto mb-6 leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                        أنت تحاول مقارنة عقار <span className="font-bold text-violet-600">للبيع</span> مع عقار <span className="font-bold text-emerald-600">للإيجار</span>.<br/>
+                        المقارنة متاحة فقط بين عقارات من نفس النوع (بيع مع بيع، أو إيجار مع إيجار).
+                      </p>
+                      <button onClick={() => setSelectedForCompare([])} className="px-6 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium shadow-lg shadow-violet-500/30 hover:shadow-violet-500/50 transition-all">
+                        إزالة الكل واختيار عقارات من نفس النوع
+                      </button>
+                    </div>
+                  );
+                }
                 const rows = [
                   { label: 'الصورة', render: (a: Apartment) => <img src={a.imageUrl || a.images?.[0] || '/logo.svg'} alt={a.title} className="w-full h-40 object-cover rounded-xl" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; }} /> },
                   { label: 'العنوان', render: (a: Apartment) => <span className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{a.title}</span> },
