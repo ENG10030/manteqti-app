@@ -60,8 +60,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Generate new 8-digit OTP
-    const otp = crypto.randomInt(10000000, 99999999).toString();
+    // Generate new 6-digit OTP
+    const otp = crypto.randomInt(100000, 999999).toString();
     const otpExpires = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
 
     // Hash OTP with bcrypt before storing

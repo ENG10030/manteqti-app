@@ -57,8 +57,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Generate a secure random 8-digit OTP for password reset
-    const otpCode = crypto.randomInt(10000000, 99999999).toString();
+    // Generate a secure random 6-digit OTP for password reset
+    const otpCode = crypto.randomInt(100000, 999999).toString();
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // ساعة واحدة
 
     // Hash the OTP before storing

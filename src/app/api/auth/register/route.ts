@@ -77,8 +77,8 @@ export async function POST(request: Request) {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Generate 8-digit OTP for email verification
-    const otp = crypto.randomInt(10000000, 99999999).toString();
+    // Generate 6-digit OTP for email verification
+    const otp = crypto.randomInt(100000, 999999).toString();
     const otpExpires = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
     const hashedOtp = await bcrypt.hash(otp, 10);
 
