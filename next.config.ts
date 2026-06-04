@@ -17,16 +17,8 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  // External packages - don't bundle, resolve at runtime (with .catch fallback)
+  // External packages - don't bundle, resolve at runtime (with .catch fallback in routes)
   serverExternalPackages: ["z-ai-web-dev-sdk"],
-  // Turbopack alias: resolve SDK to stub when not installed
-  experimental: {
-    turbo: {
-      resolveAlias: {
-        "z-ai-web-dev-sdk": "./src/lib/ai-sdk-stub.ts",
-      },
-    },
-  },
 };
 
 export default nextConfig;
