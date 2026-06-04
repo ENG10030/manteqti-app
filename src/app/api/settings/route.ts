@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { notifyRealtime } from "@/lib/realtime";
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET!;
 if (!JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable is not configured');
 }

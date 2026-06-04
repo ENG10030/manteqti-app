@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { requireApprovedUser } from '@/lib/auth-middleware';
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET!;
 if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 
 // جلب التعليقات

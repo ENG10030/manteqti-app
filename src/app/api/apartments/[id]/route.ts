@@ -4,7 +4,7 @@ import { verify } from "jsonwebtoken";
 import { notifyApartmentsChanged } from "@/lib/realtime";
 import { sendApartmentApprovedEmail, sendApartmentRejectedEmail } from "@/lib/email";
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET!;
 if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 
 async function getCurrentUser(request: Request) {

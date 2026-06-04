@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET!;
 if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 
 export async function GET() {
