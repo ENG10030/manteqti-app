@@ -78,8 +78,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'انتهت صلاحية الرمز. يرجى طلب رمز جديد' }, { status: 400 });
     }
 
-    // Use bcrypt.compare since token is now hashed
-    const isTokenValid = await bcrypt.compare(code, user.passwordResetToken);
+    // Use bcrypt.compare since token is now hashed (TypeScript: guarded by null check above)
+    const isTokenValid = await bcrypt.compare(code, user.passwordResetToken!);
 
     if (!isTokenValid) {
       return NextResponse.json({ error: 'رمز الاستعادة غير صحيح' }, { status: 400 });
