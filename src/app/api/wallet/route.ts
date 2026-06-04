@@ -186,8 +186,10 @@ export async function POST(request: NextRequest) {
     // Get settings for dynamic limits and available methods
     // ==========================================
     const settings = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
-    const maxAmt = settings?.maxRechargeAmount ?? 50000;
-    const minAmt = settings?.minRechargeAmount ?? 10;
+    // Cast to access dynamic fields not in Prisma schema
+    const s = settings as unknown as Record<string, any> | null;
+    const maxAmt = s?.maxRechargeAmount ?? 50000;
+    const minAmt = s?.minRechargeAmount ?? 10;
 
     if (amount < minAmt) {
       return NextResponse.json(
@@ -226,10 +228,9 @@ export async function POST(request: NextRequest) {
       usdt_trc20: "usdtTronAddress",
     };
 
-    if (settings) {
-      const sAny = settings as unknown as Record<string, unknown>;
+    if (s) {
       for (const [methodId, field] of Object.entries(methodFieldMap)) {
-        if (sAny[field]) {
+        if (s[field]) {
           validMethods.push(methodId);
         }
       }
@@ -313,7 +314,7 @@ export async function POST(request: NextRequest) {
     // ==========================================
     // Auto-confirm if developer enabled it
     // ==========================================
-    const isAutoConfirm = (settings as unknown as Record<string, unknown>)?.paymentAutoConfirm === true;
+    const isAutoConfirm = s?.paymentAutoConfirm === true;
     const finalStatus = isAutoConfirm ? "completed" : "pending";
     const txTimestamp = Date.now();
     const txRef = generateTxRef(method.toUpperCase());

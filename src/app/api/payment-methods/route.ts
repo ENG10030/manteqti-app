@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
+// Default recharge limits (not stored in DB)
+const MIN_RECHARGE = 10;
+const MAX_RECHARGE = 50000;
+
 // GET - Get available payment methods with settings
 export async function GET() {
   try {
@@ -20,14 +24,12 @@ export async function GET() {
         highlightFee: 150,
         priorityListingFee: 200,
         verifiedListingFee: 250,
-        minRechargeAmount: 10,
-        maxRechargeAmount: 50000,
         currency: "ج.م",
       },
     });
 
-    const minAmt = settings.minRechargeAmount || 10;
-    const maxAmt = settings.maxRechargeAmount || 50000;
+    const minAmt = MIN_RECHARGE;
+    const maxAmt = MAX_RECHARGE;
 
     const methods: Array<{
       id: string;

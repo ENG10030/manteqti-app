@@ -199,8 +199,10 @@ export async function POST(request: NextRequest) {
 
     // --- Step 4: Fetch Settings ---
     const settings = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
-    const minAmt = settings?.minRechargeAmount ?? 10;
-    const maxAmt = settings?.maxRechargeAmount ?? 50000;
+    // Cast to access dynamic fields not in schema
+    const s = settings as unknown as Record<string, any> | null;
+    const minAmt = s?.minRechargeAmount ?? 10;
+    const maxAmt = s?.maxRechargeAmount ?? 50000;
 
     if (amount < minAmt) {
       return NextResponse.json(
@@ -216,7 +218,7 @@ export async function POST(request: NextRequest) {
     }
 
     // --- Step 5: Verify Visa is Enabled ---
-    if (!settings?.visaEnabled) {
+    if (!s?.visaEnabled) {
       return NextResponse.json(
         { error: "الدفع بالبطاقة غير متاح حالياً — تواصل مع الدعم" },
         { status: 400 }
@@ -312,7 +314,7 @@ export async function POST(request: NextRequest) {
       }
 
       // --- Step 9: Determine Confirm Mode ---
-      const autoConfirm = (settings as unknown as Record<string, unknown>)?.paymentAutoConfirm === true;
+      const autoConfirm = s?.paymentAutoConfirm === true;
       const txTimestamp = Date.now();
       const txRef = transactionId || generateTxRef();
       const txSignature = signTransaction({

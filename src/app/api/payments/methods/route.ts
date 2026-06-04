@@ -64,8 +64,10 @@ export async function GET() {
       );
     }
 
-    const minAmt = settings.minRechargeAmount ?? 10;
-    const maxAmt = settings.maxRechargeAmount ?? 50000;
+    // Cast to access dynamic fields that may exist in DB but not in schema
+    const s = settings as unknown as Record<string, any>;
+    const minAmt = s.minRechargeAmount ?? 10;
+    const maxAmt = s.maxRechargeAmount ?? 50000;
 
     type PaymentMethod = {
       id: string;
@@ -84,8 +86,8 @@ export async function GET() {
     const methods: PaymentMethod[] = [];
 
     // Vodafone Cash
-    if (settings.vodafoneCashNumber) {
-      const masked = maskPhone(settings.vodafoneCashNumber);
+    if (s.vodafoneCashNumber) {
+      const masked = maskPhone(s.vodafoneCashNumber);
       methods.push({
         id: "vodafone_cash",
         name: "فودافون كاش",
@@ -108,8 +110,8 @@ export async function GET() {
     }
 
     // Orange Cash
-    if (settings.orangeCashNumber) {
-      const masked = maskPhone(settings.orangeCashNumber);
+    if (s.orangeCashNumber) {
+      const masked = maskPhone(s.orangeCashNumber);
       methods.push({
         id: "orange_cash",
         name: "أورنج كاش",
@@ -132,8 +134,8 @@ export async function GET() {
     }
 
     // Etisalat Cash
-    if (settings.etisalatCashNumber) {
-      const masked = maskPhone(settings.etisalatCashNumber);
+    if (s.etisalatCashNumber) {
+      const masked = maskPhone(s.etisalatCashNumber);
       methods.push({
         id: "etisalat_cash",
         name: "اتصالات كاش",
@@ -156,20 +158,20 @@ export async function GET() {
     }
 
     // Bank Transfer
-    if (settings.bankAccountNumber && settings.bankName) {
+    if (s.bankAccountNumber && s.bankName) {
       methods.push({
         id: "bank_transfer",
         name: "تحويل بنكي",
         nameEn: "Bank Transfer",
         icon: "🏦",
         enabled: true,
-        account: settings.bankName,
+        account: s.bankName,
         accountLabel: "اسم البنك",
         instructions: [
           "التحويل لحساب بنكي:",
-          `🏦 البنك: ${settings.bankName}`,
-          `👤 صاحب الحساب: ${settings.bankAccountName || "—"}`,
-          `🔢 رقم الحساب: ${maskAccount(settings.bankAccountNumber)}`,
+          `🏦 البنك: ${s.bankName}`,
+          `👤 صاحب الحساب: ${s.bankAccountName || "—"}`,
+          `🔢 رقم الحساب: ${maskAccount(s.bankAccountNumber)}`,
           "",
           "⚠️ أدخل رقم إيصال التحويل",
         ].join("\n"),
@@ -180,8 +182,8 @@ export async function GET() {
     }
 
     // InstaPay
-    if (settings.instapayAccount) {
-      const masked = maskInstapay(settings.instapayAccount);
+    if (s.instapayAccount) {
+      const masked = maskInstapay(s.instapayAccount);
       methods.push({
         id: "instapay",
         name: "إنستاباي",
@@ -204,9 +206,8 @@ export async function GET() {
     }
 
     // USDT TRC20
-    const sAny = settings as unknown as Record<string, unknown>;
-    if (sAny.usdtTronAddress) {
-      const masked = maskTronAddress(String(sAny.usdtTronAddress));
+    if (s.usdtTronAddress) {
+      const masked = maskTronAddress(String(s.usdtTronAddress));
       methods.push({
         id: "usdt_trc20",
         name: "USDT (TRC20)",
@@ -235,10 +236,10 @@ export async function GET() {
       name: "بطاقة فيزا / ماستركارد",
       nameEn: "Visa / Mastercard",
       icon: "💳",
-      enabled: settings.visaEnabled === true,
-      account: settings.visaEnabled ? "دفع آمن بالبطاقة" : undefined,
+      enabled: s.visaEnabled === true,
+      account: s.visaEnabled ? "دفع آمن بالبطاقة" : undefined,
       accountLabel: "بطاقة ائتمان",
-      instructions: settings.visaEnabled
+      instructions: s.visaEnabled
         ? "سيتم خصم المبلغ من بطاقتك مباشرة"
         : "الدفع بالبطاقة غير متاح حالياً",
       color: "from-slate-700 to-slate-900",
@@ -250,7 +251,7 @@ export async function GET() {
       {
         methods,
         limits: { min: minAmt, max: maxAmt },
-        autoConfirm: sAny.paymentAutoConfirm === true,
+        autoConfirm: s.paymentAutoConfirm === true,
       },
       {
         status: 200,
