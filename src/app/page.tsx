@@ -178,6 +178,7 @@ function App() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
+  const [resetCode, setResetCode] = useState('');
   const [devEmail, setDevEmail] = useState('');
   const [devPassword, setDevPassword] = useState('');
   const [showDevPassword, setShowDevPassword] = useState(false);
@@ -1257,7 +1258,17 @@ function App() {
     setForgotLoading(true);
     try {
       const res = await fetch('/api/auth/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: forgotEmail }) });
-      if (res.ok) { setForgotSuccess(true); addToast('تم إرسال رابط استعادة كلمة المرور', 'success'); }
+      if (res.ok) {
+        setForgotSuccess(true);
+        // Auto-open reset password modal after 2 seconds
+        setTimeout(() => {
+          setShowForgotPassword(false);
+          setForgotSuccess(false);
+          setShowResetPassword(true);
+          setResetCode('');
+        }, 2000);
+        addToast('تم إرسال رمز الاستعادة! شوف الإيميل', 'success');
+      }
       else addToast('حدث خطأ', 'error');
     } catch { addToast('حدث خطأ', 'error'); }
     finally { setForgotLoading(false); }
@@ -1266,12 +1277,19 @@ function App() {
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) { addToast('كلمتا المرور غير متطابقتين', 'error'); return; }
-    if (newPassword.length < 6) { addToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'error'); return; }
+    if (newPassword.length < 8) { addToast('كلمة المرور يجب أن تكون 8 أحرف على الأقل', 'error'); return; }
+    if (resetCode.length !== 6) { addToast('الرمز لازم يكون 6 أرقام', 'error'); return; }
     setResetLoading(true);
     try {
-      const res = await fetch('/api/auth/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: forgotEmail, newPassword }) });
-      if (res.ok) { setShowResetPassword(false); setShowForgotPassword(false); addToast('تم تغيير كلمة المرور بنجاح!', 'success'); }
-      else addToast('حدث خطأ', 'error');
+      const res = await fetch('/api/auth/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: forgotEmail, code: resetCode, newPassword, confirmPassword }) });
+      if (res.ok) {
+        setShowResetPassword(false); setShowForgotPassword(false);
+        setNewPassword(''); setConfirmPassword(''); setResetCode('');
+        addToast('تم تغيير كلمة المرور بنجاح! سجل دخول', 'success');
+      } else {
+        const data = await res.json();
+        addToast(data.error || 'حدث خطأ', 'error');
+      }
     } catch { addToast('حدث خطأ', 'error'); }
     finally { setResetLoading(false); }
   };
@@ -3705,12 +3723,15 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowResetPassword(false)}>
           <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
             <div className="flex items-center justify-between mb-6">
-              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>كلمة المرور الجديدة</h2>
+              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>🔑 تغيير كلمة المرور</h2>
               <button onClick={() => setShowResetPassword(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
             </div>
+            <p className={`text-sm mb-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>أدخل الرمز اللي وصلك على الإيميل ({forgotEmail})</p>
             <form onSubmit={handleResetPassword} className="space-y-4">
+              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رمز الاستعادة (6 أرقام)</label><input type="text" maxLength={6} value={resetCode} onChange={(e) => setResetCode(e.target.value.replace(/\D/g, ''))} placeholder="000000" className={`w-full px-4 py-3 rounded-xl border text-center text-2xl tracking-[0.5em] font-mono ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
               <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>كلمة المرور الجديدة</label><input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
               <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>تأكيد كلمة المرور</label><input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
+              <button type="button" onClick={async () => { try { await fetch('/api/auth/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: forgotEmail }) }); addToast('تم إعادة إرسال الرمز', 'success'); } catch { addToast('حدث خطأ', 'error'); } }} className={`w-full py-2 text-sm rounded-xl ${darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-700'} disabled:opacity-50`}>إعادة إرسال الرمز</button>
               <button type="submit" disabled={resetLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium disabled:opacity-50">{resetLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'تغيير كلمة المرور'}</button>
             </form>
           </motion.div>
