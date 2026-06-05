@@ -100,11 +100,19 @@ export async function POST(request: Request) {
     });
 
     // Send OTP email for verification
+    let otpSent = false;
     try {
-      await sendOTPEmail({ to: userEmail, otp, name: name.trim() });
-    } catch {
-      // If email fails, still create account but log error
-      console.error('Failed to send OTP email during registration');
+      if (!process.env.RESEND_API_KEY) {
+        console.error('⚠️ RESEND_API_KEY is not set! OTP emails cannot be sent.');
+      } else {
+        const result = await sendOTPEmail({ to: userEmail, otp, name: name.trim() });
+        otpSent = result.success;
+        if (!otpSent) {
+          console.error('OTP email failed:', result.error);
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed to send OTP email during registration:', err?.message);
     }
 
     return NextResponse.json({

@@ -76,10 +76,18 @@ export async function POST(request: NextRequest) {
     // 📧 Send dedicated password reset email (not the OTP template)
     let emailSent = false;
     try {
-      const result = await sendPasswordResetEmail({ to: normalizedEmail, otp: otpCode, name: user.name });
-      emailSent = result.success;
-    } catch {
-      // Silently fail to not leak info
+      if (!process.env.RESEND_API_KEY) {
+        console.error('⚠️ RESEND_API_KEY is not set! Password reset emails cannot be sent.');
+      } else {
+        const result = await sendPasswordResetEmail({ to: normalizedEmail, otp: otpCode, name: user.name });
+        emailSent = result.success;
+        if (!emailSent) {
+          console.error('Password reset email failed:', result.error);
+        }
+      }
+    } catch (err: any) {
+      // Silently fail to not leak info, but log
+      console.error('Password reset email exception:', err?.message);
     }
 
     return NextResponse.json({

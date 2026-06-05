@@ -1153,26 +1153,37 @@ function App() {
       const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), password: authPassword }) });
       const data = await res.json();
       if (res.ok) {
-        if (data.pendingApproval) {
-          setCurrentUser(data.user); setShowAuth(false);
-          if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
-          addToast('حسابك قيد المراجعة. بانتظار موافقة الإدارة ⏳', 'info');
-        } else {
-          setCurrentUser(data.user); setShowAuth(false);
-          if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
-          addToast(`مرحباً ${data.user.name}!`, 'success');
-        }
+        setCurrentUser(data.user); setShowAuth(false);
+        if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
+        addToast(`مرحباً ${data.user.name}!`, 'success');
         if (rememberMe) { localStorage.setItem('manteqti_remembered_identifier', authIdentifier.trim().toLowerCase()); localStorage.setItem('manteqti_remember_me', 'true'); }
         else { localStorage.removeItem('manteqti_remembered_identifier'); localStorage.removeItem('manteqti_remember_me'); }
         setAuthPassword('');
-      } else if (data.emailVerificationRequired) {
-        // البريد الإلكتروني غير مؤكد - إظهار نافذة التأكيد
+      } else if (data.code === 'USER_NOT_FOUND') {
+        // ❌ مفيش حساب - يحول تلقائي لإنشاء حساب
+        addToast('لا يوجد حساب مسجل بهذا البريد الإلكتروني. يرجى إنشاء حساب أولاً', 'error');
+        setAuthStep('register');
+      } else if (data.code === 'WRONG_PASSWORD') {
+        // ❌ كلمة السر غلط
+        addToast('كلمة المرور غير صحيحة', 'error');
+      } else if (data.code === 'EMAIL_NOT_VERIFIED') {
+        // ⏳ الإيميل مش مؤكد - يفتح نافذة OTP
         setShowAuth(false);
         setShowOtpVerification(true);
         setOtpEmail(data.email || authIdentifier.trim().toLowerCase());
         localStorage.setItem('manteqti_pending_otp', data.email || authIdentifier.trim().toLowerCase());
-        addToast('يجب تأكيد البريد الإلكتروني أولاً! تم إرسال رمز التحقق', 'info');
-      } else addToast(data.error || 'خطأ في تسجيل الدخول', 'error');
+        addToast('يجب تأكيد بريدك الإلكتروني أولاً! تم إرسال رمز التحقق', 'info');
+      } else if (data.code === 'ACCOUNT_PENDING') {
+        // ⏳ الحساب مش مُعتمد
+        setCurrentUser(data.user); setShowAuth(false);
+        if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
+        addToast('حسابك قيد المراجعة. بانتظار موافقة الإدارة ⏳', 'info');
+      } else if (data.code === 'ACCOUNT_BLOCKED') {
+        // 🚫 الحساب محظور
+        addToast(data.blockReason ? `تم حظر حسابك: ${data.blockReason}` : 'تم حظر حسابك. يرجى التواصل مع الإدارة', 'error');
+      } else {
+        addToast(data.error || 'خطأ في تسجيل الدخول', 'error');
+      }
     } catch { addToast('حدث خطأ في الاتصال', 'error'); }
     finally { setAuthLoading(false); }
   };
@@ -1192,7 +1203,7 @@ function App() {
           addToast('تم إنشاء الحساب! يرجى تأكيد البريد الإلكتروني', 'info');
         } else {
           // Check if user needs approval
-          if (data.user && !data.user.isApproved) {
+          if (data.user && data.user.isApproved === false) {
             setCurrentUser(data.user); setShowAuth(false);
             if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
             addToast('تم إنشاء الحساب بنجاح! حسابك قيد المراجعة وسيتم إشعارك فور الموافقة ⏳', 'info');
@@ -1912,7 +1923,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
   );
 
   // Show pending approval screen for unapproved non-developer users
-  if (currentUser && !currentUser.isApproved && !isDeveloper) {
+  if (currentUser && currentUser.isApproved === false && !isDeveloper) {
     return (
       <div className={`min-h-screen flex flex-col ${darkMode ? 'bg-slate-900' : 'bg-gradient-to-br from-slate-50 via-amber-50/30 to-orange-50/30'} p-4`} dir="rtl">
         <div className="flex-1 flex items-center justify-center">
@@ -3707,11 +3718,11 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               <button onClick={() => setShowForgotPassword(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
             </div>
             {forgotSuccess ? (
-              <div className="text-center py-4"><CheckCircle2 className="h-16 w-16 mx-auto mb-4 text-emerald-500" /><p className={darkMode ? 'text-slate-300' : 'text-slate-600'}>تم إرسال رابط استعادة كلمة المرور</p></div>
+              <div className="text-center py-4"><CheckCircle2 className="h-16 w-16 mx-auto mb-4 text-emerald-500" /><p className={darkMode ? 'text-slate-300' : 'text-slate-600'}>تم إرسال رمز استعادة كلمة المرور إلى بريدك الإلكتروني</p></div>
             ) : (
               <form onSubmit={handleForgotPassword} className="space-y-4">
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>البريد الإلكتروني</label><input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
-                <button type="submit" disabled={forgotLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium disabled:opacity-50">{forgotLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'إرسال رابط الاستعادة'}</button>
+                <button type="submit" disabled={forgotLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium disabled:opacity-50">{forgotLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'إرسال رمز الاستعادة'}</button>
               </form>
             )}
           </motion.div>
