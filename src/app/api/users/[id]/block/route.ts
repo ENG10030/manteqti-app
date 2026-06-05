@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { notifyRealtime } from "@/lib/realtime"
 
 // حظر / إلغاء حظر المستخدم
 export async function POST(
@@ -68,6 +69,9 @@ export async function POST(
           },
         });
       } catch {}
+
+      // Notify the blocked user to logout immediately
+      try { await notifyRealtime('user-changed', { blockedUserId: userId }); } catch {}
 
       return NextResponse.json({
         success: true,

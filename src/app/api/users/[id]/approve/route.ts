@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { notifyRealtime } from "@/lib/realtime";
 
 // تأكيد أو رفض أو إلغاء تأكيد تسجيل مستخدم (للمطور فقط)
 export async function PUT(
@@ -64,6 +65,9 @@ export async function PUT(
         });
       } catch {}
 
+      // Notify user their account was approved
+      try { await notifyRealtime('user-changed', { approvedUserId: id }); } catch {}
+
       return NextResponse.json({ message: "تم تأكيد التسجيل", user: updated });
     } else if (action === "revoke") {
       // Revoke approval - set isApproved to false
@@ -100,6 +104,9 @@ export async function PUT(
         });
       } catch {}
 
+      // Notify user their approval was revoked
+      try { await notifyRealtime('user-changed', { revokedUserId: id }); } catch {}
+
       return NextResponse.json({ message: "تم إلغاء تأكيد التسجيل", user: updated });
     } else {
       // Log rejection before deletion
@@ -131,6 +138,10 @@ export async function PUT(
 
       // Delete user and all their data (cascade)
       await db.user.delete({ where: { id } });
+
+      // Notify all clients about user deletion
+      try { await notifyRealtime('user-changed', { deletedUserId: id }); } catch {}
+
       return NextResponse.json({ message: "تم رفض التسجيل وحذف الحساب" });
     }
   } catch (error) {

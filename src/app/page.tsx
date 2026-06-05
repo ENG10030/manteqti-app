@@ -14,8 +14,7 @@ import {
   Send, Bot, Home, Crown, Diamond, Ban, Brain, Search,
   VideoIcon, Activity, Wallet, Key, ArrowUp, Layers,
   Download, Smartphone, Zap, Save,
-  Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen,
-  GitCompareArrows
+  Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
 // socket.io-client imported dynamically in useEffect to prevent Vercel SSR/hydration issues
@@ -204,10 +203,9 @@ function App() {
   const [aiDescLoading, setAiDescLoading] = useState(false);
   const [devPasswordChange, setDevPasswordChange] = useState({ current: '', new: '', confirm: '' });
   const [favorites, setFavorites] = useState<string[]>([]);
-  const [showFavoritesModal, setShowFavoritesModal] = useState(false);
-  const [selectedForCompare, setSelectedForCompare] = useState<string[]>([]);
-  const [showCompareModal, setShowCompareModal] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; type: 'danger' | 'warning' | 'info'; loading?: boolean; confirmText?: string; cancelText?: string; }>({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+  // Delete user modal with selective options
+  const [deleteUserModal, setDeleteUserModal] = useState<{ isOpen: boolean; userId: string; userName: string; loading: boolean; stats: { apartments: number; payments: number; inquiries: number; likes: number; comments: number; messages: number; editRequests: number; blockedUsers: number }; options: { apartments: boolean; payments: boolean; inquiries: boolean; likes: boolean; comments: boolean; messages: boolean; editRequests: boolean; blockedUsers: boolean; }; }>({ isOpen: false, userId: '', userName: '', loading: false, stats: { apartments: 0, payments: 0, inquiries: 0, likes: 0, comments: 0, messages: 0, editRequests: 0, blockedUsers: 0 }, options: { apartments: true, payments: true, inquiries: true, likes: true, comments: true, messages: true, editRequests: true, blockedUsers: true } });
   const [settings, setSettings] = useState<{ 
     contactFee: number; 
     regularFee: number;
@@ -461,6 +459,12 @@ function App() {
       }
       // Step 5: ALL data loaded — ONE transition to main UI
       if (!cancelled) {
+        // Restore pending OTP if user refreshed page before verifying
+        const pendingOtp = localStorage.getItem('manteqti_pending_otp');
+        if (pendingOtp && !authData?.user) {
+          setShowOtpVerification(true);
+          setOtpEmail(pendingOtp);
+        }
         setLoading(false);
         setInitialLoad(false);
         initialLoadRef.current = false;
@@ -507,11 +511,22 @@ function App() {
         setIsDeveloper(isDev);
         isDeveloperRef.current = isDev;
       } else {
+        // User was deleted, blocked, or session expired — clear everything and notify
+        const wasLoggedIn = !!currentUserRef.current;
         setCurrentUser(null);
         currentUserRef.current = null;
         setIsBlocked(false);
         setIsDeveloper(false);
         isDeveloperRef.current = false;
+        setUserPayments([]);
+        setMyPendingApartments([]);
+        setLikes([]);
+        setFavorites([]);
+        if (wasLoggedIn) {
+          // Clear the auth cookie on server side
+          try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
+          addToast('تم تسجيل الخروج — حسابك لم يعد متاحاً', 'error');
+        }
       }
     } catch {}
   };
@@ -557,23 +572,54 @@ function App() {
 
   const handleDeleteUser = async (userId: string, userName: string, confirmed: boolean = false) => {
     if (!confirmed) {
-      setConfirmDialog({ isOpen: true, title: '🗑️ حذف مستخدم', message: `هل أنت متأكد من حذف "${userName}" نهائياً؟\n\n⚠️ سيتم حذف:\n• جميع عقاراته\n• جميع رسائله\n• جميع مدفوعاته\n• جميع بياناته\n\nلا يمكن التراجع عن هذا الإجراء!`, confirmText: 'حذف نهائي', cancelText: 'إلغاء', onConfirm: () => handleDeleteUser(userId, userName, true), type: 'danger' });
+      // Open the selective delete modal — fetch user stats first
+      setDeleteUserModal(prev => ({ ...prev, isOpen: true, userId, userName, loading: true, options: { apartments: true, payments: true, inquiries: true, likes: true, comments: true, messages: true, editRequests: true, blockedUsers: true } }));
+      // Fetch user stats
+      try {
+        const res = await fetch(`/api/users/${userId}/block`);
+        if (res.ok) {
+          const data = await res.json();
+          setDeleteUserModal(prev => ({
+            ...prev,
+            loading: false,
+            stats: {
+              apartments: data.apartments?.length || 0,
+              payments: 0, // Will be fetched from user detail
+              inquiries: 0,
+              likes: 0,
+              comments: 0,
+              messages: 0,
+              editRequests: 0,
+              blockedUsers: 0,
+            }
+          }));
+        } else {
+          setDeleteUserModal(prev => ({ ...prev, loading: false }));
+        }
+      } catch {
+        setDeleteUserModal(prev => ({ ...prev, loading: false }));
+      }
       return;
     }
-    setConfirmDialog(prev => ({ ...prev, loading: true }));
+    // confirmed = execute delete with selected options
+    setDeleteUserModal(prev => ({ ...prev, loading: true }));
     try {
-      const res = await fetch(`/api/users/${userId}/delete`, { method: 'DELETE' });
+      const res = await fetch(`/api/users/${deleteUserModal.userId}/delete`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deleteOptions: deleteUserModal.options }),
+      });
       if (res.ok) {
         const data = await res.json();
-        fetchAllUsers(); fetchDevData(); fetchBlockedUsers();
-        if (selectedUserDetail?.id === userId) { setSelectedUserDetail(null); setUserDetailData({ apartments: [], payments: [], inquiries: [] }); }
+        fetchAllUsers(); fetchDevData(); fetchBlockedUsers(); fetchApartments(0, false);
+        if (selectedUserDetail?.id === deleteUserModal.userId) { setSelectedUserDetail(null); setUserDetailData({ apartments: [], payments: [], inquiries: [] }); }
         addToast(data.message || 'تم حذف المستخدم ✅', 'success');
       } else {
         const data = await res.json();
         addToast(data.error || 'فشل حذف المستخدم', 'error');
       }
     } catch { addToast('حدث خطأ', 'error'); }
-    finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+    finally { setDeleteUserModal({ isOpen: false, userId: '', userName: '', loading: false, stats: { apartments: 0, payments: 0, inquiries: 0, likes: 0, comments: 0, messages: 0, editRequests: 0, blockedUsers: 0 }, options: { apartments: true, payments: true, inquiries: true, likes: true, comments: true, messages: true, editRequests: true, blockedUsers: true } }); }
   };
 
   const handleDevSendMessage = async () => {
@@ -914,6 +960,8 @@ function App() {
       await Promise.allSettled([
         fetchSettingsRef.current?.(),
         fetchApartmentsRef.current?.(0, false),
+        // Recheck auth periodically to catch deleted/blocked users (fallback when socket.io unavailable)
+        recheckAuthRef.current?.(),
         ...(currentUserRef.current ? [fetchMessagesRef.current?.()] : []),
       ]);
     }, 30000);
@@ -1024,9 +1072,6 @@ function App() {
       const devEmailSaved = localStorage.getItem('manteqti_dev_email');
       const devRemember = localStorage.getItem('manteqti_dev_remember');
       if (devEmailSaved && devRemember === 'true') { setDevEmail(devEmailSaved); }
-      // Restore pending OTP verification
-      const pendingOtp = localStorage.getItem('manteqti_pending_otp');
-      if (pendingOtp) { setOtpEmail(pendingOtp); setShowOtpVerification(true); }
     } catch {}
   }, []);
 
@@ -1123,9 +1168,8 @@ function App() {
         // البريد الإلكتروني غير مؤكد - إظهار نافذة التأكيد
         setShowAuth(false);
         setShowOtpVerification(true);
-        const pendingEmail = data.email || authIdentifier.trim().toLowerCase();
-        setOtpEmail(pendingEmail);
-        localStorage.setItem('manteqti_pending_otp', pendingEmail);
+        setOtpEmail(data.email || authIdentifier.trim().toLowerCase());
+        localStorage.setItem('manteqti_pending_otp', data.email || authIdentifier.trim().toLowerCase());
         addToast('يجب تأكيد البريد الإلكتروني أولاً! تم إرسال رمز التحقق', 'info');
       } else addToast(data.error || 'خطأ في تسجيل الدخول', 'error');
     } catch { addToast('حدث خطأ في الاتصال', 'error'); }
@@ -1139,12 +1183,11 @@ function App() {
       const res = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), name: authName.trim(), password: authPassword, phone: authPhone.trim() || undefined }) });
       const data = await res.json();
       if (res.ok) {
-        if (data.requiresVerification || data.emailVerificationRequired) {
+        if (data.emailVerificationRequired) {
           setShowAuth(false);
           setShowOtpVerification(true);
-          const pendingEmail = authIdentifier.trim().toLowerCase();
-          setOtpEmail(pendingEmail);
-          localStorage.setItem('manteqti_pending_otp', pendingEmail);
+          setOtpEmail(authIdentifier.trim().toLowerCase());
+          localStorage.setItem('manteqti_pending_otp', authIdentifier.trim().toLowerCase());
           addToast('تم إنشاء الحساب! يرجى تأكيد البريد الإلكتروني', 'info');
         } else {
           // Check if user needs approval
@@ -1985,13 +2028,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 {isDeveloper && messages.filter(m => !m.isRead).length > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">{messages.filter(m => !m.isRead).length}</span>}
               </motion.button>
 
-              {/* زر المفضلة */}
-              <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => setShowFavoritesModal(true)} className={`flex items-center gap-2 px-4 py-3 rounded-xl font-medium transition-all relative ${favorites.length > 0 ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-lg shadow-red-500/30' : darkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                <Heart className={`h-5 w-5 ${favorites.length > 0 ? 'fill-white' : ''}`} />
-                <span className="hidden lg:inline">المفضلة</span>
-                {favorites.length > 0 && <span className={`min-w-[20px] h-5 px-1.5 rounded-full text-xs font-bold flex items-center justify-center ${favorites.length > 0 ? 'bg-white text-red-600' : darkMode ? 'bg-slate-600 text-slate-200' : 'bg-slate-200 text-slate-600'}`}>{favorites.length}</span>}
-              </motion.button>
-
               {isDeveloper ? (
                 <div className="flex items-center gap-2">
                   <motion.button whileHover={{ scale: 1.02 }} onClick={() => setShowDevPanel(true)} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium shadow-lg relative">
@@ -2118,10 +2154,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                         <Eye className="h-4 w-4 group-hover:scale-110 transition-transform" />
                         <span>عرض التفاصيل</span>
                       </button>
-                      {/* زر المقارنة */}
-                      <button onClick={() => { if (!currentUser) { addToast('يجب تسجيل الدخول أولاً لاستخدام المقارنة', 'error'); setShowAuth(true); return; } if (selectedForCompare.includes(apartment.id)) { setSelectedForCompare(prev => prev.filter(id => id !== apartment.id)); } else { if (selectedForCompare.length >= 4) { addToast('الحد الأقصى 4 شقق للمقارنة', 'info'); return; } const existingType = selectedForCompare.length > 0 ? apartments.find(a => a.id === selectedForCompare[0])?.type : null; if (existingType && existingType !== apartment.type) { addToast(`لا يمكنك مقارنة عقار ${apartment.type === 'rent' ? 'للإيجار' : 'للبيع'} مع عقار ${existingType === 'rent' ? 'للإيجار' : 'للبيع'} — يرجى اختيار عقارات من نفس النوع`, 'error'); return; } setSelectedForCompare(prev => [...prev, apartment.id]); } }} className={`py-2.5 px-3 rounded-xl font-medium text-sm transition-all ${selectedForCompare.includes(apartment.id) ? 'bg-gradient-to-r from-violet-600 to-purple-700 text-white shadow-lg shadow-violet-500/30' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-violet-600/20 hover:text-violet-400' : 'bg-slate-100 text-slate-600 hover:bg-violet-50 hover:text-violet-600'}`}>
-                        <GitCompareArrows className="h-4 w-4" />
-                      </button>
                       {isDeveloper && (
                         <>
                           <button onClick={() => setEditApartment(apartment)} className={`py-2.5 px-4 rounded-xl font-medium text-sm ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>تعديل</button>
@@ -2144,6 +2176,98 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Confirm Dialog */}
       <ConfirmDialog {...confirmDialog} darkMode={darkMode} onCancel={() => setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' })} />
+
+      {/* Delete User Modal - Selective deletion */}
+      {deleteUserModal.isOpen && (
+        <AnimatePresence>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDeleteUserModal(prev => ({ ...prev, isOpen: false }))}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-lg rounded-2xl shadow-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
+              {/* Header */}
+              <div className={`p-5 border-b ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-red-500/10 flex items-center justify-center">
+                    <Trash2 className="h-6 w-6 text-red-500" />
+                  </div>
+                  <div>
+                    <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>حذف مستخدم</h3>
+                    <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{deleteUserModal.userName}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className={`p-5 ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
+                <p className={`text-sm mb-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>اختر البيانات التي تريد حذفها مع المستخدم:</p>
+
+                {/* Quick actions */}
+                <div className="flex gap-2 mb-4">
+                  <button onClick={() => setDeleteUserModal(prev => ({ ...prev, options: { apartments: true, payments: true, inquiries: true, likes: true, comments: true, messages: true, editRequests: true, blockedUsers: true } }))}
+                    className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${deleteUserModal.options.apartments && deleteUserModal.options.payments && deleteUserModal.options.inquiries && deleteUserModal.options.likes && deleteUserModal.options.comments && deleteUserModal.options.messages ? (darkMode ? 'bg-violet-600 text-white' : 'bg-violet-100 text-violet-700') : (darkMode ? 'bg-slate-700 text-slate-400 hover:bg-slate-600' : 'bg-slate-100 text-slate-500 hover:bg-slate-200')}`}>
+                    تحديد الكل
+                  </button>
+                  <button onClick={() => setDeleteUserModal(prev => ({ ...prev, options: { apartments: false, payments: false, inquiries: false, likes: false, comments: false, messages: false, editRequests: false, blockedUsers: false } }))}
+                    className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${!deleteUserModal.options.apartments && !deleteUserModal.options.payments && !deleteUserModal.options.inquiries && !deleteUserModal.options.likes && !deleteUserModal.options.comments && !deleteUserModal.options.messages ? (darkMode ? 'bg-violet-600 text-white' : 'bg-violet-100 text-violet-700') : (darkMode ? 'bg-slate-700 text-slate-400 hover:bg-slate-600' : 'bg-slate-100 text-slate-500 hover:bg-slate-200')}`}>
+                    إلغاء الكل
+                  </button>
+                </div>
+
+                {/* Options grid */}
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { key: 'apartments' as const, label: 'العقارات', icon: '🏠', count: deleteUserModal.stats.apartments, color: 'orange' },
+                    { key: 'payments' as const, label: 'المدفوعات', icon: '💰', count: deleteUserModal.stats.payments, color: 'green' },
+                    { key: 'inquiries' as const, label: 'الاستفسارات', icon: '📩', count: deleteUserModal.stats.inquiries, color: 'blue' },
+                    { key: 'likes' as const, label: 'الإعجابات', icon: '❤️', count: deleteUserModal.stats.likes, color: 'red' },
+                    { key: 'comments' as const, label: 'التعليقات', icon: '💬', count: deleteUserModal.stats.comments, color: 'cyan' },
+                    { key: 'messages' as const, label: 'الرسائل', icon: '📨', count: deleteUserModal.stats.messages, color: 'purple' },
+                    { key: 'editRequests' as const, label: 'طلبات التعديل', icon: '✏️', count: deleteUserModal.stats.editRequests, color: 'yellow' },
+                    { key: 'blockedUsers' as const, label: 'قائمة المحظورين', icon: '🚫', count: deleteUserModal.stats.blockedUsers, color: 'slate' },
+                  ].map(item => (
+                    <button
+                      key={item.key}
+                      onClick={() => setDeleteUserModal(prev => ({ ...prev, options: { ...prev.options, [item.key]: !prev.options[item.key] } }))}
+                      className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-right ${
+                        deleteUserModal.options[item.key]
+                          ? (darkMode ? 'border-violet-500 bg-violet-500/10' : 'border-violet-400 bg-violet-50')
+                          : (darkMode ? 'border-slate-700 bg-slate-700/50' : 'border-slate-200 bg-slate-50')
+                      }`}
+                    >
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg ${deleteUserModal.options[item.key] ? (darkMode ? 'bg-violet-600' : 'bg-violet-100') : (darkMode ? 'bg-slate-600' : 'bg-slate-200')}`}>
+                        {item.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium ${deleteUserModal.options[item.key] ? (darkMode ? 'text-violet-300' : 'text-violet-700') : (darkMode ? 'text-slate-400' : 'text-slate-500')}`}>{item.label}</p>
+                        <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{item.count} عنصر</p>
+                      </div>
+                      <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
+                        deleteUserModal.options[item.key]
+                          ? 'bg-violet-500 border-violet-500'
+                          : (darkMode ? 'border-slate-600' : 'border-slate-300')
+                      }`}>
+                        {deleteUserModal.options[item.key] && <Check className="h-3 w-3 text-white" />}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className={`p-5 border-t flex items-center justify-between ${darkMode ? 'border-slate-700 bg-slate-800/80' : 'border-slate-200 bg-slate-50'}`}>
+                <button onClick={() => setDeleteUserModal(prev => ({ ...prev, isOpen: false }))}
+                  className={`px-5 py-2.5 rounded-xl font-medium text-sm transition-all ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>
+                  إلغاء
+                </button>
+                <button onClick={() => handleDeleteUser(deleteUserModal.userId, deleteUserModal.userName, true)} disabled={deleteUserModal.loading}
+                  className="px-5 py-2.5 rounded-xl font-medium text-sm text-white bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 disabled:opacity-50 flex items-center gap-2 transition-all">
+                  {deleteUserModal.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  حذف المستخدم
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        </AnimatePresence>
+      )}
 
       {/* Toasts */}
       <div className="fixed top-4 left-4 z-[100] space-y-2">
@@ -2170,7 +2294,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <button onClick={() => { setShowAddModal(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white"><Building2 className="h-5 w-5" />إضافة شقة</button>
                 <button onClick={() => { setShowChat(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><Brain className="h-5 w-5" />المساعد الذكي</button>
                 <button onClick={() => { if (isDeveloper) { fetchMessages(); setShowMessages(true); } else if (currentUser) { setShowMessages(true); } else { setShowAuth(true); } setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><MessageCircle className="h-5 w-5" />تواصل معنا</button>
-                <button onClick={() => { setShowFavoritesModal(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${favorites.length > 0 ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white' : darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><Heart className={`h-5 w-5 ${favorites.length > 0 ? 'fill-white' : ''}`} />المفضلة{favorites.length > 0 && <span className={`mr-auto min-w-[24px] h-6 px-2 rounded-full text-xs font-bold flex items-center justify-center ${favorites.length > 0 ? 'bg-white/20 text-white' : ''}`}>{favorites.length}</span>}</button>
                 {isDeveloper ? (
                   <>
         <button onClick={() => { setShowDevPanel(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white"><ShieldCheck className="h-5 w-5" />لوحة المطور{pendingApartments.length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-white/20 text-xs">{pendingApartments.length}</span>}</button>
@@ -3614,180 +3737,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
           </motion.div>
         </motion.div>
       )}</AnimatePresence>
-
-      {/* Floating Compare Bar */}
-      <AnimatePresence>{selectedForCompare.length >= 2 && (
-        <motion.div initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }} className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60]">
-          <div className={`flex items-center gap-3 px-6 py-4 rounded-2xl ${darkMode ? 'bg-slate-800 shadow-2xl shadow-slate-900/50 border border-slate-700' : 'bg-white shadow-2xl shadow-slate-300/50 border border-slate-200'} backdrop-blur-xl`}>
-            <div className="flex items-center gap-2">
-              <GitCompareArrows className="h-5 w-5 text-violet-500" />
-              <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>مقارنة {selectedForCompare.length} شقق</span>
-            </div>
-            <div className="flex items-center gap-1 max-w-xs overflow-x-auto">
-              {selectedForCompare.map(id => {
-                const apt = apartments.find(a => a.id === id);
-                return apt ? (
-                  <div key={id} className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ${darkMode ? 'bg-slate-700 text-slate-200' : 'bg-violet-50 text-violet-700'}`}>
-                    <span className="max-w-[80px] truncate">{apt.title}</span>
-                    <button onClick={() => setSelectedForCompare(prev => prev.filter(i => i !== id))} className="hover:text-red-500"><X className="h-3 w-3" /></button>
-                  </div>
-                ) : null;
-              })}
-            </div>
-            <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => setShowCompareModal(true)} className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium text-sm shadow-lg shadow-violet-500/30">
-              مقارنة الآن
-            </motion.button>
-            <button onClick={() => setSelectedForCompare([])} className={`p-2 rounded-lg ${darkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-400 hover:text-slate-600'}`}><X className="h-4 w-4" /></button>
-          </div>
-        </motion.div>
-      )}</AnimatePresence>
-
-      {/* Favorites Modal */}
-      <AnimatePresence>{showFavoritesModal && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-start justify-center pt-20 overflow-y-auto" onClick={() => setShowFavoritesModal(false)}>
-          <motion.div initial={{ scale: 0.95, opacity: 0, y: -20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: -20 }} className={`w-full max-w-4xl mx-4 rounded-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl mb-10`} onClick={e => e.stopPropagation()}>
-            <div className={`sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-              <div className="flex items-center gap-3">
-                <Heart className="h-6 w-6 text-red-500 fill-red-500" />
-                <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>المفضلة</h2>
-                {favorites.length > 0 && <span className="px-3 py-1 rounded-full bg-red-100 text-red-600 text-xs font-bold">{favorites.length}</span>}
-              </div>
-              <button onClick={() => setShowFavoritesModal(false)} className={`p-2 rounded-xl ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`} /></button>
-            </div>
-            <div className="p-6">
-              {favorites.length === 0 ? (
-                <div className="text-center py-16">
-                  <Heart className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
-                  <h3 className={`text-lg font-bold mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>لا توجد شقق في المفضلة</h3>
-                  <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>اضغط على ❤️ في أي شقة لإضافتها للمفضلة</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto">
-                  {apartments.filter(a => favorites.includes(a.id)).map(apt => (
-                    <div key={apt.id} className={`rounded-xl overflow-hidden ${darkMode ? 'bg-slate-700/50 border border-slate-600' : 'bg-slate-50 border border-slate-200'} group hover:shadow-lg transition-all`}>
-                      <div className="flex">
-                        <div className="relative w-32 h-32 flex-shrink-0">
-                          <img src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
-                          <span className={`absolute top-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-bold text-white ${apt.type === 'rent' ? 'bg-emerald-500' : 'bg-blue-500'}`}>{apt.type === 'rent' ? 'إيجار' : 'بيع'}</span>
-                        </div>
-                        <div className="flex-1 p-3 min-w-0">
-                          <h4 className={`font-bold text-sm mb-1 line-clamp-1 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h4>
-                          <p className="text-lg font-bold text-violet-600 mb-1">{apt.price.toLocaleString()} ج.م{apt.type === 'rent' && <span className="text-xs font-normal text-slate-500"> /شهر</span>}</p>
-                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500 mb-2">
-                            <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{apt.area}</span>
-                            <span className="flex items-center gap-1"><Bed className="h-3 w-3" />{apt.bedrooms} غرف</span>
-                            <span className="flex items-center gap-1"><Bath className="h-3 w-3" />{apt.bathrooms} حمام</span>
-                            {apt.apartmentSize && <span className="flex items-center gap-1"><Layers className="h-3 w-3" />{apt.apartmentSize} م²</span>}
-                          </div>
-                          <div className="flex gap-1.5">
-                            <button onClick={() => { setShowFavoritesModal(false); setSelectedApartment(apt); fetchComments(apt.id); setCurrentImageIndex(0); }} className="flex-1 py-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-purple-700 text-white text-xs font-medium hover:shadow-md transition-all">التفاصيل</button>
-                            <button onClick={() => toggleFavorite(apt.id)} className="p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all"><Heart className="h-3.5 w-3.5 fill-red-500" /></button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </motion.div>
-        </motion.div>
-      )}</AnimatePresence>
-
-      {/* Compare Modal */}
-      <AnimatePresence>{showCompareModal && selectedForCompare.length >= 2 && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-start justify-center pt-10 overflow-y-auto" onClick={() => setShowCompareModal(false)}>
-          <motion.div initial={{ scale: 0.95, opacity: 0, y: -20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: -20 }} className={`w-full max-w-6xl mx-4 rounded-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl mb-10`} onClick={e => e.stopPropagation()}>
-            <div className={`sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-              <div className="flex items-center gap-3">
-                <GitCompareArrows className="h-6 w-6 text-violet-500" />
-                <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>مقارنة الشقق</h2>
-              </div>
-              <button onClick={() => setShowCompareModal(false)} className={`p-2 rounded-xl ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`} /></button>
-            </div>
-            <div className="p-6 overflow-x-auto">
-              {(() => {
-                const compareApts = selectedForCompare.map(id => apartments.find(a => a.id === id)).filter(Boolean) as Apartment[];
-                if (compareApts.length < 2) return <div className="text-center py-8"><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>اختر شقتين على الأقل للمقارنة</p></div>;
-                const types = [...new Set(compareApts.map(a => a.type))];
-                if (types.length > 1) {
-                  return (
-                    <div className="text-center py-12">
-                      <div className={`w-20 h-20 rounded-2xl mx-auto mb-6 flex items-center justify-center ${darkMode ? 'bg-violet-900/30' : 'bg-violet-100'}`}>
-                        <GitCompareArrows className="h-10 w-10 text-violet-500" />
-                      </div>
-                      <h3 className={`text-xl font-bold mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>لا يمكن مقارنة عقارات من أنواع مختلفة</h3>
-                      <p className={`max-w-md mx-auto mb-6 leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                        أنت تحاول مقارنة عقار <span className="font-bold text-violet-600">للبيع</span> مع عقار <span className="font-bold text-emerald-600">للإيجار</span>.<br/>
-                        المقارنة متاحة فقط بين عقارات من نفس النوع (بيع مع بيع، أو إيجار مع إيجار).
-                      </p>
-                      <button onClick={() => setSelectedForCompare([])} className="px-6 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium shadow-lg shadow-violet-500/30 hover:shadow-violet-500/50 transition-all">
-                        إزالة الكل واختيار عقارات من نفس النوع
-                      </button>
-                    </div>
-                  );
-                }
-                const rows = [
-                  { label: 'الصورة', render: (a: Apartment) => <img src={a.imageUrl || a.images?.[0] || '/logo.svg'} alt={a.title} className="w-full h-40 object-cover rounded-xl" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; }} /> },
-                  { label: 'العنوان', render: (a: Apartment) => <span className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{a.title}</span> },
-                  { label: 'النوع', render: (a: Apartment) => <span className={`px-2 py-1 rounded-lg text-xs font-bold text-white ${a.type === 'rent' ? 'bg-emerald-500' : 'bg-blue-500'}`}>{a.type === 'rent' ? 'للإيجار' : 'للبيع'}</span> },
-                  { label: 'السعر', render: (a: Apartment) => <span className="text-lg font-bold text-violet-600">{a.price.toLocaleString()} ج.م{a.type === 'rent' ? ' /شهر' : ''}</span> },
-                  { label: 'المنطقة', render: (a: Apartment) => <span className="flex items-center gap-1"><MapPin className="h-4 w-4 text-violet-500" />{a.area || '—'}</span> },
-                  { label: 'الغرف', render: (a: Apartment) => <span className="flex items-center gap-1"><Bed className="h-4 w-4 text-violet-500" />{a.bedrooms}</span> },
-                  { label: 'الحمامات', render: (a: Apartment) => <span className="flex items-center gap-1"><Bath className="h-4 w-4 text-violet-500" />{a.bathrooms}</span> },
-                  { label: 'المساحة', render: (a: Apartment) => <span className="flex items-center gap-1"><Layers className="h-4 w-4 text-violet-500" />{a.apartmentSize ? `${a.apartmentSize} م²` : '—'}</span> },
-                  { label: 'الدور', render: (a: Apartment) => a.floor || '—' },
-                  { label: 'الحالة', render: (a: Apartment) => <span className={`px-2 py-1 rounded-lg text-xs font-medium ${statusConfig[a.status]?.bgColor || ''} ${statusConfig[a.status]?.color || ''}`}>{statusConfig[a.status]?.label || a.status}</span> },
-                  { label: 'المميز', render: (a: Apartment) => a.isVip ? <span className="px-2 py-1 rounded-lg bg-gradient-to-r from-purple-500 to-pink-600 text-white text-xs font-medium">VIP</span> : a.isFeatured ? <span className="px-2 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 text-white text-xs font-medium">مميز</span> : <span className="text-slate-400">—</span> },
-                  { label: 'المشاهدات', render: (a: Apartment) => <span>{a.views || 0}</span> },
-                ];
-                return (
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr>
-                        <th className={`p-3 text-right text-sm font-bold ${darkMode ? 'text-slate-400 bg-slate-700/50' : 'text-slate-500 bg-slate-50'} rounded-r-xl w-28 border-b ${darkMode ? 'border-slate-600' : 'border-slate-200'}`}>المعيار</th>
-                        {compareApts.map((apt, i) => (
-                          <th key={apt.id} className={`p-3 text-center text-sm font-bold ${darkMode ? 'text-white bg-slate-700/50' : 'text-slate-900 bg-slate-50'} ${i === compareApts.length - 1 ? 'rounded-l-xl' : ''} border-b ${darkMode ? 'border-slate-600' : 'border-slate-200'} min-w-[200px]`}>{apt.title}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((row, i) => (
-                        <tr key={i} className={i % 2 === 0 ? (darkMode ? 'bg-slate-800/50' : 'bg-white') : (darkMode ? 'bg-slate-800' : 'bg-slate-50')}>
-                          <td className={`p-3 text-sm font-bold border-b ${darkMode ? 'border-slate-700 text-slate-300' : 'border-slate-100 text-slate-600'}`}>{row.label}</td>
-                          {compareApts.map(apt => (
-                            <td key={apt.id} className={`p-3 text-center text-sm border-b ${darkMode ? 'border-slate-700 text-slate-300' : 'border-slate-100 text-slate-700'}`}>{row.render(apt)}</td>
-                          ))}
-                        </tr>
-                      ))}
-                      {/* سعر لكل متر مربع */}
-                      <tr className={(darkMode ? 'bg-violet-900/20' : 'bg-violet-50')}>
-                        <td className={`p-3 text-sm font-bold border-b ${darkMode ? 'border-slate-700 text-violet-400' : 'border-slate-100 text-violet-600'}`}>السعر/م²</td>
-                        {compareApts.map(apt => (
-                          <td key={apt.id} className={`p-3 text-center text-sm font-bold border-b ${darkMode ? 'border-slate-700 text-violet-300' : 'border-slate-100 text-violet-600'}`}>
-                            {apt.apartmentSize ? Math.round(apt.price / apt.apartmentSize).toLocaleString() + ' ج.م/م²' : '—'}
-                          </td>
-                        ))}
-                      </tr>
-                    </tbody>
-                    <tfoot>
-                      <tr>
-                        <td className="p-3"></td>
-                        {compareApts.map(apt => (
-                          <td key={apt.id} className="p-3 text-center">
-                            <button onClick={() => { setShowCompareModal(false); setSelectedApartment(apt); fetchComments(apt.id); setCurrentImageIndex(0); }} className="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white text-xs font-medium shadow-md hover:shadow-lg transition-all">عرض التفاصيل</button>
-                          </td>
-                        ))}
-                      </tr>
-                    </tfoot>
-                  </table>
-                );
-              })()}
-            </div>
-          </motion.div>
-        </motion.div>
-      )}</AnimatePresence>
-
     </div>
   );
 }
