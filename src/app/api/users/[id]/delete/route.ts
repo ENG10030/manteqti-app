@@ -4,6 +4,12 @@ import { db } from "@/lib/db";
 import { notifyRealtime } from "@/lib/realtime";
 
 // حذف مستخدم مع خيار تحديد البيانات المراد حذفها (المطور فقط)
+//
+// ⚠️ ملاحظة مهمة عن Cascade:
+// الموديلات اللي FK غير nullable (messages, likes, comments, editRequests, blockedUsers)
+// هتتمسح تلقائياً لما المستخدم يتم حذفه (Cascade في الـ schema)
+// لكن Apartments ممكن تتحفظ لأن createdBy nullable
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -63,44 +69,45 @@ export async function DELETE(
 
     // ========== Selective deletion ==========
 
-    // 1. Delete apartments (and their related inquiries/payments/likes/comments via cascade)
+    // 1. Apartments: إذا المطور مش عايز يمسح العقارات → نفصل الـ FK (orphan)
+    //    لأن createdBy nullable، لو set null مش هيتحذفوا بالـ cascade
     if (deleteOptions.apartments) {
       try {
-        // First get all apartment IDs to delete their related data individually
+        // Get apartment IDs for cascade cleanup
         const userApartments = await db.apartment.findMany({
           where: { createdBy: userId },
           select: { id: true },
         });
-        const aptIds = userApartments.map(a => a.id);
+        const aptIds = userApartments.map((a: { id: string }) => a.id);
 
         if (aptIds.length > 0) {
-          // Delete related data for user's apartments
+          // Delete related data on these apartments (comments, likes, edit requests by OTHER users)
           await db.comment.deleteMany({ where: { apartmentId: { in: aptIds } } });
           await db.like.deleteMany({ where: { apartmentId: { in: aptIds } } });
-          if (!deleteOptions.inquiries) {
-            // Only delete inquiries if apartments are deleted but inquiries option is off
-            // Actually since apartments are being deleted, inquiries linked to them will be orphaned
-            // We need to handle them
-            await db.payment.deleteMany({ where: { inquiry: { apartmentId: { in: aptIds } } } });
-            await db.inquiry.deleteMany({ where: { apartmentId: { in: aptIds } } });
-          }
           await db.propertyEditRequest.deleteMany({ where: { apartmentId: { in: aptIds } } });
         }
+        // Delete the apartments themselves
         await db.apartment.deleteMany({ where: { createdBy: userId } });
       } catch (err) {
         console.error("Error deleting user apartments:", err);
       }
-    }
-
-    // 2. Delete payments (only if not already cascade-deleted with apartments)
-    if (deleteOptions.payments) {
-      try { await db.payment.deleteMany({ where: { userId } }); } catch {}
-    }
-
-    // 3. Delete inquiries (only if not already cascade-deleted with apartments)
-    if (deleteOptions.inquiries) {
+    } else {
+      // المطور مش عايز يمسح العقارات → نجعلها orphan (بدون مالك)
+      // لازم نعمل ده قبل حذف المستخدم عشان cascade مايمسحهمش
       try {
-        // Delete payments linked to these inquiries first
+        await db.apartment.updateMany({
+          where: { createdBy: userId },
+          data: { createdBy: null },
+        });
+      } catch (err) {
+        console.error("Error orphaning apartments:", err);
+      }
+    }
+
+    // 2. Delete payments
+    if (deleteOptions.payments) {
+      try {
+        // Delete payments linked to user's inquiries
         const userInquiries = await db.inquiry.findMany({
           where: { userId },
           select: { id: true },
@@ -109,33 +116,62 @@ export async function DELETE(
         if (inqIds.length > 0) {
           await db.payment.deleteMany({ where: { inquiryId: { in: inqIds } } });
         }
+        await db.payment.deleteMany({ where: { userId } });
+      } catch {}
+    }
+
+    // 3. Delete inquiries (and their payments)
+    if (deleteOptions.inquiries) {
+      try {
+        const userInquiries = await db.inquiry.findMany({
+          where: { userId },
+          select: { id: true },
+        });
+        const inqIds = userInquiries.map((i: { id: string }) => i.id);
+        if (inqIds.length > 0) {
+          await db.payment.deleteMany({ where: { inquiryId: { in: inqIds } } });
+        }
         await db.inquiry.deleteMany({ where: { userId } });
       } catch {}
     }
 
-    // 4. Delete likes
+    // 4-8: messages, likes, comments, editRequests, blockedUsers
+    // ⚠️ هذه الموديلات ليها onDelete: Cascade في الـ schema
+    // لكن بنحذفهم يدوياً هنا عشان نقدر نعمل log للعدد
+    // لو المطور اختار لا يمسحهم...Cascade هيمسحهم على أي حال
+    // لأن FK (userId/senderId) مش nullable
+    const cascadeForced: string[] = [];
+    
+    if (deleteOptions.messages) {
+      try {
+        await db.message.deleteMany({ where: { senderId: userId } });
+      } catch {}
+    } else {
+      cascadeForced.push('messages');
+    }
+
     if (deleteOptions.likes) {
       try { await db.like.deleteMany({ where: { userId } }); } catch {}
+    } else {
+      cascadeForced.push('likes');
     }
 
-    // 5. Delete comments
     if (deleteOptions.comments) {
       try { await db.comment.deleteMany({ where: { userId } }); } catch {}
+    } else {
+      cascadeForced.push('comments');
     }
 
-    // 6. Delete messages
-    if (deleteOptions.messages) {
-      try { await db.message.deleteMany({ where: { senderId: userId } }); } catch {}
-    }
-
-    // 7. Delete edit requests
     if (deleteOptions.editRequests) {
       try { await db.propertyEditRequest.deleteMany({ where: { userId } }); } catch {}
+    } else {
+      cascadeForced.push('editRequests');
     }
 
-    // 8. Delete blocked users list
     if (deleteOptions.blockedUsers) {
       try { await db.blockedUser.deleteMany({ where: { userId } }); } catch {}
+    } else {
+      cascadeForced.push('blockedUsers');
     }
 
     // Finally delete the user
@@ -153,6 +189,7 @@ export async function DELETE(
             identifier: targetUser.identifier,
             stats: userStats,
             deleteOptions,
+            cascadeForced: cascadeForced.length > 0 ? cascadeForced : undefined,
           }),
           userId: currentUser.id,
         },
@@ -187,6 +224,7 @@ export async function DELETE(
       message: summary,
       deletedCounts: userStats,
       options: deleteOptions,
+      cascadeForced: cascadeForced.length > 0 ? cascadeForced : undefined,
     });
   } catch (error) {
     console.error("Delete user error:", error);

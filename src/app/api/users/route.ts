@@ -18,7 +18,10 @@ export async function GET(request: NextRequest) {
     const blocked = searchParams.get("blocked");
     const pending = searchParams.get("pending");
 
-    const whereClause: Record<string, unknown> = {};
+    // Always exclude DEVELOPER accounts from user list
+    const whereClause: Record<string, unknown> = {
+      role: { not: "DEVELOPER" },
+    };
 
     if (blocked === "true") {
       whereClause.isBlocked = true;

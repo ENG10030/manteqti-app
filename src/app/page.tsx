@@ -143,8 +143,8 @@ function App() {
   const [messageLoading, setMessageLoading] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState<Array<{ id: string; userId: string; reason: string | null; blockedAt: string; user: { id: string; name: string; identifier: string } }>>([]);
-  const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; identifier: string; email: string; isBlocked: boolean; blockReason?: string | null; isApproved?: boolean; role?: string; phone?: string | null; createdAt: string }>>([]);
-  const [selectedUserDetail, setSelectedUserDetail] = useState<{ id: string; name: string; identifier: string; email: string; isBlocked: boolean; isApproved?: boolean; role?: string; phone?: string | null; createdAt: string } | null>(null);
+  const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; identifier: string; email: string; isBlocked: boolean; blockReason?: string | null; isApproved?: boolean; emailVerified?: boolean; role?: string; phone?: string | null; createdAt: string }>>([]);
+  const [selectedUserDetail, setSelectedUserDetail] = useState<{ id: string; name: string; identifier: string; email: string; isBlocked: boolean; isApproved?: boolean; emailVerified?: boolean; role?: string; phone?: string | null; createdAt: string } | null>(null);
   const [userDetailLoading, setUserDetailLoading] = useState(false);
   const [userDetailData, setUserDetailData] = useState<{ apartments: Apartment[]; payments: Payment[]; inquiries: Inquiry[] }>({ apartments: [], payments: [], inquiries: [] });
   const [selectedApartment, setSelectedApartment] = useState<Apartment | null>(null);
@@ -2215,30 +2215,31 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 {/* Options grid */}
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { key: 'apartments' as const, label: 'العقارات', icon: '🏠', count: deleteUserModal.stats.apartments, color: 'orange' },
-                    { key: 'payments' as const, label: 'المدفوعات', icon: '💰', count: deleteUserModal.stats.payments, color: 'green' },
-                    { key: 'inquiries' as const, label: 'الاستفسارات', icon: '📩', count: deleteUserModal.stats.inquiries, color: 'blue' },
-                    { key: 'likes' as const, label: 'الإعجابات', icon: '❤️', count: deleteUserModal.stats.likes, color: 'red' },
-                    { key: 'comments' as const, label: 'التعليقات', icon: '💬', count: deleteUserModal.stats.comments, color: 'cyan' },
-                    { key: 'messages' as const, label: 'الرسائل', icon: '📨', count: deleteUserModal.stats.messages, color: 'purple' },
-                    { key: 'editRequests' as const, label: 'طلبات التعديل', icon: '✏️', count: deleteUserModal.stats.editRequests, color: 'yellow' },
-                    { key: 'blockedUsers' as const, label: 'قائمة المحظورين', icon: '🚫', count: deleteUserModal.stats.blockedUsers, color: 'slate' },
+                    { key: 'apartments' as const, label: 'العقارات', icon: '🏠', count: deleteUserModal.stats.apartments, cascade: false },
+                    { key: 'payments' as const, label: 'المدفوعات', icon: '💰', count: deleteUserModal.stats.payments, cascade: false },
+                    { key: 'inquiries' as const, label: 'الاستفسارات', icon: '📩', count: deleteUserModal.stats.inquiries, cascade: false },
+                    { key: 'likes' as const, label: 'الإعجابات', icon: '❤️', count: deleteUserModal.stats.likes, cascade: true },
+                    { key: 'comments' as const, label: 'التعليقات', icon: '💬', count: deleteUserModal.stats.comments, cascade: true },
+                    { key: 'messages' as const, label: 'الرسائل', icon: '📨', count: deleteUserModal.stats.messages, cascade: true },
+                    { key: 'editRequests' as const, label: 'طلبات التعديل', icon: '✏️', count: deleteUserModal.stats.editRequests, cascade: true },
+                    { key: 'blockedUsers' as const, label: 'قائمة المحظورين', icon: '🚫', count: deleteUserModal.stats.blockedUsers, cascade: true },
                   ].map(item => (
                     <button
                       key={item.key}
                       onClick={() => setDeleteUserModal(prev => ({ ...prev, options: { ...prev.options, [item.key]: !prev.options[item.key] } }))}
-                      className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-right ${
+                      className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-right relative ${
                         deleteUserModal.options[item.key]
                           ? (darkMode ? 'border-violet-500 bg-violet-500/10' : 'border-violet-400 bg-violet-50')
                           : (darkMode ? 'border-slate-700 bg-slate-700/50' : 'border-slate-200 bg-slate-50')
                       }`}
+                      title={item.cascade ? 'هذه البيانات مرتبطة بالمستخدم وستُحذف تلقائياً' : undefined}
                     >
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg ${deleteUserModal.options[item.key] ? (darkMode ? 'bg-violet-600' : 'bg-violet-100') : (darkMode ? 'bg-slate-600' : 'bg-slate-200')}`}>
                         {item.icon}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className={`text-sm font-medium ${deleteUserModal.options[item.key] ? (darkMode ? 'text-violet-300' : 'text-violet-700') : (darkMode ? 'text-slate-400' : 'text-slate-500')}`}>{item.label}</p>
-                        <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{item.count} عنصر</p>
+                        <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{item.count} عنصر{item.cascade && !deleteUserModal.options[item.key] ? ' (cascade)' : ''}</p>
                       </div>
                       <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
                         deleteUserModal.options[item.key]
@@ -2414,7 +2415,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                   <div><span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>الهاتف:</span> <span className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{selectedUserDetail.phone || 'غير محدد'}</span></div>
                   <div><span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>تاريخ التسجيل:</span> <span className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{new Date(selectedUserDetail.createdAt).toLocaleDateString('ar-EG')}</span></div>
                   <div><span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>حالة التأكيد:</span> {selectedUserDetail.isApproved ? <span className="text-emerald-500 font-medium">✅ مؤكد</span> : <span className="text-amber-500 font-medium">⏳ غير مؤكد</span>}</div>
-                  <div><span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>حالة الحظر:</span> {selectedUserDetail.isBlocked ? <span className="text-red-500 font-medium">🚫 محظور</span> : <span className="text-emerald-500 font-medium">✅ نشط</span>}</div>
+                  <div><span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>تأكيد البريد:</span> {selectedUserDetail.emailVerified !== false ? <span className="text-emerald-500 font-medium">✅ مؤكد</span> : <span className="text-amber-500 font-medium">📧 غير مؤكد</span>}</div>
+                  <div><span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>حالة الحساب:</span> {selectedUserDetail.isBlocked ? <span className="text-red-500 font-medium">🚫 محظور</span> : selectedUserDetail.emailVerified === false ? <span className="text-amber-500 font-medium">⏳ بانتظار تأكيد البريد</span> : <span className="text-emerald-500 font-medium">✅ نشط</span>}</div>
                 </div>
                 <div className="flex gap-2 mt-4 flex-wrap">
                   <button onClick={() => setDevMessageTo({ userId: selectedUserDetail.id, userName: selectedUserDetail.name })} className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm hover:bg-blue-600 flex items-center gap-1"><Send className="h-4 w-4" />إرسال رسالة</button>
@@ -3208,11 +3210,9 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${u.isApproved === false ? 'bg-amber-500' : 'bg-gradient-to-br from-emerald-500 to-teal-600'}`}>{u.name?.charAt(0) || '?'}</div>
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${u.isApproved === false || u.emailVerified === false ? 'bg-amber-500' : u.isBlocked ? 'bg-red-500' : 'bg-gradient-to-br from-emerald-500 to-teal-600'}`}>{u.name?.charAt(0) || '?'}</div>
                             <p className={`font-medium truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{u.name}</p>
-                            {u.isBlocked && <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700 shrink-0">🚫 محظور</span>}
-                            {u.isApproved === false && <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700 shrink-0">⏳ بانتظار التأكيد</span>}
-                            {u.isApproved === true && <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700 shrink-0">✅ نشط</span>}
+                            {u.isBlocked ? <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700 shrink-0">🚫 محظور</span> : u.emailVerified === false ? <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700 shrink-0">📧 بانتظار البريد</span> : u.isApproved === true ? <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700 shrink-0">✅ نشط</span> : <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700 shrink-0">⏳ غير مؤكد</span>}
                           </div>
                           <p className={`text-sm mt-1 truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>📧 {u.identifier || u.email}{u.phone ? ` • 📞 ${u.phone}` : ''}</p>
                           <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>📅 تاريخ التسجيل: {new Date(u.createdAt).toLocaleDateString('ar-EG')} • {new Date(u.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</p>
