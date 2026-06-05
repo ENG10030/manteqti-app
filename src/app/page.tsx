@@ -461,7 +461,7 @@ function App() {
       if (!cancelled) {
         // Restore pending OTP if user refreshed page before verifying
         const pendingOtp = localStorage.getItem('manteqti_pending_otp');
-        if (pendingOtp && !authData?.user) {
+        if (pendingOtp && !currentUserRef.current) {
           setShowOtpVerification(true);
           setOtpEmail(pendingOtp);
         }
