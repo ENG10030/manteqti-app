@@ -2576,47 +2576,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
       {/* Confirm Dialog */}
       <ConfirmDialog {...confirmDialog} darkMode={darkMode} onCancel={() => setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' })} />
 
-      {/* v219: Selective Delete User Modal */}
-      {deleteUserModal.isOpen && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setDeleteUserModal({ isOpen: false, userId: '', userName: '', stats: null })}>
-          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className={`max-w-md w-full rounded-2xl shadow-2xl p-6 ${darkMode ? 'bg-slate-800 border border-slate-700' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center"><Trash2 className="h-6 w-6 text-red-500" /></div>
-              <div><h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'}`}>🗑️ حذف "{deleteUserModal.userName}"</h3><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>اختر البيانات المراد الاحتفاظ بها</p></div>
-            </div>
-            {/* تحديد الكل / إلغاء الكل */}
-            <div className="flex gap-2 mb-3">
-              <button onClick={() => setDeleteOptions({ keepApartments: true, keepInquiries: true, keepPayments: true, keepMessages: true, keepLikes: true, keepComments: true, keepEditRequests: true })} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${darkMode ? 'bg-violet-600 text-white hover:bg-violet-500' : 'bg-violet-100 text-violet-700 hover:bg-violet-200'}`}>✅ تحديد الكل</button>
-              <button onClick={() => setDeleteOptions({ keepApartments: false, keepInquiries: false, keepPayments: false, keepMessages: false, keepLikes: false, keepComments: false, keepEditRequests: false })} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${darkMode ? 'bg-slate-600 text-slate-300 hover:bg-slate-500' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>❌ إلغاء الكل</button>
-            </div>
-            <div className={`rounded-xl p-4 space-y-3 mb-4 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-              <p className={`text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>⚙️ البيانات المراد الاحتفاظ بها:</p>
-              {[
-                { key: 'keepApartments' as const, label: 'العقارات', desc: 'تحويل ملكيتها (بدل حذفها)', cascade: false },
-                { key: 'keepInquiries' as const, label: 'الاستفسارات', desc: 'إزالة ربطها بالمستخدم', cascade: false },
-                { key: 'keepPayments' as const, label: 'المدفوعات', desc: 'إزالة ربطها بالمستخدم', cascade: false },
-                { key: 'keepMessages' as const, label: 'الرسائل', desc: 'سيتم حذفها (cascade)', cascade: true },
-                { key: 'keepLikes' as const, label: 'الإعجابات', desc: 'حذفها فقط (cascade)', cascade: true },
-                { key: 'keepComments' as const, label: 'التعليقات', desc: 'حذفها فقط (cascade)', cascade: true },
-                { key: 'keepEditRequests' as const, label: 'طلبات التعديل', desc: 'حذفها فقط (cascade)', cascade: true },
-              ].map(opt => (
-                <label key={opt.key} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer ${opt.cascade ? (darkMode ? 'bg-amber-900/20 border border-amber-800/30' : 'bg-amber-50 border border-amber-200/50') : (darkMode ? 'hover:bg-slate-600' : 'hover:bg-slate-100')}`}>
-                  <input type="checkbox" checked={deleteOptions[opt.key]} onChange={(e) => setDeleteOptions(prev => ({ ...prev, [opt.key]: e.target.checked }))} className="w-4 h-4 rounded accent-violet-500" />
-                  <div className="flex-1"><span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{opt.label}</span>{opt.cascade && <span className="text-amber-500 text-xs mr-1">(cascade)</span>}<p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{opt.desc}</p></div>
-                </label>
-              ))}
-            </div>
-            <div className={`p-3 rounded-lg mb-4 ${darkMode ? 'bg-red-900/20 border border-red-800/30' : 'bg-red-50 border border-red-200/50'}`}>
-              <p className="text-red-500 text-sm font-medium">⚠️ لا يمكن التراجع عن حذف المستخدم!</p>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => handleDeleteUser(deleteUserModal.userId, deleteUserModal.userName, true)} className="flex-1 py-2.5 rounded-xl bg-red-500 text-white font-medium hover:bg-red-600 transition-colors">حذف نهائي</button>
-              <button onClick={() => setDeleteUserModal({ isOpen: false, userId: '', userName: '', stats: null })} className={`flex-1 py-2.5 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>إلغاء</button>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-
       {/* Toasts */}
       <div className="fixed top-4 left-4 z-[100] space-y-2">
         <AnimatePresence>{toasts.map(toast => (
@@ -4374,6 +4333,47 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
           </motion.div>
         </motion.div>
       )}</AnimatePresence>
+
+      {/* Selective Delete User Modal - AFTER dev panel for proper z-index stacking */}
+      {deleteUserModal.isOpen && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setDeleteUserModal({ isOpen: false, userId: '', userName: '', stats: null })}>
+          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className={`max-w-md w-full rounded-2xl shadow-2xl p-6 ${darkMode ? 'bg-slate-800 border border-slate-700' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center"><Trash2 className="h-6 w-6 text-red-500" /></div>
+              <div><h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'}`}>🗑️ حذف "{deleteUserModal.userName}"</h3><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>اختر البيانات المراد الاحتفاظ بها</p></div>
+            </div>
+            {/* تحديد الكل / إلغاء الكل */}
+            <div className="flex gap-2 mb-3">
+              <button onClick={() => setDeleteOptions({ keepApartments: true, keepInquiries: true, keepPayments: true, keepMessages: true, keepLikes: true, keepComments: true, keepEditRequests: true })} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${darkMode ? 'bg-violet-600 text-white hover:bg-violet-500' : 'bg-violet-100 text-violet-700 hover:bg-violet-200'}`}>✅ تحديد الكل</button>
+              <button onClick={() => setDeleteOptions({ keepApartments: false, keepInquiries: false, keepPayments: false, keepMessages: false, keepLikes: false, keepComments: false, keepEditRequests: false })} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${darkMode ? 'bg-slate-600 text-slate-300 hover:bg-slate-500' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>❌ إلغاء الكل</button>
+            </div>
+            <div className={`rounded-xl p-4 space-y-3 mb-4 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+              <p className={`text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>⚙️ البيانات المراد الاحتفاظ بها:</p>
+              {[
+                { key: 'keepApartments' as const, label: 'العقارات', desc: 'تحويل ملكيتها (بدل حذفها)', cascade: false },
+                { key: 'keepInquiries' as const, label: 'الاستفسارات', desc: 'إزالة ربطها بالمستخدم', cascade: false },
+                { key: 'keepPayments' as const, label: 'المدفوعات', desc: 'إزالة ربطها بالمستخدم', cascade: false },
+                { key: 'keepMessages' as const, label: 'الرسائل', desc: 'سيتم حذفها (cascade)', cascade: true },
+                { key: 'keepLikes' as const, label: 'الإعجابات', desc: 'حذفها فقط (cascade)', cascade: true },
+                { key: 'keepComments' as const, label: 'التعليقات', desc: 'حذفها فقط (cascade)', cascade: true },
+                { key: 'keepEditRequests' as const, label: 'طلبات التعديل', desc: 'حذفها فقط (cascade)', cascade: true },
+              ].map(opt => (
+                <label key={opt.key} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer ${opt.cascade ? (darkMode ? 'bg-amber-900/20 border border-amber-800/30' : 'bg-amber-50 border border-amber-200/50') : (darkMode ? 'hover:bg-slate-600' : 'hover:bg-slate-100')}`}>
+                  <input type="checkbox" checked={deleteOptions[opt.key]} onChange={(e) => setDeleteOptions(prev => ({ ...prev, [opt.key]: e.target.checked }))} className="w-4 h-4 rounded accent-violet-500" />
+                  <div className="flex-1"><span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{opt.label}</span>{opt.cascade && <span className="text-amber-500 text-xs mr-1">(cascade)</span>}<p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{opt.desc}</p></div>
+                </label>
+              ))}
+            </div>
+            <div className={`p-3 rounded-lg mb-4 ${darkMode ? 'bg-red-900/20 border border-red-800/30' : 'bg-red-50 border border-red-200/50'}`}>
+              <p className="text-red-500 text-sm font-medium">⚠️ لا يمكن التراجع عن حذف المستخدم!</p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => handleDeleteUser(deleteUserModal.userId, deleteUserModal.userName, true)} className="flex-1 py-2.5 rounded-xl bg-red-500 text-white font-medium hover:bg-red-600 transition-colors">حذف نهائي</button>
+              <button onClick={() => setDeleteUserModal({ isOpen: false, userId: '', userName: '', stats: null })} className={`flex-1 py-2.5 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>إلغاء</button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
 
       {/* Payment Modal */}
       <AnimatePresence>{paymentApartment && (
