@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { cookies } from 'next/headers';
-import { verify } from 'jsonwebtoken';
 import { requireApprovedUser } from '@/lib/auth-middleware';
-
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 
 // جلب التعليقات
 export async function GET(request: NextRequest) {
@@ -14,6 +9,7 @@ export async function GET(request: NextRequest) {
     const apartmentId = searchParams.get('apartmentId');
     const status = searchParams.get('status');
     const userId = searchParams.get('userId');
+    const includeLogs = searchParams.get('includeLogs') === 'true';
 
     const where: Record<string, unknown> = {};
     if (apartmentId) where.apartmentId = apartmentId;
@@ -30,12 +26,16 @@ export async function GET(request: NextRequest) {
             identifier: true,
           }
         },
-        apartment: {
-          select: {
-            id: true,
-            title: true,
+        ...(includeLogs ? {
+          actionLogs: {
+            orderBy: { createdAt: 'desc' },
+            include: {
+              performedByUser: {
+                select: { id: true, name: true }
+              }
+            }
           }
-        }
+        } : {})
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -78,6 +78,16 @@ export async function POST(request: NextRequest) {
             identifier: true,
           }
         }
+      }
+    });
+
+    // Log the action
+    await db.commentActionLog.create({
+      data: {
+        commentId: comment.id,
+        action: isDeveloper ? 'created_approved' : 'created_pending',
+        performedBy: userId,
+        details: isDeveloper ? 'المطور أنشأ ونشر التعليق مباشرة' : 'تم إنشاء تعليق بانتظار موافقة المطور',
       }
     });
 

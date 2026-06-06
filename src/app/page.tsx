@@ -15,7 +15,7 @@ import {
   VideoIcon, Activity, Wallet, Key, ArrowUp, Layers,
   Download, Smartphone, Zap, Save,
   Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen,
-  GitCompare, Trophy
+  GitCompare, Trophy, ScrollText, ClipboardCheck
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
 // socket.io-client imported dynamically in useEffect to prevent Vercel SSR/hydration issues
@@ -71,6 +71,23 @@ interface PropertyEditRequest {
   createdAt: string;
   apartment?: { id: string; title: string; price: number; status: string; images?: string; videos?: string; type: string; };
   user?: { id: string; name: string; identifier: string; };
+}
+
+// Comment Action Log Interface
+interface CommentActionLog {
+  id: string;
+  commentId: string;
+  action: string;
+  performedBy: string;
+  details?: string;
+  createdAt: string;
+  comment?: {
+    id: string;
+    content: string;
+    status: string;
+    user?: { id: string; name: string };
+    apartment?: { id: string; title: string };
+  };
 }
 
 // Helper functions
@@ -254,6 +271,9 @@ function App() {
   const [newComment, setNewComment] = useState('');
   const [commentLoading, setCommentLoading] = useState(false);
   const [devCommentsFilter, setDevCommentsFilter] = useState<string>('all');
+  const [commentActionLogs, setCommentActionLogs] = useState<CommentActionLog[]>([]);
+  const [commentLogsFilter, setCommentLogsFilter] = useState<string>('all');
+  const [showCommentDetail, setShowCommentDetail] = useState<string | null>(null);
 
   // Edit Requests States
   const [editRequests, setEditRequests] = useState<PropertyEditRequest[]>([]);
@@ -935,7 +955,7 @@ function App() {
     }
     if (initialLoadRef.current) return;
     fetchSettings();
-    if (isDeveloper && currentUser) { fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
+    if (isDeveloper && currentUser) { fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchCommentActionLogs(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
     if (currentUser && !isDeveloper) { fetchUserPayments(); fetchMyPendingApartments(); fetchUserLikes(); }
   }, [isDeveloper, currentUser]);
 
@@ -990,6 +1010,14 @@ function App() {
       const res = await fetch('/api/comments'); 
       const data = await res.json();
       setComments(Array.isArray(data) ? data : []); 
+    } catch {}
+  };
+
+  const fetchCommentActionLogs = async () => {
+    try { 
+      const res = await fetch('/api/comment-logs'); 
+      const data = await res.json();
+      setCommentActionLogs(Array.isArray(data) ? data : []); 
     } catch {}
   };
 
@@ -1861,23 +1889,27 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
   };
 
   const approveComment = async (commentId: string) => {
-    try { await fetch(`/api/comments/${commentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'approved' }) }); fetchAllComments(); addToast('تمت الموافقة على التعليق ✅', 'success'); } catch { addToast('حدث خطأ', 'error'); }
+    try { await fetch(`/api/comments/${commentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'approved' }) }); fetchAllComments(); fetchCommentActionLogs(); addToast('تمت الموافقة على التعليق ✅', 'success'); } catch { addToast('حدث خطأ', 'error'); }
   };
 
   const rejectComment = async (commentId: string) => {
-    try { await fetch(`/api/comments/${commentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'rejected' }) }); fetchAllComments(); addToast('تم رفض التعليق', 'info'); } catch { addToast('حدث خطأ', 'error'); }
+    try { await fetch(`/api/comments/${commentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'rejected' }) }); fetchAllComments(); fetchCommentActionLogs(); addToast('تم رفض التعليق', 'info'); } catch { addToast('حدث خطأ', 'error'); }
   };
 
   const deleteCommentDev = async (commentId: string) => {
-    try { await fetch(`/api/comments/${commentId}`, { method: 'DELETE' }); fetchAllComments(); addToast('تم حذف التعليق نهائياً 🗑️', 'success'); } catch { addToast('حدث خطأ', 'error'); }
+    try { await fetch(`/api/comments/${commentId}`, { method: 'DELETE' }); fetchAllComments(); fetchCommentActionLogs(); addToast('تم حذف التعليق نهائياً 🗑️', 'success'); } catch { addToast('حدث خطأ', 'error'); }
   };
 
   const deleteOwnComment = async (commentId: string, apartmentId: string) => {
-    try { await fetch(`/api/comments/${commentId}`, { method: 'DELETE' }); fetchComments(apartmentId); fetchAllComments(); addToast('تم حذف تعليقك ✅', 'success'); } catch { addToast('حدث خطأ', 'error'); }
+    try { await fetch(`/api/comments/${commentId}`, { method: 'DELETE' }); fetchComments(apartmentId); fetchAllComments(); fetchCommentActionLogs(); addToast('تم حذف تعليقك ✅', 'success'); } catch { addToast('حدث خطأ', 'error'); }
   };
 
   const restoreComment = async (commentId: string) => {
-    try { await fetch(`/api/comments/${commentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'approved' }) }); fetchAllComments(); addToast('تم استعادة التعليق ✅', 'success'); } catch { addToast('حدث خطأ', 'error'); }
+    try { await fetch(`/api/comments/${commentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'approved' }) }); fetchAllComments(); fetchCommentActionLogs(); addToast('تم استعادة التعليق ✅', 'success'); } catch { addToast('حدث خطأ', 'error'); }
+  };
+
+  const returnToPending = async (commentId: string) => {
+    try { await fetch(`/api/comments/${commentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'pending' }) }); fetchAllComments(); fetchCommentActionLogs(); addToast('تم إرجاع التعليق للمراجعة ↩️', 'info'); } catch { addToast('حدث خطأ', 'error'); }
   };
 
   // Loading state
@@ -3091,7 +3123,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
               {/* 💬 Comments Section - New */}
               <div className={`mt-6 pt-6 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
-                <h3 className={`font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><MessageCircle className="h-5 w-5 text-violet-500" />التعليقات ({comments.filter(c => c.apartmentId === selectedApartment.id && (c.status === 'approved' || (currentUser && c.userId === currentUser.id))).length})</h3>
+                <h3 className={`font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><MessageCircle className="h-5 w-5 text-violet-500" />التعليقات ({comments.filter(c => c.apartmentId === selectedApartment.id && (c.status === 'approved' || (currentUser && c.userId === currentUser.id) || isDeveloper)).length})</h3>
                 
                 {/* Comment Input */}
                 {(currentUser || isDeveloper) ? (
@@ -3112,12 +3144,14 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
                 {/* Comments List */}
                 <div className="space-y-3 max-h-64 overflow-y-auto">
-                  {comments.filter(c => c.apartmentId === selectedApartment.id && (c.status === 'approved' || (currentUser && c.userId === currentUser.id))).length === 0 ? (
+                  {comments.filter(c => c.apartmentId === selectedApartment.id && (c.status === 'approved' || (currentUser && c.userId === currentUser.id) || isDeveloper)).length === 0 ? (
                     <p className={`text-center py-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>لا توجد تعليقات بعد</p>
-                  ) : comments.filter(c => c.apartmentId === selectedApartment.id && (c.status === 'approved' || (currentUser && c.userId === currentUser.id))).map(comment => {
+                  ) : comments.filter(c => c.apartmentId === selectedApartment.id && (c.status === 'approved' || (currentUser && c.userId === currentUser.id) || isDeveloper)).map(comment => {
                     const isOwn = currentUser && comment.userId === currentUser.id;
                     const avatarColor = ['#8B5CF6','#EF4444','#F59E0B','#10B981','#3B82F6','#EC4899'][comment.user.name.charAt(0).charCodeAt(0) % 6];
                     const d = new Date(comment.createdAt);
+                    const canDelete = isOwn || isDeveloper;
+                    const statusBadge = comment.status === 'pending' ? <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium">⏳ بانتظار الموافقة</span> : comment.status === 'rejected' ? <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-medium">❌ مرفوض</span> : null;
                     return (
                       <div key={comment.id} className={`flex gap-3 p-3 rounded-xl transition-all group ${isOwn ? (darkMode ? 'bg-violet-900/20 border border-violet-800/30' : 'bg-violet-50 border border-violet-200/50') : (darkMode ? 'bg-slate-700' : 'bg-slate-50')}`}>
                         <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 mt-0.5" style={{ background: avatarColor }}>{comment.user.name.charAt(0)}</div>
@@ -3125,13 +3159,13 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-slate-900'}`}>{comment.user.name}</span>
                             {isOwn && <span className="px-1.5 py-0.5 rounded-full bg-violet-500 text-white text-[10px] font-bold">أنت</span>}
-                            {isOwn && comment.status === 'pending' && <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium">⏳ بانتظار الموافقة</span>}
+                            {statusBadge}
                           </div>
                           <p className={`text-sm mt-1 ${comment.status === 'deleted' ? 'line-through opacity-50' : ''} ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{comment.content}</p>
                           <div className="flex items-center justify-between mt-1">
                             <p className={`text-[11px] ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{d.toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric' })} • {d.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</p>
-                            {isOwn && comment.status !== 'deleted' && (
-                              <button onClick={() => deleteOwnComment(comment.id, selectedApartment.id)} className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-red-400 hover:text-red-600 hover:bg-red-50 transition-all" title="حذف تعليقي"><Trash2 className="h-3.5 w-3.5" /></button>
+                            {canDelete && comment.status !== 'deleted' && (
+                              <button onClick={() => isDeveloper ? deleteCommentDev(comment.id) : deleteOwnComment(comment.id, selectedApartment.id)} className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-red-400 hover:text-red-600 hover:bg-red-50 transition-all" title={isDeveloper ? 'حذف نهائي (مطور)' : 'حذف تعليقي'}><Trash2 className="h-3.5 w-3.5" /></button>
                             )}
                           </div>
                         </div>
@@ -3217,7 +3251,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <button onClick={() => setShowDevPanel(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
               </div>
               <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
-                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل' }, { id: 'userApprovals', icon: ShieldCheck, label: 'تأكيد المستخدمين', count: pendingUsers.length }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'userLogs', icon: BookOpen, label: 'سجل المستخدمين', count: approvalLogs.length }, { id: 'editRequests', icon: FilePen, label: 'طلبات التعديل', count: editRequests.filter(e => e.status === 'pending').length }, { id: 'blocked', icon: Ban, label: 'محظورين' }, { id: 'settings', icon: Settings, label: 'الإعدادات' }, { id: 'logs', icon: Activity, label: 'السجل' } ].map(tab => (
+                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل' }, { id: 'userApprovals', icon: ShieldCheck, label: 'تأكيد المستخدمين', count: pendingUsers.length }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'userLogs', icon: BookOpen, label: 'سجل المستخدمين', count: approvalLogs.length }, { id: 'editRequests', icon: FilePen, label: 'طلبات التعديل', count: editRequests.filter(e => e.status === 'pending').length }, { id: 'blocked', icon: Ban, label: 'محظورين' }, { id: 'commentManage', icon: ScrollText, label: 'إدارة التعليقات', count: comments.length }, { id: 'settings', icon: Settings, label: 'الإعدادات' }, { id: 'logs', icon: Activity, label: 'السجل' } ].map(tab => (
                   <button key={tab.id} onClick={() => setDevTab(tab.id as any)} className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-all ${devTab === tab.id ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                     <tab.icon className="h-4 w-4" />{tab.label}
                     {tab.count !== undefined && tab.count > 0 && <span className={`px-2 py-0.5 rounded-full text-xs ${devTab === tab.id ? 'bg-white/20' : 'bg-amber-500 text-white'}`}>{tab.count}</span>}
@@ -3262,7 +3296,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <div className="space-y-2 max-h-64 overflow-y-auto">
                       {comments.filter(c => c.status === 'pending').length === 0 ? <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد تعليقات قيد المراجعة ✅</p> : comments.filter(c => c.status === 'pending').map(c => {
                         const avatarColor = ['#8B5CF6','#EF4444','#F59E0B','#10B981','#3B82F6','#EC4899'][c.user.name.charAt(0).charCodeAt(0) % 6];
-                        const aptTitle = allApartments.find(a => a.id === c.apartmentId)?.title || c.apartment?.title || 'غير معروف';
+                        const aptTitle = allApartments.find(a => a.id === c.apartmentId)?.title || 'غير معروف';
                         const d = new Date(c.createdAt);
                         return (
                           <div key={c.id} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm`}>
@@ -3313,7 +3347,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                         <p className={`text-center py-6 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا توجد تعليقات في هذا التصنيف</p>
                       ) : (devCommentsFilter === 'all' ? comments : comments.filter(c => c.status === devCommentsFilter)).map(c => {
                         const avatarColor = ['#8B5CF6','#EF4444','#F59E0B','#10B981','#3B82F6','#EC4899'][c.user.name.charAt(0).charCodeAt(0) % 6];
-                        const aptTitle = allApartments.find(a => a.id === c.apartmentId)?.title || c.apartment?.title || 'غير معروف';
+                        const aptTitle = allApartments.find(a => a.id === c.apartmentId)?.title || 'غير معروف';
                         const d = new Date(c.createdAt);
                         const statusBadge = { approved: { label: '✅ معتمد', cls: 'bg-emerald-100 text-emerald-700' }, pending: { label: '⏳ بانتظار', cls: 'bg-amber-100 text-amber-700' }, rejected: { label: '❌ مرفوض', cls: 'bg-red-100 text-red-700' }, deleted: { label: '🗑️ محذوف', cls: 'bg-slate-200 text-slate-600' } }[c.status] || { label: c.status, cls: 'bg-slate-100 text-slate-600' };
                         return (
@@ -3790,6 +3824,208 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       )}
                     </div>
                   );})}
+                </div>
+              )}
+
+              {/* Comment Management Tab */}
+              {devTab === 'commentManage' && (
+                <div className="space-y-6">
+                  {/* Summary Cards */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {[
+                      { label: 'إجمالي التعليقات', value: comments.length, icon: MessageCircle, color: 'from-violet-500 to-purple-600' },
+                      { label: '✅ معتمدة', value: comments.filter(c => c.status === 'approved').length, icon: ClipboardCheck, color: 'from-emerald-500 to-teal-600' },
+                      { label: '⏳ بانتظار', value: comments.filter(c => c.status === 'pending').length, icon: Clock, color: 'from-amber-500 to-orange-600' },
+                      { label: '🗑️ محذوفة/مرفوضة', value: comments.filter(c => c.status === 'deleted' || c.status === 'rejected').length, icon: Trash2, color: 'from-red-500 to-rose-600' },
+                    ].map((stat, i) => (
+                      <div key={i} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${stat.color} flex items-center justify-center`}><stat.icon className="h-4 w-4 text-white" /></div>
+                          <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{stat.label}</p>
+                        </div>
+                        <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{stat.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Comments List with Status Filter */}
+                  <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50'}`}>
+                    <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                      <h3 className={`font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                        <MessageCircle className="h-5 w-5 text-violet-500" />قائمة التعليقات
+                      </h3>
+                      <div className="flex gap-2 flex-wrap">
+                        {[
+                          { key: 'all', label: 'الكل' },
+                          { key: 'approved', label: '✅ معتمدة' },
+                          { key: 'pending', label: '⏳ بانتظار' },
+                          { key: 'rejected', label: '❌ مرفوضة' },
+                          { key: 'deleted', label: '🗑️ محذوفة' },
+                        ].map(tab => (
+                          <button key={tab.key} onClick={() => setDevCommentsFilter(tab.key)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${devCommentsFilter === tab.key ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white' : darkMode ? 'bg-slate-600 text-slate-300 hover:bg-slate-500' : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'}`}>
+                            {tab.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+                      {(devCommentsFilter === 'all' ? comments : comments.filter(c => c.status === devCommentsFilter)).length === 0 ? (
+                        <div className="text-center py-12">
+                          <MessageCircle className={`h-12 w-12 mx-auto mb-3 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
+                          <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد تعليقات في هذا التصنيف</p>
+                        </div>
+                      ) : (devCommentsFilter === 'all' ? comments : comments.filter(c => c.status === devCommentsFilter)).map(c => {
+                        const avatarColor = ['#8B5CF6','#EF4444','#F59E0B','#10B981','#3B82F6','#EC4899'][c.user.name.charAt(0).charCodeAt(0) % 6];
+                        const aptTitle = allApartments.find(a => a.id === c.apartmentId)?.title || 'غير معروف';
+                        const d = new Date(c.createdAt);
+                        const statusBadge: Record<string, { label: string; cls: string }> = {
+                          approved: { label: '✅ معتمد', cls: 'bg-emerald-100 text-emerald-700' },
+                          pending: { label: '⏳ بانتظار', cls: 'bg-amber-100 text-amber-700' },
+                          rejected: { label: '❌ مرفوض', cls: 'bg-red-100 text-red-700' },
+                          deleted: { label: '🗑️ محذوف', cls: 'bg-slate-200 text-slate-600' },
+                        };
+                        const badge = statusBadge[c.status] || { label: c.status, cls: 'bg-slate-100 text-slate-600' };
+                        const commentLogs = commentActionLogs.filter(log => log.commentId === c.id);
+                        const isExpanded = showCommentDetail === c.id;
+
+                        return (
+                          <div key={c.id} className={`rounded-xl overflow-hidden transition-all ${c.status === 'deleted' ? 'opacity-60' : ''} ${isExpanded ? `ring-2 ${darkMode ? 'ring-violet-500' : 'ring-violet-300'}` : ''}`}>
+                            <div className={`p-4 ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm`}>
+                              <div className="flex items-start gap-3">
+                                <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0" style={{ background: avatarColor }}>{c.user.name.charAt(0)}</div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className={`font-bold text-sm ${darkMode ? 'text-white' : 'text-slate-900'}`}>{c.user.name}</span>
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${badge.cls}`}>{badge.label}</span>
+                                  </div>
+                                  <p className={`text-[11px] mt-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>📌 {aptTitle}</p>
+                                  <p className={`text-sm mt-1.5 ${c.status === 'deleted' ? 'line-through opacity-70' : ''} ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{c.content}</p>
+                                  <p className={`text-[10px] mt-1.5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{d.toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                                </div>
+                              </div>
+
+                              {/* Action Buttons */}
+                              <div className="flex gap-2 mt-3 justify-end flex-wrap">
+                                {c.status === 'pending' && (
+                                  <>
+                                    <button onClick={() => approveComment(c.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-medium hover:shadow-lg hover:shadow-emerald-500/30 transition-all flex items-center gap-1"><Check className="h-3.5 w-3.5" />موافقة</button>
+                                    <button onClick={() => rejectComment(c.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 text-white text-xs font-medium hover:shadow-lg hover:shadow-amber-500/30 transition-all flex items-center gap-1"><XCircle className="h-3.5 w-3.5" />رفض</button>
+                                  </>
+                                )}
+                                {(c.status === 'approved' || c.status === 'rejected') && (
+                                  <button onClick={() => returnToPending(c.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-slate-500 to-slate-600 text-white text-xs font-medium hover:shadow-lg transition-all flex items-center gap-1"><RefreshCw className="h-3.5 w-3.5" />إرجاع للمراجعة</button>
+                                )}
+                                {(c.status === 'approved' || c.status === 'rejected' || c.status === 'pending') && (
+                                  <button onClick={() => deleteCommentDev(c.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-red-500 to-rose-600 text-white text-xs font-medium hover:shadow-lg hover:shadow-red-500/30 transition-all flex items-center gap-1"><Trash2 className="h-3.5 w-3.5" />حذف نهائي</button>
+                                )}
+                                {commentLogs.length > 0 && (
+                                  <button onClick={() => setShowCommentDetail(isExpanded ? null : c.id)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${isExpanded ? 'bg-violet-500 text-white' : darkMode ? 'bg-slate-500 text-white hover:bg-slate-400' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>
+                                    <ScrollText className="h-3.5 w-3.5" />سجل الإجراءات ({commentLogs.length})
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Action Log for this comment */}
+                            {isExpanded && commentLogs.length > 0 && (
+                              <div className={`px-4 py-3 ${darkMode ? 'bg-slate-700/50' : 'bg-violet-50/50'} border-t ${darkMode ? 'border-slate-600' : 'border-violet-100'}`}>
+                                <h4 className={`text-xs font-bold mb-2 flex items-center gap-1 ${darkMode ? 'text-slate-300' : 'text-violet-700'}`}>
+                                  <Activity className="h-3.5 w-3.5" />سجل إجراءات هذا التعليق
+                                </h4>
+                                <div className="space-y-2">
+                                  {commentLogs.map(log => {
+                                    const logDate = new Date(log.createdAt);
+                                    const actionLabel: Record<string, { label: string; emoji: string; color: string }> = {
+                                      created_pending: { label: 'تم الإنشاء (بانتظار المراجعة)', emoji: '📝', color: 'text-amber-600' },
+                                      created_approved: { label: 'تم الإنشاء والنشر المباشر', emoji: '✅', color: 'text-emerald-600' },
+                                      approved: { label: 'تمت الموافقة', emoji: '✅', color: 'text-emerald-600' },
+                                      rejected: { label: 'تم الرفض', emoji: '❌', color: 'text-red-600' },
+                                      deleted_by_developer: { label: 'تم الحذف النهائي (المطور)', emoji: '🗑️', color: 'text-red-600' },
+                                      deleted_permanent_by_developer: { label: 'تم الحذف نهائياً من قاعدة البيانات', emoji: '💥', color: 'text-red-700' },
+                                      deleted_by_owner: { label: 'تم الحذف بواسطة صاحب التعليق', emoji: '🗑️', color: 'text-orange-600' },
+                                      returned_to_pending: { label: 'تم الإرجاع للمراجعة', emoji: '↩️', color: 'text-blue-600' },
+                                    };
+                                    const action = actionLabel[log.action] || { label: log.action, emoji: '📋', color: 'text-slate-600' };
+                                    return (
+                                      <div key={log.id} className={`flex items-start gap-2 p-2 rounded-lg ${darkMode ? 'bg-slate-600/50' : 'bg-white/80'}`}>
+                                        <span className="text-xs">{action.emoji}</span>
+                                        <div className="flex-1 min-w-0">
+                                          <p className={`text-[11px] font-medium ${action.color}`}>{action.label}</p>
+                                          {log.details && <p className={`text-[10px] mt-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{log.details}</p>}
+                                          <p className={`text-[9px] mt-0.5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{logDate.toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Full Action Log */}
+                  <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50'}`}>
+                    <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+                      <h3 className={`font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                        <Activity className="h-5 w-5 text-amber-500" />سجل جميع الإجراءات
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${commentActionLogs.length > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{commentActionLogs.length}</span>
+                      </h3>
+                      <div className="flex gap-2 flex-wrap">
+                        {[
+                          { key: 'all', label: 'الكل' },
+                          { key: 'created_pending', label: '📝 إنشاء' },
+                          { key: 'approved', label: '✅ موافقة' },
+                          { key: 'rejected', label: '❌ رفض' },
+                          { key: 'deleted_by_developer', label: '🗑️ حذف مطور' },
+                          { key: 'deleted_by_owner', label: '🗑️ حذف صاحب' },
+                        ].map(tab => (
+                          <button key={tab.key} onClick={() => setCommentLogsFilter(tab.key)} className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-all ${commentLogsFilter === tab.key ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white' : darkMode ? 'bg-slate-600 text-slate-300 hover:bg-slate-500' : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'}`}>
+                            {tab.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {(commentLogsFilter === 'all' ? commentActionLogs : commentActionLogs.filter(l => l.action === commentLogsFilter)).length === 0 ? (
+                        <p className={`text-center py-6 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا توجد إجراءات في هذا التصنيف</p>
+                      ) : (commentLogsFilter === 'all' ? commentActionLogs : commentActionLogs.filter(l => l.action === commentLogsFilter)).slice(0, 50).map(log => {
+                        const logDate = new Date(log.createdAt);
+                        const actionLabel: Record<string, { label: string; emoji: string; color: string }> = {
+                          created_pending: { label: 'تعليق جديد بانتظار المراجعة', emoji: '📝', color: 'text-amber-600' },
+                          created_approved: { label: 'تعليق جديد (نشر مباشر - مطور)', emoji: '✅', color: 'text-emerald-600' },
+                          approved: { label: 'تمت الموافقة على التعليق', emoji: '✅', color: 'text-emerald-600' },
+                          rejected: { label: 'تم رفض التعليق', emoji: '❌', color: 'text-red-600' },
+                          deleted_by_developer: { label: 'حذف التعليق (المطور)', emoji: '🗑️', color: 'text-red-600' },
+                          deleted_permanent_by_developer: { label: 'حذف نهائي من قاعدة البيانات', emoji: '💥', color: 'text-red-700' },
+                          deleted_by_owner: { label: 'حذف التعليق (صاحب التعليق)', emoji: '🗑️', color: 'text-orange-600' },
+                          returned_to_pending: { label: 'إرجاع للمراجعة', emoji: '↩️', color: 'text-blue-600' },
+                        };
+                        const action = actionLabel[log.action] || { label: log.action, emoji: '📋', color: 'text-slate-600' };
+                        const logComment = log.comment;
+                        return (
+                          <div key={log.id} className={`flex items-start gap-3 p-3 rounded-xl ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm`}>
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-base shrink-0 ${darkMode ? 'bg-slate-500' : 'bg-slate-100'}`}>{action.emoji}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`text-xs font-bold ${action.color}`}>{action.label}</span>
+                              </div>
+                              {logComment && (
+                                <p className={`text-[11px] mt-1 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                                  <span className="font-medium">{logComment.user?.name}</span>: "{logComment.content.substring(0, 60)}{logComment.content.length > 60 ? '...' : ''}"
+                                  {logComment.apartment && <span className={darkMode ? 'text-slate-400' : 'text-slate-400'}> — 📌 {logComment.apartment.title}</span>}
+                                </p>
+                              )}
+                              {log.details && <p className={`text-[10px] mt-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{log.details}</p>}
+                              <p className={`text-[9px] mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{logDate.toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               )}
 

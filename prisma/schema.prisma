@@ -1,14 +1,13 @@
-// Manteqti - PostgreSQL Schema for Vercel production
-// For local SQLite development, change provider to "sqlite"
+// Manteqti - Local SQLite Schema
+// Production PostgreSQL schema is in schema.postgres.prisma
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_DATABASE_URL")
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -145,8 +144,22 @@ model Comment {
 
   apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  actionLogs CommentActionLog[]
 
   @@map("Comment")
+}
+
+model CommentActionLog {
+  id          String   @id @default(cuid())
+  commentId   String
+  action      String   // created, approved, rejected, deleted, restored, deleted_by_owner
+  performedBy String   // userId of who performed the action
+  details     String?
+  createdAt   DateTime @default(now())
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@map("CommentActionLog")
 }
 
 model Message {
