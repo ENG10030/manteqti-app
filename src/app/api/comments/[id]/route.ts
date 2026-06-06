@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireApprovedUser } from '@/lib/auth-middleware';
 
+// تسجيل إجراء بشكل اختياري - لا يوقف العملية لو فشل
+async function logAction(data: { commentId: string; action: string; performedBy: string; details: string }) {
+  try {
+    await db.commentActionLog.create({ data });
+  } catch (error) {
+    console.error('Failed to log comment action (non-blocking):', error);
+  }
+}
+
 // الموافقة على التعليق أو رفضه (developer only)
 export async function PUT(
   request: NextRequest,
@@ -40,7 +49,7 @@ export async function PUT(
       }
     });
 
-    // Log the action
+    // Log the action (non-blocking)
     const actionMessages: Record<string, string> = {
       approved: `تمت الموافقة على التعليق (كان: ${previousStatus})`,
       rejected: `تم رفض التعليق (كان: ${previousStatus})`,
@@ -48,13 +57,11 @@ export async function PUT(
       pending: `تم إرجاع التعليق للمراجعة (كان: ${previousStatus})`,
     };
 
-    await db.commentActionLog.create({
-      data: {
-        commentId: id,
-        action: status === 'approved' ? 'approved' : status === 'rejected' ? 'rejected' : status === 'deleted' ? 'deleted_by_developer' : 'returned_to_pending',
-        performedBy: auth.userId,
-        details: actionMessages[status] || `تم تغيير الحالة إلى ${status}`,
-      }
+    logAction({
+      commentId: id,
+      action: status === 'approved' ? 'approved' : status === 'rejected' ? 'rejected' : status === 'deleted' ? 'deleted_by_developer' : 'returned_to_pending',
+      performedBy: auth.userId,
+      details: actionMessages[status] || `تم تغيير الحالة إلى ${status}`,
     });
 
     return NextResponse.json({
@@ -64,7 +71,7 @@ export async function PUT(
     });
   } catch (error) {
     console.error('Error updating comment:', error);
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+    return NextResponse.json({ error: 'حدث خطأ في تحديث التعليق' }, { status: 500 });
   }
 }
 
@@ -89,15 +96,14 @@ export async function DELETE(
     const isOwner = existing.userId === auth.userId;
 
     if (isDeveloper) {
-      // Developer: permanent delete from database
-      await db.commentActionLog.create({
-        data: {
-          commentId: id,
-          action: 'deleted_permanent_by_developer',
-          performedBy: auth.userId,
-          details: `المطور حذف التعليق نهائياً من قاعدة البيانات - المحتوى: "${existing.content.substring(0, 50)}..."`,
-        }
+      // Log first (before deleting comment)
+      await logAction({
+        commentId: id,
+        action: 'deleted_permanent_by_developer',
+        performedBy: auth.userId,
+        details: `المطور حذف التعليق نهائياً من قاعدة البيانات - المحتوى: "${existing.content.substring(0, 50)}..."`,
       });
+      // Developer: permanent delete from database
       await db.comment.delete({ where: { id } });
       return NextResponse.json({ success: true, message: 'تم حذف التعليق نهائياً من قاعدة البيانات', permanent: true });
     } else if (isOwner) {
@@ -106,13 +112,11 @@ export async function DELETE(
         where: { id },
         data: { status: 'deleted' },
       });
-      await db.commentActionLog.create({
-        data: {
-          commentId: id,
-          action: 'deleted_by_owner',
-          performedBy: auth.userId,
-          details: 'صاحب التعليق حذف تعليقه',
-        }
+      await logAction({
+        commentId: id,
+        action: 'deleted_by_owner',
+        performedBy: auth.userId,
+        details: 'صاحب التعليق حذف تعليقه',
       });
       return NextResponse.json({ success: true, message: 'تم حذف تعليقك', permanent: false });
     } else {
@@ -120,6 +124,6 @@ export async function DELETE(
     }
   } catch (error) {
     console.error('Error deleting comment:', error);
-    return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });
+    return NextResponse.json({ error: 'حدث خطأ في حذف التعليق' }, { status: 500 });
   }
 }

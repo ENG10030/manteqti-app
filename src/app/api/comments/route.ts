@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireApprovedUser } from '@/lib/auth-middleware';
 
+// تسجيل إجراء بشكل اختياري - لا يوقف العملية لو فشل
+async function logAction(data: { commentId: string; action: string; performedBy: string; details: string }) {
+  try {
+    await db.commentActionLog.create({ data });
+  } catch (error) {
+    console.error('Failed to log comment action (non-blocking):', error);
+  }
+}
+
 // جلب التعليقات
 export async function GET(request: NextRequest) {
   try {
@@ -76,14 +85,12 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    // Log the action
-    await db.commentActionLog.create({
-      data: {
-        commentId: comment.id,
-        action: isDeveloper ? 'created_approved' : 'created_pending',
-        performedBy: userId,
-        details: isDeveloper ? 'المطور أنشأ ونشر التعليق مباشرة' : 'تم إنشاء تعليق بانتظار موافقة المطور',
-      }
+    // Log the action (non-blocking)
+    logAction({
+      commentId: comment.id,
+      action: isDeveloper ? 'created_approved' : 'created_pending',
+      performedBy: userId,
+      details: isDeveloper ? 'المطور أنشأ ونشر التعليق مباشرة' : 'تم إنشاء تعليق بانتظار موافقة المطور',
     });
 
     return NextResponse.json({ 
