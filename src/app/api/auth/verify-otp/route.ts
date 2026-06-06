@@ -62,6 +62,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'انتهت صلاحية الرمز' }, { status: 400 });
     }
 
+    // Check if OTP exists (nullable field)
+    if (!user.otp) {
+      return NextResponse.json({ error: 'لا يوجد رمز تحقق. يرجى طلب رمز جديد' }, { status: 400 });
+    }
+
     // Use bcrypt.compare for OTP verification (since we now hash it)
     const isOtpValid = await bcrypt.compare(otpCode, user.otp);
 
