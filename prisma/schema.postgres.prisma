@@ -28,6 +28,7 @@ model User {
   otp                   String?
   otpExpires            DateTime?
   emailVerified         Boolean   @default(false)
+  walletBalance         Int       @default(0)
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
@@ -212,21 +213,26 @@ model BlockedUser {
 }
 
 model Settings {
-  id                  String   @id @default(cuid())
-  contactFee          Int      @default(50)
-  regularFee          Int      @default(30)
-  featuredFee         Int      @default(100)
-  premiumFee          Int      @default(200)
-  vipFee              Int      @default(300)
-  saleDisplayFee      Int      @default(100)
-  rentDisplayFee      Int      @default(75)
-  otherServicesFee    Int      @default(50)
-  highlightFee        Int      @default(150)
-  priorityListingFee  Int      @default(200)
-  verifiedListingFee  Int      @default(250)
-  currency            String   @default("ج.م")
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  contactFee            Int      @default(50)
+  regularFee            Int      @default(30)
+  featuredFee           Int      @default(100)
+  premiumFee            Int      @default(200)
+  vipFee                Int      @default(300)
+  saleDisplayFee        Int      @default(100)
+  rentDisplayFee        Int      @default(75)
+  otherServicesFee      Int      @default(50)
+  highlightFee          Int      @default(150)
+  priorityListingFee    Int      @default(200)
+  verifiedListingFee    Int      @default(250)
+  currency              String   @default("ج.م")
+  usdtTronAddress       String?
+  paymentAutoConfirm    Boolean  @default(false)
+  paymentSecurityPin    String?
+  walletMinCharge       Int      @default(10)
+  walletMaxCharge       Int      @default(50000)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   @@map("Settings")
 }
