@@ -14,7 +14,8 @@ import {
   Send, Bot, Home, Crown, Diamond, Ban, Brain, Search,
   VideoIcon, Activity, Wallet, Key, ArrowUp, Layers,
   Download, Smartphone, Zap, Save,
-  Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen
+  Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen,
+  GitCompare
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
 // socket.io-client imported dynamically in useEffect to prevent Vercel SSR/hydration issues
@@ -203,6 +204,9 @@ function App() {
   const [aiDescLoading, setAiDescLoading] = useState(false);
   const [devPasswordChange, setDevPasswordChange] = useState({ current: '', new: '', confirm: '' });
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [showFavorites, setShowFavorites] = useState(false);
+  const [compareList, setCompareList] = useState<string[]>([]);
+  const [showCompare, setShowCompare] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; type: 'danger' | 'warning' | 'info'; loading?: boolean; confirmText?: string; cancelText?: string; }>({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
   // v219: Selective delete options for user deletion
   const [deleteUserModal, setDeleteUserModal] = useState<{ isOpen: boolean; userId: string; userName: string; stats: { apartments: number; inquiries: number; payments: number; messages: number; likes: number; comments: number; editRequests: number } | null }>({ isOpen: false, userId: '', userName: '', stats: null });
@@ -965,7 +969,8 @@ function App() {
 
   const fetchComments = async (apartmentId: string) => {
     try { 
-      const res = await fetch(`/api/comments?apartmentId=${apartmentId}&status=approved`); 
+      // Fetch all comments for apartment (approved + own pending) - UI filters visibility
+      const res = await fetch(`/api/comments?apartmentId=${apartmentId}`); 
       const data = await res.json();
       setComments(Array.isArray(data) ? data : []); 
     } catch {}
@@ -1773,6 +1778,15 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     } catch { addToast('حدث خطأ', 'error'); }
   };
 
+  const toggleCompare = (apartmentId: string) => {
+    if (!currentUser && !isDeveloper) { addToast('سجل دخولك لتتمكن من المقارنة', 'info'); setShowAuth(true); return; }
+    setCompareList(prev => {
+      if (prev.includes(apartmentId)) return prev.filter(id => id !== apartmentId);
+      if (prev.length >= 4) { addToast('الحد الأقصى 4 شقق للمقارنة', 'error'); return prev; }
+      return [...prev, apartmentId];
+    });
+  };
+
   const addComment = async (apartmentId: string) => {
     if (!currentUser && !isDeveloper) { addToast('يجب تسجيل الدخول للتعليق', 'error'); return; }
     if (!newComment.trim()) { addToast('اكتب تعليقاً', 'error'); return; }
@@ -1780,7 +1794,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     try {
       const res = await fetch('/api/comments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apartmentId, userId: currentUser?.id || 'developer', content: newComment, status: isDeveloper ? 'approved' : 'pending' }) });
       const data = await res.json();
-      if (data.success) { setNewComment(''); if (isDeveloper) fetchComments(apartmentId); addToast(isDeveloper ? 'تم نشر التعليق' : 'تم إرسال التعليق للمراجعة', 'success'); }
+      if (data.success) { setNewComment(''); fetchComments(apartmentId); addToast(isDeveloper ? 'تم نشر التعليق' : 'تم إرسال التعليق للمراجعة', 'success'); }
     } catch { addToast('حدث خطأ', 'error'); }
     finally { setCommentLoading(false); }
   };
@@ -2015,6 +2029,12 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 {isDeveloper && messages.filter(m => !m.isRead).length > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">{messages.filter(m => !m.isRead).length}</span>}
               </motion.button>
 
+              {/* ❤️ Favorites Button - Desktop */}
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => { if (!currentUser && !isDeveloper) { addToast('يجب تسجيل الدخول لعرض المفضلة', 'info'); setShowAuth(true); return; } setShowFavorites(true); }} className={`relative flex items-center gap-2 px-4 py-3 rounded-xl font-medium shadow-lg transition-all ${favorites.length > 0 ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-red-500/30' : darkMode ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                <Heart className={`h-5 w-5 ${favorites.length > 0 ? 'fill-white' : ''}`} />
+                {favorites.length > 0 && <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-white/25 text-white text-xs font-bold flex items-center justify-center">{favorites.length}</span>}
+              </motion.button>
+
               {isDeveloper ? (
                 <div className="flex items-center gap-2">
                   <motion.button whileHover={{ scale: 1.02 }} onClick={() => setShowDevPanel(true)} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium shadow-lg relative">
@@ -2141,6 +2161,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                         <Eye className="h-4 w-4 group-hover:scale-110 transition-transform" />
                         <span>عرض التفاصيل</span>
                       </button>
+                      <button onClick={(e) => { e.stopPropagation(); toggleCompare(apartment.id); }} className={`py-2.5 px-4 rounded-xl font-medium text-sm flex items-center gap-1.5 transition-all ${compareList.includes(apartment.id) ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/30' : darkMode ? 'bg-slate-700 text-purple-400 hover:bg-purple-500/20' : 'bg-purple-50 text-purple-600 hover:bg-purple-100'}`}><GitCompare className="h-4 w-4" /><span className="hidden sm:inline">مقارنة</span></button>
                       {isDeveloper && (
                         <>
                           <button onClick={() => setEditApartment(apartment)} className={`py-2.5 px-4 rounded-xl font-medium text-sm ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>تعديل</button>
@@ -2155,6 +2176,72 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
           )}
         </div>
       </main>
+
+      {/* 📊 Floating Compare Bar */}
+      <AnimatePresence>{compareList.length >= 2 && (
+        <motion.div initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }} className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[50]">
+          <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+            <div className="flex -space-x-2 rtl:space-x-reverse">
+              {apartments.filter(a => compareList.includes(a.id)).map(apt => (
+                <img key={apt.id} src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-10 h-10 rounded-full border-2 border-white object-cover" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
+              ))}
+            </div>
+            <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{compareList.length} شقق</span>
+            <button onClick={() => setShowCompare(true)} className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-violet-600 text-white font-medium text-sm hover:shadow-lg hover:shadow-purple-500/30 transition-all">مقارنة</button>
+            <button onClick={() => setCompareList([])} className={`p-2 rounded-lg ${darkMode ? 'bg-slate-700 text-slate-400 hover:text-red-400' : 'bg-slate-100 text-slate-500 hover:text-red-500'}`}><X className="h-4 w-4" /></button>
+          </div>
+        </motion.div>
+      )}</AnimatePresence>
+
+      {/* 📊 Comparison Modal */}
+      <AnimatePresence>{showCompare && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowCompare(false)}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-4xl rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl max-h-[85vh] overflow-hidden flex flex-col`}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><GitCompare className="h-6 w-6 text-purple-500" />مقارنة الشقق</h2>
+              <button onClick={() => setShowCompare(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
+            </div>
+            <div className="flex-1 overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th className={`p-3 text-right text-sm font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>المعيار</th>
+                    {apartments.filter(a => compareList.includes(a.id)).map(apt => (
+                      <th key={apt.id} className="p-3 text-center">
+                        <img src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-16 h-12 object-cover rounded-lg mx-auto mb-2" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
+                        <p className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</p>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { label: '💰 السعر', key: 'price', render: (a: any) => <span className={`font-bold ${a.price === Math.min(...apartments.filter(x => compareList.includes(x.id)).map(x => x.price)) ? 'text-emerald-500' : darkMode ? 'text-white' : 'text-slate-900'}`}>{a.price.toLocaleString()} ج.م</span> },
+                    { label: '📍 المنطقة', key: 'area', render: (a: any) => <span>{a.area || '-'}</span> },
+                    { label: '🛏 الغرف', key: 'bedrooms', render: (a: any) => <span>{a.bedrooms || '-'}</span> },
+                    { label: '🛁 الحمامات', key: 'bathrooms', render: (a: any) => <span>{a.bathrooms || '-'}</span> },
+                    { label: '📐 المساحة', key: 'apartmentSize', render: (a: any) => <span>{a.apartmentSize ? `${a.apartmentSize} م²` : '-'}</span> },
+                    { label: '🏢 الدور', key: 'floor', render: (a: any) => <span>{a.floor || '-'}</span> },
+                    { label: '🏷 النوع', key: 'type', render: (a: any) => <span className={a.type === 'rent' ? 'text-emerald-500' : 'text-blue-500'}>{a.type === 'rent' ? 'إيجار' : 'بيع'}</span> },
+                    { label: '📊 الحالة', key: 'status', render: (a: any) => <span>{statusConfig[a.status]?.label || a.status}</span> },
+                    { label: '⭐ VIP', key: 'isVip', render: (a: any) => <span>{a.isVip ? '✅' : '❌'}</span> },
+                  ].map(row => (
+                    <tr key={row.key} className={`border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                      <td className={`p-3 text-sm font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{row.label}</td>
+                      {apartments.filter(a => compareList.includes(a.id)).map(apt => (
+                        <td key={apt.id} className={`p-3 text-center text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{row.render(apt)}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className={`mt-4 pt-4 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+              <button onClick={() => { setShowCompare(false); setCompareList([]); }} className="px-4 py-2 rounded-xl bg-red-500/10 text-red-500 text-sm hover:bg-red-500/20">إلغاء المقارنة</button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}</AnimatePresence>
 
       {/* Footer */}
       <footer className={`relative z-10 mt-auto py-6 border-t ${darkMode ? 'bg-slate-900/80 border-slate-700' : 'bg-white/80 border-slate-200'} backdrop-blur`}>
@@ -2225,6 +2312,11 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <button onClick={() => { setShowAddModal(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white"><Building2 className="h-5 w-5" />إضافة شقة</button>
                 <button onClick={() => { setShowChat(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><Brain className="h-5 w-5" />المساعد الذكي</button>
                 <button onClick={() => { if (isDeveloper) { fetchMessages(); setShowMessages(true); } else if (currentUser) { setShowMessages(true); } else { setShowAuth(true); } setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><MessageCircle className="h-5 w-5" />تواصل معنا</button>
+                <motion.button whileTap={{ scale: 0.95 }} onClick={() => { if (!currentUser && !isDeveloper) { addToast('يجب تسجيل الدخول لعرض المفضلة', 'info'); setShowAuth(true); setShowMobileMenu(false); return; } setShowFavorites(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${favorites.length > 0 ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white' : darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}>
+                  <Heart className={`h-5 w-5 ${favorites.length > 0 ? 'fill-white' : ''}`} />
+                  <span>المفضلة</span>
+                  {favorites.length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-white/20 text-xs">{favorites.length}</span>}
+                </motion.button>
                 {isDeveloper ? (
                   <>
         <button onClick={() => { setShowDevPanel(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white"><ShieldCheck className="h-5 w-5" />لوحة المطور{pendingApartments.length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-white/20 text-xs">{pendingApartments.length}</span>}</button>
@@ -2245,6 +2337,41 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 )}
                 <button onClick={() => setDarkMode(!darkMode)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-amber-400' : 'bg-slate-100 text-slate-700'}`}>{darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}{darkMode ? 'الوضع النهاري' : 'الوضع الليلي'}</button>
               </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}</AnimatePresence>
+
+      {/* ❤️ Favorites Modal */}
+      <AnimatePresence>{showFavorites && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowFavorites(false)}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-2xl rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl max-h-[80vh] overflow-hidden flex flex-col`}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Heart className="h-6 w-6 text-red-500 fill-red-500" />المفضلة <span className="text-sm font-normal text-slate-500">({favorites.length})</span></h2>
+              <button onClick={() => setShowFavorites(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto space-y-3">
+              {apartments.filter(a => favorites.includes(a.id)).length === 0 ? (
+                <div className="text-center py-12"><Heart className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد شقق في المفضلة</p></div>
+              ) : apartments.filter(a => favorites.includes(a.id)).map(apt => (
+                <div key={apt.id} className={`flex gap-3 p-3 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'} group`}>
+                  <img src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-24 h-20 object-cover rounded-lg shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
+                  <div className="flex-1 min-w-0">
+                    <h4 className={`font-bold truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h4>
+                    <p className="text-lg font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent">{apt.price.toLocaleString()} ج.م</p>
+                    <div className={`flex flex-wrap gap-2 text-xs mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                      <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{apt.area}</span>
+                      <span>🛏 {apt.bedrooms} غرف</span>
+                      <span>🛁 {apt.bathrooms} حمام</span>
+                      {apt.apartmentSize && <span>📐 {apt.apartmentSize} م²</span>}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2 shrink-0">
+                    <button onClick={() => { setSelectedApartment(apt); fetchComments(apt.id); setCurrentImageIndex(0); setShowFavorites(false); fetch(`/api/apartments/${apt.id}/details`, { method: 'GET' }).catch(() => {}); }} className="px-3 py-2 rounded-lg bg-violet-500 text-white text-xs hover:bg-violet-600 transition-colors"><Eye className="h-4 w-4" /></button>
+                    <button onClick={() => toggleFavorite(apt.id)} className="px-3 py-2 rounded-lg bg-red-500/10 text-red-500 text-xs hover:bg-red-500/20 transition-colors"><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                </div>
+              ))}
             </div>
           </motion.div>
         </motion.div>
@@ -2706,21 +2833,50 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 )}
               </div>
 
-              {/* Comments Section */}
+              {/* 💬 Comments Section - New */}
               <div className={`mt-6 pt-6 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
-                <h3 className={`font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><MessageCircle className="h-5 w-5 text-violet-500" />التعليقات</h3>
-                <div className="flex gap-2 mb-4">
-                  <input type="text" value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="اكتب تعليقاً..." className={`flex-1 px-4 py-2 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
-                  <button onClick={() => addComment(selectedApartment.id)} disabled={commentLoading} className="px-4 py-2 rounded-xl bg-violet-600 text-white disabled:opacity-50">{commentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}</button>
-                </div>
-                <div className="space-y-3">
-                  {comments.filter(c => c.apartmentId === selectedApartment.id).map(comment => (
-                    <div key={comment.id} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                      <div className="flex items-center gap-2 mb-1"><span className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{comment.user.name}</span><span className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{new Date(comment.createdAt).toLocaleDateString('ar-EG')}</span></div>
-                      <p className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{comment.content}</p>
+                <h3 className={`font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><MessageCircle className="h-5 w-5 text-violet-500" />التعليقات ({comments.filter(c => c.apartmentId === selectedApartment.id && (c.status === 'approved' || (currentUser && c.userId === currentUser.id))).length})</h3>
+                
+                {/* Comment Input */}
+                {(currentUser || isDeveloper) ? (
+                  <div className={`flex items-center gap-3 p-3 rounded-xl mb-4 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0" style={{ background: ['#8B5CF6','#EF4444','#F59E0B','#10B981','#3B82F6','#EC4899'][(currentUser?.name || 'U').charAt(0).charCodeAt(0) % 6] }}>
+                      {(currentUser?.name || 'U').charAt(0)}
                     </div>
-                  ))}
-                  {comments.filter(c => c.apartmentId === selectedApartment.id).length === 0 && <p className={`text-center py-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>لا توجد تعليقات بعد</p>}
+                    <input type="text" value={newComment} onChange={(e) => setNewComment(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && newComment.trim()) addComment(selectedApartment.id); }} placeholder="اكتب تعليقاً..." className={`flex-1 px-3 py-2 rounded-lg border-0 text-sm ${darkMode ? 'bg-slate-600 text-white placeholder-slate-400' : 'bg-white text-slate-900 placeholder-slate-400'} focus:ring-2 focus:ring-violet-500 outline-none`} />
+                    <button onClick={() => addComment(selectedApartment.id)} disabled={commentLoading || !newComment.trim()} className="p-2.5 rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 text-white disabled:opacity-50 hover:shadow-lg hover:shadow-violet-500/30 transition-all">{commentLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}</button>
+                  </div>
+                ) : (
+                  <div className={`flex items-center gap-3 p-3 rounded-xl mb-4 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                    <User className={`h-5 w-5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`} />
+                    <span className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>سجل دخولك لتتمكن من إضافة تعليق</span>
+                    <button onClick={() => setShowAuth(true)} className="mr-auto px-3 py-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 text-white text-xs">تسجيل الدخول</button>
+                  </div>
+                )}
+
+                {/* Comments List */}
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {comments.filter(c => c.apartmentId === selectedApartment.id && (c.status === 'approved' || (currentUser && c.userId === currentUser.id))).length === 0 ? (
+                    <p className={`text-center py-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>لا توجد تعليقات بعد</p>
+                  ) : comments.filter(c => c.apartmentId === selectedApartment.id && (c.status === 'approved' || (currentUser && c.userId === currentUser.id))).map(comment => {
+                    const isOwn = currentUser && comment.userId === currentUser.id;
+                    const avatarColor = ['#8B5CF6','#EF4444','#F59E0B','#10B981','#3B82F6','#EC4899'][comment.user.name.charAt(0).charCodeAt(0) % 6];
+                    const d = new Date(comment.createdAt);
+                    return (
+                      <div key={comment.id} className={`flex gap-3 p-3 rounded-xl transition-all ${isOwn ? (darkMode ? 'bg-violet-900/20 border border-violet-800/30' : 'bg-violet-50 border border-violet-200/50') : (darkMode ? 'bg-slate-700' : 'bg-slate-50')}`}>
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 mt-0.5" style={{ background: avatarColor }}>{comment.user.name.charAt(0)}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-slate-900'}`}>{comment.user.name}</span>
+                            {isOwn && <span className="px-1.5 py-0.5 rounded-full bg-violet-500 text-white text-[10px] font-bold">أنت</span>}
+                            {isOwn && comment.status === 'pending' && <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-medium">⏳ بانتظار الموافقة</span>}
+                          </div>
+                          <p className={`text-sm mt-1 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{comment.content}</p>
+                          <p className={`text-[11px] mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{d.toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric' })} • {d.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -2838,14 +2994,33 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     </div>
                   </div>
                   <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                    <h3 className={`font-bold mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>التعليقات قيد المراجعة</h3>
-                    <div className="space-y-2">
-                      {comments.filter(c => c.status === 'pending').length === 0 ? <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد تعليقات قيد المراجعة</p> : comments.filter(c => c.status === 'pending').map(c => (
-                        <div key={c.id} className={`p-3 rounded-lg ${darkMode ? 'bg-slate-600' : 'bg-white'} flex items-center justify-between`}>
-                          <div><p className={darkMode ? 'text-white' : 'text-slate-900'}>{c.content}</p><p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{c.user.name}</p></div>
-                          <div className="flex gap-2"><button onClick={() => approveComment(c.id)} className="p-1 rounded bg-emerald-500 text-white"><Check className="h-4 w-4" /></button><button onClick={() => deleteComment(c.id)} className="p-1 rounded bg-red-500 text-white"><X className="h-4 w-4" /></button></div>
-                        </div>
-                      ))}
+                    <div className="flex items-center gap-2 mb-3">
+                      <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>💬 التعليقات قيد المراجعة</h3>
+                      {comments.filter(c => c.status === 'pending').length > 0 && <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-bold">{comments.filter(c => c.status === 'pending').length}</span>}
+                    </div>
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {comments.filter(c => c.status === 'pending').length === 0 ? <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد تعليقات قيد المراجعة</p> : comments.filter(c => c.status === 'pending').map(c => {
+                        const avatarColor = ['#8B5CF6','#EF4444','#F59E0B','#10B981','#3B82F6','#EC4899'][c.user.name.charAt(0).charCodeAt(0) % 6];
+                        const aptTitle = allApartments.find(a => a.id === c.apartmentId)?.title || 'غير معروف';
+                        return (
+                          <div key={c.id} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-600' : 'bg-white'}`}>
+                            <div className="flex items-start gap-3">
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0" style={{ background: avatarColor }}>{c.user.name.charAt(0)}</div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className={`font-medium text-sm ${darkMode ? 'text-white' : 'text-slate-900'}`}>{c.user.name}</span>
+                                  <span className={`text-[11px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>📌 {aptTitle}</span>
+                                </div>
+                                <p className={`text-sm mt-1 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{c.content}</p>
+                              </div>
+                            </div>
+                            <div className="flex gap-2 mt-2 justify-end">
+                              <button onClick={() => approveComment(c.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-medium hover:shadow-lg transition-all"><Check className="h-3.5 w-3.5 inline ml-1" />موافقة</button>
+                              <button onClick={() => deleteComment(c.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-red-500 to-rose-600 text-white text-xs font-medium hover:shadow-lg transition-all"><X className="h-3.5 w-3.5 inline ml-1" />حذف</button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
