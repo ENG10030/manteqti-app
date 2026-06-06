@@ -11,7 +11,7 @@ async function logAction(data: { commentId: string; action: string; performedBy:
   }
 }
 
-// الموافقة على التعليق أو رفضه (developer only)
+// الموافقة على التعليق أو رفضه أو حذفه (developer only) - soft actions
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -53,7 +53,7 @@ export async function PUT(
     const actionMessages: Record<string, string> = {
       approved: `تمت الموافقة على التعليق (كان: ${previousStatus})`,
       rejected: `تم رفض التعليق (كان: ${previousStatus})`,
-      deleted: `تم حذف التعليق نهائياً بواسطة المطور (كان: ${previousStatus})`,
+      deleted: `تم حذف التعليق بواسطة المطور (كان: ${previousStatus})`,
       pending: `تم إرجاع التعليق للمراجعة (كان: ${previousStatus})`,
     };
 
@@ -67,7 +67,7 @@ export async function PUT(
     return NextResponse.json({
       success: true,
       comment,
-      message: status === 'approved' ? 'تمت الموافقة على التعليق' : status === 'rejected' ? 'تم رفض التعليق' : status === 'deleted' ? 'تم حذف التعليق نهائياً' : 'تم إرجاع التعليق للمراجعة'
+      message: status === 'approved' ? 'تمت الموافقة على التعليق' : status === 'rejected' ? 'تم رفض التعليق' : status === 'deleted' ? 'تم حذف التعليق' : 'تم إرجاع التعليق للمراجعة'
     });
   } catch (error) {
     console.error('Error updating comment:', error);
@@ -75,7 +75,8 @@ export async function PUT(
   }
 }
 
-// حذف التعليق - المطور يحذف أي تعليق نهائياً، صاحب التعليق يحذف تعليقه فقط (soft delete)
+// حذف التعليق نهائياً من الداتابيز (permanent delete) - developer only
+// المستخدم العادي يعمل soft delete عن طريق PUT { status: 'deleted' }
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -90,24 +91,21 @@ export async function DELETE(
     const existing = await db.comment.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: 'التعليق غير موجود' }, { status: 404 });
 
-    // Developer can delete any comment (permanent delete from DB)
-    // Comment owner can only soft-delete their own comment (mark as deleted)
     const isDeveloper = auth.role === 'DEVELOPER';
     const isOwner = existing.userId === auth.userId;
 
     if (isDeveloper) {
-      // Log first (before deleting comment)
+      // Developer: permanent delete from database
       await logAction({
         commentId: id,
         action: 'deleted_permanent_by_developer',
         performedBy: auth.userId,
         details: `المطور حذف التعليق نهائياً من قاعدة البيانات - المحتوى: "${existing.content.substring(0, 50)}..."`,
       });
-      // Developer: permanent delete from database
       await db.comment.delete({ where: { id } });
       return NextResponse.json({ success: true, message: 'تم حذف التعليق نهائياً من قاعدة البيانات', permanent: true });
     } else if (isOwner) {
-      // Owner: soft delete (mark as deleted)
+      // Owner: soft delete (mark as deleted) via update
       await db.comment.update({
         where: { id },
         data: { status: 'deleted' },

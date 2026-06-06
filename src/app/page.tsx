@@ -1213,11 +1213,12 @@ function App() {
       const res = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), name: authName.trim(), password: authPassword, phone: authPhone.trim() || undefined }) });
       const data = await res.json();
       if (res.ok) {
-        if (data.emailVerificationRequired) {
+        if (data.requiresVerification || data.emailVerificationRequired) {
+          // يجب تأكيد البريد الإلكتروني - يفتح نافذة OTP
           setShowAuth(false);
           setShowOtpVerification(true);
           setOtpEmail(authIdentifier.trim().toLowerCase());
-          addToast('تم إنشاء الحساب! يرجى تأكيد البريد الإلكتروني', 'info');
+          addToast('تم إنشاء الحساب! يرجى تأكيد البريد الإلكتروني بالرمز المرسل 📧', 'info');
         } else {
           // Check if user needs approval
           if (data.user && !data.user.isApproved) {
@@ -1896,14 +1897,30 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     try { await fetch(`/api/comments/${commentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'rejected' }) }); fetchAllComments(); fetchCommentActionLogs(); addToast('تم رفض التعليق', 'info'); } catch { addToast('حدث خطأ', 'error'); }
   };
 
+  // حذف التعليق (soft delete) - ينقل للسلة -> يظهر في فلتر المحذوفة
   const deleteCommentDev = async (commentId: string) => {
+    try {
+      const res = await fetch(`/api/comments/${commentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'deleted' }) });
+      const data = await res.json();
+      if (data.success) {
+        fetchAllComments();
+        fetchCommentActionLogs();
+        addToast('تم حذف التعليق ✅', 'success');
+      } else {
+        addToast(data.error || 'حدث خطأ أثناء الحذف', 'error');
+      }
+    } catch { addToast('حدث خطأ في الاتصال', 'error'); }
+  };
+
+  // حذف التعليق نهائياً من قاعدة البيانات (permanent) - لا يمكن استرجاعه
+  const permanentlyDeleteComment = async (commentId: string) => {
     try {
       const res = await fetch(`/api/comments/${commentId}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         fetchAllComments();
         fetchCommentActionLogs();
-        addToast('تم حذف التعليق نهائياً 🗑️', 'success');
+        addToast('تم حذف التعليق نهائياً من قاعدة البيانات 🗑️', 'success');
       } else {
         addToast(data.error || 'حدث خطأ أثناء الحذف', 'error');
       }
@@ -1912,7 +1929,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
   const deleteOwnComment = async (commentId: string, apartmentId: string) => {
     try {
-      const res = await fetch(`/api/comments/${commentId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/comments/${commentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'deleted' }) });
       const data = await res.json();
       if (data.success) {
         fetchAllComments();
@@ -2561,11 +2578,16 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* v219: Selective Delete User Modal */}
       {deleteUserModal.isOpen && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setDeleteUserModal({ isOpen: false, userId: '', userName: '', stats: null })}>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setDeleteUserModal({ isOpen: false, userId: '', userName: '', stats: null })}>
           <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className={`max-w-md w-full rounded-2xl shadow-2xl p-6 ${darkMode ? 'bg-slate-800 border border-slate-700' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center"><Trash2 className="h-6 w-6 text-red-500" /></div>
               <div><h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'}`}>🗑️ حذف "{deleteUserModal.userName}"</h3><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>اختر البيانات المراد الاحتفاظ بها</p></div>
+            </div>
+            {/* تحديد الكل / إلغاء الكل */}
+            <div className="flex gap-2 mb-3">
+              <button onClick={() => setDeleteOptions({ keepApartments: true, keepInquiries: true, keepPayments: true, keepMessages: true, keepLikes: true, keepComments: true, keepEditRequests: true })} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${darkMode ? 'bg-violet-600 text-white hover:bg-violet-500' : 'bg-violet-100 text-violet-700 hover:bg-violet-200'}`}>✅ تحديد الكل</button>
+              <button onClick={() => setDeleteOptions({ keepApartments: false, keepInquiries: false, keepPayments: false, keepMessages: false, keepLikes: false, keepComments: false, keepEditRequests: false })} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${darkMode ? 'bg-slate-600 text-slate-300 hover:bg-slate-500' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>❌ إلغاء الكل</button>
             </div>
             <div className={`rounded-xl p-4 space-y-3 mb-4 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
               <p className={`text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>⚙️ البيانات المراد الاحتفاظ بها:</p>
@@ -3185,7 +3207,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                           <div className="flex items-center justify-between mt-1">
                             <p className={`text-[11px] ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{d.toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric' })} • {d.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</p>
                             {canDelete && comment.status !== 'deleted' && (
-                              <button onClick={() => isDeveloper ? deleteCommentDev(comment.id) : deleteOwnComment(comment.id, selectedApartment.id)} className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-red-400 hover:text-red-600 hover:bg-red-50 transition-all" title={isDeveloper ? 'حذف نهائي (مطور)' : 'حذف تعليقي'}><Trash2 className="h-3.5 w-3.5" /></button>
+                              <button onClick={() => isDeveloper ? deleteCommentDev(comment.id) : deleteOwnComment(comment.id, selectedApartment.id)} className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-red-400 hover:text-red-600 hover:bg-red-50 transition-all" title={isDeveloper ? 'حذف (مطور)' : 'حذف تعليقي'}><Trash2 className="h-3.5 w-3.5" /></button>
                             )}
                           </div>
                         </div>
@@ -3335,7 +3357,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                             <div className="flex gap-2 mt-3 justify-end">
                               <button onClick={() => approveComment(c.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-medium hover:shadow-lg hover:shadow-emerald-500/30 transition-all flex items-center gap-1"><Check className="h-3.5 w-3.5" />موافقة</button>
                               <button onClick={() => rejectComment(c.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 text-white text-xs font-medium hover:shadow-lg hover:shadow-amber-500/30 transition-all flex items-center gap-1"><XCircle className="h-3.5 w-3.5" />رفض</button>
-                              <button onClick={() => deleteCommentDev(c.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-red-500 to-rose-600 text-white text-xs font-medium hover:shadow-lg hover:shadow-red-500/30 transition-all flex items-center gap-1"><Trash2 className="h-3.5 w-3.5" />حذف نهائي</button>
+                              <button onClick={() => deleteCommentDev(c.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-red-500 to-rose-600 text-white text-xs font-medium hover:shadow-lg hover:shadow-red-500/30 transition-all flex items-center gap-1"><Trash2 className="h-3.5 w-3.5" />حذف</button>
                             </div>
                           </div>
                         );
@@ -3393,10 +3415,13 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                                 </>
                               )}
                               {(c.status === 'approved' || c.status === 'rejected') && (
-                                <button onClick={() => deleteCommentDev(c.id)} className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-red-500 to-rose-600 text-white text-[11px] font-medium hover:shadow-lg transition-all flex items-center gap-1"><Trash2 className="h-3 w-3" />حذف نهائي</button>
+                                <button onClick={() => deleteCommentDev(c.id)} className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-red-500 to-rose-600 text-white text-[11px] font-medium hover:shadow-lg transition-all flex items-center gap-1"><Trash2 className="h-3 w-3" />حذف</button>
                               )}
                               {c.status === 'deleted' && (
-                                <button onClick={() => restoreComment(c.id)} className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-[11px] font-medium hover:shadow-lg transition-all flex items-center gap-1"><RefreshCw className="h-3 w-3" />استعادة</button>
+                                <>
+                                  <button onClick={() => restoreComment(c.id)} className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-[11px] font-medium hover:shadow-lg transition-all flex items-center gap-1"><RefreshCw className="h-3 w-3" />استعادة</button>
+                                  <button onClick={() => permanentlyDeleteComment(c.id)} className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-red-500 to-rose-600 text-white text-[11px] font-medium hover:shadow-lg transition-all flex items-center gap-1"><Trash2 className="h-3 w-3" />حذف نهائي من الداتابيز</button>
+                                </>
                               )}
                             </div>
                           </div>
@@ -3936,7 +3961,13 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                                   <button onClick={() => returnToPending(c.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-slate-500 to-slate-600 text-white text-xs font-medium hover:shadow-lg transition-all flex items-center gap-1"><RefreshCw className="h-3.5 w-3.5" />إرجاع للمراجعة</button>
                                 )}
                                 {(c.status === 'approved' || c.status === 'rejected' || c.status === 'pending') && (
-                                  <button onClick={() => deleteCommentDev(c.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-red-500 to-rose-600 text-white text-xs font-medium hover:shadow-lg hover:shadow-red-500/30 transition-all flex items-center gap-1"><Trash2 className="h-3.5 w-3.5" />حذف نهائي</button>
+                                  <button onClick={() => deleteCommentDev(c.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-red-500 to-rose-600 text-white text-xs font-medium hover:shadow-lg hover:shadow-red-500/30 transition-all flex items-center gap-1"><Trash2 className="h-3.5 w-3.5" />حذف</button>
+                                )}
+                                {c.status === 'deleted' && (
+                                  <>
+                                    <button onClick={() => restoreComment(c.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-medium hover:shadow-lg hover:shadow-emerald-500/30 transition-all flex items-center gap-1"><RefreshCw className="h-3.5 w-3.5" />استعادة</button>
+                                    <button onClick={() => permanentlyDeleteComment(c.id)} className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-red-500 to-rose-600 text-white text-xs font-medium hover:shadow-lg hover:shadow-red-500/30 transition-all flex items-center gap-1"><Trash2 className="h-3.5 w-3.5" />حذف نهائي من الداتابيز</button>
+                                  </>
                                 )}
                                 {commentLogs.length > 0 && (
                                   <button onClick={() => setShowCommentDetail(isExpanded ? null : c.id)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1 ${isExpanded ? 'bg-violet-500 text-white' : darkMode ? 'bg-slate-500 text-white hover:bg-slate-400' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>
@@ -4408,7 +4439,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
       )}</AnimatePresence>
       {/* OTP Verification Modal */}
       <AnimatePresence>{showOtpVerification && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowOtpVerification(false)}>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowOtpVerification(false)}>
           <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
             <div className="text-center mb-6">
               <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 bg-gradient-to-r from-emerald-500 to-teal-600`}><Send className="h-8 w-8 text-white" /></div>
