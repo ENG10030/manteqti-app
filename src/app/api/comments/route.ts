@@ -29,11 +29,6 @@ export async function GET(request: NextRequest) {
         ...(includeLogs ? {
           actionLogs: {
             orderBy: { createdAt: 'desc' },
-            include: {
-              performedByUser: {
-                select: { id: true, name: true }
-              }
-            }
           }
         } : {})
       },
