@@ -15,7 +15,7 @@ import {
   VideoIcon, Activity, Wallet, Key, ArrowUp, Layers,
   Download, Smartphone, Zap, Save,
   Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen,
-  GitCompare
+  GitCompare, Trophy
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
 // socket.io-client imported dynamically in useEffect to prevent Vercel SSR/hydration issues
@@ -207,6 +207,14 @@ function App() {
   const [showFavorites, setShowFavorites] = useState(false);
   const [compareList, setCompareList] = useState<string[]>([]);
   const [showCompare, setShowCompare] = useState(false);
+  const [compareTab, setCompareTab] = useState<'table' | 'ai'>('table');
+  const [compareAiLoading, setCompareAiLoading] = useState(false);
+  const [compareAiAnalysis, setCompareAiAnalysis] = useState<null | {
+    recommendation: string;
+    pros: Array<{ apartmentId: string; title: string; points: string[] }>;
+    cons: Array<{ apartmentId: string; title: string; points: string[] }>;
+    verdict: string;
+  }>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; type: 'danger' | 'warning' | 'info'; loading?: boolean; confirmText?: string; cancelText?: string; }>({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
   // v219: Selective delete options for user deletion
   const [deleteUserModal, setDeleteUserModal] = useState<{ isOpen: boolean; userId: string; userName: string; stats: { apartments: number; inquiries: number; payments: number; messages: number; likes: number; comments: number; editRequests: number } | null }>({ isOpen: false, userId: '', userName: '', stats: null });
@@ -1780,11 +1788,63 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
   const toggleCompare = (apartmentId: string) => {
     if (!currentUser && !isDeveloper) { addToast('سجل دخولك لتتمكن من المقارنة', 'info'); setShowAuth(true); return; }
+    const newApt = apartments.find(a => a.id === apartmentId);
+    if (!newApt) return;
     setCompareList(prev => {
       if (prev.includes(apartmentId)) return prev.filter(id => id !== apartmentId);
       if (prev.length >= 4) { addToast('الحد الأقصى 4 شقق للمقارنة', 'error'); return prev; }
+      // Prevent mixing rent & sale
+      if (prev.length > 0) {
+        const existingApts = prev.map(id => apartments.find(a => a.id === id)).filter(Boolean);
+        const existingType = existingApts[0]?.type;
+        if (existingType && newApt.type !== existingType) {
+          const typeLabel = existingType === 'rent' ? 'إيجار' : 'بيع';
+          const newTypeLabel = newApt.type === 'rent' ? 'إيجار' : 'بيع';
+          addToast(`لا يمكن مقارنة عقار ${newTypeLabel} مع عقارات ${typeLabel}`, 'error');
+          return prev;
+        }
+      }
       return [...prev, apartmentId];
     });
+  };
+
+  const handleAiCompare = async () => {
+    const compareApts = apartments.filter(a => compareList.includes(a.id));
+    if (compareApts.length < 2) return;
+    setCompareAiLoading(true);
+    setCompareAiAnalysis(null);
+    try {
+      const res = await fetch('/api/compare-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apartments: compareApts.map(a => ({
+            id: a.id,
+            title: a.title,
+            type: a.type === 'rent' ? 'إيجار' : 'بيع',
+            price: a.price,
+            area: a.apartmentSize || 100,
+            bedrooms: a.bedrooms,
+            bathrooms: a.bathrooms,
+            floor: a.floor || 1,
+            location: a.area,
+            city: a.area,
+            furnishing: 'غير مفروشة',
+            rating: 4.0,
+            amenities: a.amenities?.map(m => ({ label: m })) || [],
+            description: a.description,
+          }))
+        })
+      });
+      const data = await res.json();
+      if (data.analysis) {
+        setCompareAiAnalysis(data.analysis);
+        setCompareTab('ai');
+      } else {
+        addToast(data.error || 'فشل التحليل', 'error');
+      }
+    } catch { addToast('حدث خطأ في التحليل', 'error'); }
+    finally { setCompareAiLoading(false); }
   };
 
   const addComment = async (apartmentId: string) => {
@@ -2178,70 +2238,253 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
       </main>
 
       {/* 📊 Floating Compare Bar */}
-      <AnimatePresence>{compareList.length >= 2 && (
+      <AnimatePresence>{compareList.length >= 2 && (() => {
+        const compareApts = apartments.filter(a => compareList.includes(a.id));
+        const hasMixedTypes = compareApts.length > 1 && new Set(compareApts.map(a => a.type)).size > 1;
+        return (
         <motion.div initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }} className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[50]">
-          <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+          <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border ${hasMixedTypes ? 'border-red-500/50 bg-gradient-to-r from-red-50 to-rose-50 dark:from-red-950/50 dark:to-rose-950/50' : darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
             <div className="flex -space-x-2 rtl:space-x-reverse">
-              {apartments.filter(a => compareList.includes(a.id)).map(apt => (
+              {compareApts.map(apt => (
                 <img key={apt.id} src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-10 h-10 rounded-full border-2 border-white object-cover" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
               ))}
             </div>
-            <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{compareList.length} شقق</span>
-            <button onClick={() => setShowCompare(true)} className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-violet-600 text-white font-medium text-sm hover:shadow-lg hover:shadow-purple-500/30 transition-all">مقارنة</button>
-            <button onClick={() => setCompareList([])} className={`p-2 rounded-lg ${darkMode ? 'bg-slate-700 text-slate-400 hover:text-red-400' : 'bg-slate-100 text-slate-500 hover:text-red-500'}`}><X className="h-4 w-4" /></button>
+            {hasMixedTypes ? (
+              <>
+                <AlertTriangle className="h-5 w-5 text-red-500 animate-pulse" />
+                <span className="text-sm font-bold text-red-600">أنواع مختلفة!</span>
+                <button onClick={() => setShowCompare(true)} className="px-4 py-2 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 text-white font-medium text-sm hover:shadow-lg transition-all">عرض</button>
+              </>
+            ) : (
+              <>
+                <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{compareList.length} شقق</span>
+                <button onClick={() => setShowCompare(true)} className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-violet-600 text-white font-medium text-sm hover:shadow-lg hover:shadow-purple-500/30 transition-all">مقارنة</button>
+              </>
+            )}
+            <button onClick={() => { setCompareList([]); setCompareAiAnalysis(null); }} className={`p-2 rounded-lg ${darkMode ? 'bg-slate-700 text-slate-400 hover:text-red-400' : 'bg-slate-100 text-slate-500 hover:text-red-500'}`}><X className="h-4 w-4" /></button>
           </div>
         </motion.div>
-      )}</AnimatePresence>
+        );
+      })()}</AnimatePresence>
 
       {/* 📊 Comparison Modal */}
-      <AnimatePresence>{showCompare && (
+      <AnimatePresence>{showCompare && (() => {
+        const compareApts = apartments.filter(a => compareList.includes(a.id));
+        const hasMixedTypes = compareApts.length > 1 && new Set(compareApts.map(a => a.type)).size > 1;
+        return (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowCompare(false)}>
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-4xl rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl max-h-[85vh] overflow-hidden flex flex-col`}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><GitCompare className="h-6 w-6 text-purple-500" />مقارنة الشقق</h2>
-              <button onClick={() => setShowCompare(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-5xl rounded-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl max-h-[90vh] overflow-hidden flex flex-col`}>
+            {/* Header */}
+            <div className={`p-5 border-b ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+              <div className="flex items-center justify-between">
+                <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><GitCompare className="h-6 w-6 text-purple-500" />مقارنة الشقق</h2>
+                <button onClick={() => setShowCompare(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
+              </div>
+              {/* Apartment Thumbnails */}
+              <div className="flex gap-3 mt-4 overflow-x-auto pb-2">
+                {compareApts.map(apt => (
+                  <div key={apt.id} className={`flex items-center gap-3 p-2 rounded-xl shrink-0 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                    <img src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-12 h-12 rounded-lg object-cover" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
+                    <div>
+                      <p className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</p>
+                      <p className="text-xs text-purple-500 font-medium">{apt.type === 'rent' ? 'إيجار' : 'بيع'}</p>
+                    </div>
+                    <button onClick={() => { setCompareList(prev => prev.filter(id => id !== apt.id)); if (compareList.length <= 2) setShowCompare(false); }} className="p-1 rounded-md text-slate-400 hover:text-red-500"><X className="h-3.5 w-3.5" /></button>
+                  </div>
+                ))}
+              </div>
+              {/* Mixed Types Warning */}
+              {hasMixedTypes && (
+                <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className={`mt-4 p-4 rounded-xl border ${darkMode ? 'bg-red-950/30 border-red-800/50' : 'bg-red-50 border-red-200'}`}>
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shrink-0"><AlertTriangle className="h-5 w-5 text-white" /></div>
+                    <div className="flex-1">
+                      <p className="font-bold text-red-600">لا يمكن مقارنة عقارات من أنواع مختلفة</p>
+                      <p className={`text-sm mt-1 ${darkMode ? 'text-red-300' : 'text-red-500'}`}>عقارات الإيجار والبيع لها معايير مقارنة مختلفة. اختر عقارات من نفس النوع للمقارنة الدقيقة.</p>
+                    </div>
+                  </div>
+                  <button onClick={() => { const firstType = compareApts[0]?.type; const filtered = compareApts.filter(a => a.type === firstType); setCompareList(filtered.map(a => a.id)); setCompareAiAnalysis(null); addToast('تم الاحتفاظ بعقارات ' + (firstType === 'rent' ? 'الإيجار' : 'البيع') + ' فقط', 'info'); }} className="mt-3 w-full py-2.5 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 text-white font-medium text-sm hover:shadow-lg hover:shadow-red-500/30 transition-all flex items-center justify-center gap-2">
+                    <Zap className="h-4 w-4" />إزالة الكل واختيار عقارات من نفس النوع
+                  </button>
+                </motion.div>
+              )}
+              {/* Tabs */}
+              {!hasMixedTypes && compareApts.length >= 2 && (
+                <div className="flex gap-2 mt-4">
+                  <button onClick={() => setCompareTab('table')} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${compareTab === 'table' ? 'bg-gradient-to-r from-purple-500 to-violet-600 text-white shadow-lg shadow-purple-500/30' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}><GitCompare className="h-4 w-4" />جدول المقارنة</button>
+                  <button onClick={handleAiCompare} disabled={compareAiLoading} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${compareTab === 'ai' ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/30' : darkMode ? 'bg-slate-700 text-amber-400 hover:bg-slate-600' : 'bg-amber-50 text-amber-600 hover:bg-amber-100'} disabled:opacity-50`}>
+                    {compareAiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    تحليل بالذكاء الاصطناعي
+                    {compareTab === 'ai' && !compareAiLoading && compareAiAnalysis && <span className="w-2 h-2 rounded-full bg-emerald-400" />}
+                  </button>
+                </div>
+              )}
             </div>
-            <div className="flex-1 overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr>
-                    <th className={`p-3 text-right text-sm font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>المعيار</th>
-                    {apartments.filter(a => compareList.includes(a.id)).map(apt => (
-                      <th key={apt.id} className="p-3 text-center">
-                        <img src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-16 h-12 object-cover rounded-lg mx-auto mb-2" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
-                        <p className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</p>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    { label: '💰 السعر', key: 'price', render: (a: any) => <span className={`font-bold ${a.price === Math.min(...apartments.filter(x => compareList.includes(x.id)).map(x => x.price)) ? 'text-emerald-500' : darkMode ? 'text-white' : 'text-slate-900'}`}>{a.price.toLocaleString()} ج.م</span> },
-                    { label: '📍 المنطقة', key: 'area', render: (a: any) => <span>{a.area || '-'}</span> },
-                    { label: '🛏 الغرف', key: 'bedrooms', render: (a: any) => <span>{a.bedrooms || '-'}</span> },
-                    { label: '🛁 الحمامات', key: 'bathrooms', render: (a: any) => <span>{a.bathrooms || '-'}</span> },
-                    { label: '📐 المساحة', key: 'apartmentSize', render: (a: any) => <span>{a.apartmentSize ? `${a.apartmentSize} م²` : '-'}</span> },
-                    { label: '🏢 الدور', key: 'floor', render: (a: any) => <span>{a.floor || '-'}</span> },
-                    { label: '🏷 النوع', key: 'type', render: (a: any) => <span className={a.type === 'rent' ? 'text-emerald-500' : 'text-blue-500'}>{a.type === 'rent' ? 'إيجار' : 'بيع'}</span> },
-                    { label: '📊 الحالة', key: 'status', render: (a: any) => <span>{statusConfig[a.status]?.label || a.status}</span> },
-                    { label: '⭐ VIP', key: 'isVip', render: (a: any) => <span>{a.isVip ? '✅' : '❌'}</span> },
-                  ].map(row => (
-                    <tr key={row.key} className={`border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
-                      <td className={`p-3 text-sm font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{row.label}</td>
-                      {apartments.filter(a => compareList.includes(a.id)).map(apt => (
-                        <td key={apt.id} className={`p-3 text-center text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{row.render(apt)}</td>
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-5">
+              {/* Mixed Types - show table only (greyed out) */}
+              {hasMixedTypes ? (
+                <div className="opacity-60 pointer-events-none">
+                  <table className="w-full">
+                    <thead><tr><th className={`p-3 text-right text-sm font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>المعيار</th>{compareApts.map(apt => (<th key={apt.id} className="p-3 text-center"><p className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</p></th>))}</tr></thead>
+                    <tbody>
+                      {[{ label: '💰 السعر', render: (a: any) => <span className="font-bold">{a.price.toLocaleString()} ج.م</span> },{ label: '📍 المنطقة', render: (a: any) => <span>{a.area || '-'}</span> },{ label: '🏷 النوع', render: (a: any) => <span className={a.type === 'rent' ? 'text-emerald-500' : 'text-blue-500'}>{a.type === 'rent' ? 'إيجار' : 'بيع'}</span> }].map(row => (
+                        <tr key={row.label} className={`border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                          <td className={`p-3 text-sm font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{row.label}</td>
+                          {compareApts.map(apt => (<td key={apt.id} className={`p-3 text-center text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{row.render(apt)}</td>))}
+                        </tr>
                       ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                    </tbody>
+                  </table>
+                </div>
+              ) : compareTab === 'table' ? (
+                /* ===== Table Tab ===== */
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr>
+                        <th className={`p-3 text-right text-sm font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>المعيار</th>
+                        {compareApts.map(apt => (
+                          <th key={apt.id} className="p-3 text-center">
+                            <img src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-16 h-12 object-cover rounded-lg mx-auto mb-2" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
+                            <p className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</p>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        { label: '💰 السعر', key: 'price', render: (a: any) => <span className={`font-bold ${a.price === Math.min(...compareApts.map(x => x.price)) ? 'text-emerald-500' : darkMode ? 'text-white' : 'text-slate-900'}`}>{a.price.toLocaleString()} ج.م{a.type === 'rent' ? <span className="text-xs text-slate-400">/شهر</span> : ''}</span> },
+                        { label: '📍 المنطقة', key: 'area', render: (a: any) => <span>{a.area || '-'}</span> },
+                        { label: '🛏 الغرف', key: 'bedrooms', render: (a: any) => <span>{a.bedrooms || '-'}</span> },
+                        { label: '🛁 الحمامات', key: 'bathrooms', render: (a: any) => <span>{a.bathrooms || '-'}</span> },
+                        { label: '📐 المساحة', key: 'apartmentSize', render: (a: any) => <span>{a.apartmentSize ? `${a.apartmentSize} م²` : '-'}</span> },
+                        { label: '🏢 الدور', key: 'floor', render: (a: any) => <span>{a.floor || '-'}</span> },
+                        { label: '🏷 النوع', key: 'type', render: (a: any) => <span className={a.type === 'rent' ? 'text-emerald-500' : 'text-blue-500'}>{a.type === 'rent' ? 'إيجار' : 'بيع'}</span> },
+                        { label: '📊 الحالة', key: 'status', render: (a: any) => <span>{statusConfig[a.status]?.label || a.status}</span> },
+                        { label: '⭐ VIP', key: 'isVip', render: (a: any) => <span>{a.isVip ? '✅' : '❌'}</span> },
+                      ].map(row => (
+                        <tr key={row.key} className={`border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                          <td className={`p-3 text-sm font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{row.label}</td>
+                          {compareApts.map(apt => (
+                            <td key={apt.id} className={`p-3 text-center text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{row.render(apt)}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                /* ===== AI Analysis Tab ===== */
+                <div className="space-y-6">
+                  {compareAiLoading ? (
+                    <div className="text-center py-16">
+                      <div className="relative inline-block">
+                        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center mx-auto shadow-2xl shadow-amber-500/30 animate-pulse">
+                          <Sparkles className="h-10 w-10 text-white" />
+                        </div>
+                        <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }} className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
+                          <Zap className="h-3 w-3 text-white" />
+                        </motion.div>
+                      </div>
+                      <p className={`mt-6 font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'}`}>جاري التحليل بالذكاء الاصطناعي...</p>
+                      <p className={`mt-2 text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>يتم مقارنة {compareApts.length} شقق وتحليل أفضل الخيارات</p>
+                      <div className="flex justify-center gap-1 mt-4">
+                        {[0,1,2].map(i => <motion.div key={i} animate={{ opacity: [0.3,1,0.3] }} transition={{ duration: 1, repeat: Infinity, delay: i * 0.3 }} className="w-2 h-2 rounded-full bg-amber-500" />)}
+                      </div>
+                    </div>
+                  ) : compareAiAnalysis ? (
+                    <>
+                      {/* Recommendation Card */}
+                      <div className={`p-5 rounded-2xl border ${darkMode ? 'bg-gradient-to-br from-violet-950/40 to-purple-950/40 border-violet-800/50' : 'bg-gradient-to-br from-violet-50 to-purple-50 border-violet-200'}`}>
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center"><Trophy className="h-5 w-5 text-white" /></div>
+                          <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>🏆 التوصية</h3>
+                        </div>
+                        <p className={`text-sm leading-relaxed ${darkMode ? 'text-violet-200' : 'text-violet-700'}`}>{compareAiAnalysis.recommendation}</p>
+                      </div>
+                      {/* Pros & Cons */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Pros */}
+                        <div className={`p-5 rounded-2xl border ${darkMode ? 'bg-emerald-950/20 border-emerald-800/30' : 'bg-emerald-50 border-emerald-200'}`}>
+                          <div className="flex items-center gap-2 mb-4">
+                            <Check className="h-5 w-5 text-emerald-500" />
+                            <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>نقاط القوة</h3>
+                          </div>
+                          <div className="space-y-4">
+                            {compareAiAnalysis.pros.map(pros => (
+                              <div key={pros.apartmentId} className={`p-3 rounded-xl ${darkMode ? 'bg-emerald-900/20' : 'bg-white/80'}`}>
+                                <p className="font-medium text-sm text-emerald-600 mb-2 flex items-center gap-2">
+                                  <div className="w-2 h-2 rounded-full bg-emerald-500" />{pros.title}
+                                </p>
+                                <ul className="space-y-1.5">
+                                  {pros.points.map((p, i) => (
+                                    <li key={i} className={`text-sm flex items-start gap-2 ${darkMode ? 'text-emerald-200' : 'text-emerald-700'}`}><span className="text-emerald-400 mt-0.5">✓</span>{p}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        {/* Cons */}
+                        <div className={`p-5 rounded-2xl border ${darkMode ? 'bg-red-950/20 border-red-800/30' : 'bg-red-50 border-red-200'}`}>
+                          <div className="flex items-center gap-2 mb-4">
+                            <AlertTriangle className="h-5 w-5 text-red-500" />
+                            <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>نقاط الضعف</h3>
+                          </div>
+                          <div className="space-y-4">
+                            {compareAiAnalysis.cons.map(cons => (
+                              <div key={cons.apartmentId} className={`p-3 rounded-xl ${darkMode ? 'bg-red-900/20' : 'bg-white/80'}`}>
+                                <p className="font-medium text-sm text-red-600 mb-2 flex items-center gap-2">
+                                  <div className="w-2 h-2 rounded-full bg-red-500" />{cons.title}
+                                </p>
+                                <ul className="space-y-1.5">
+                                  {cons.points.map((p, i) => (
+                                    <li key={i} className={`text-sm flex items-start gap-2 ${darkMode ? 'text-red-200' : 'text-red-700'}`}><span className="text-red-400 mt-0.5">✗</span>{p}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      {/* Verdict */}
+                      <div className={`p-5 rounded-2xl border ${darkMode ? 'bg-gradient-to-br from-amber-950/30 to-orange-950/30 border-amber-800/40' : 'bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200'}`}>
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center"><Brain className="h-5 w-5 text-white" /></div>
+                          <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>🧠 الحكم النهائي</h3>
+                        </div>
+                        <p className={`text-sm leading-relaxed ${darkMode ? 'text-amber-200' : 'text-amber-700'}`}>{compareAiAnalysis.verdict}</p>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center py-16">
+                      <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center mx-auto shadow-2xl shadow-amber-500/30">
+                        <Sparkles className="h-10 w-10 text-white" />
+                      </div>
+                      <p className={`mt-6 font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'}`}>تحليل ذكي بالذكاء الاصطناعي</p>
+                      <p className={`mt-2 text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>احصل على تحليل عميق ومقارنة شاملة لكل شقة</p>
+                      <button onClick={handleAiCompare} disabled={compareAiLoading} className="mt-6 px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium hover:shadow-lg hover:shadow-amber-500/30 transition-all flex items-center gap-2 mx-auto disabled:opacity-50">
+                        <Sparkles className="h-5 w-5" />بدء التحليل
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-            <div className={`mt-4 pt-4 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
-              <button onClick={() => { setShowCompare(false); setCompareList([]); }} className="px-4 py-2 rounded-xl bg-red-500/10 text-red-500 text-sm hover:bg-red-500/20">إلغاء المقارنة</button>
+            {/* Footer */}
+            <div className={`p-4 border-t ${darkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-slate-50'}`}>
+              <div className="flex items-center justify-between">
+                <button onClick={() => { setShowCompare(false); setCompareList([]); setCompareAiAnalysis(null); setCompareTab('table'); }} className="px-4 py-2 rounded-xl bg-red-500/10 text-red-500 text-sm hover:bg-red-500/20 transition-colors flex items-center gap-2"><X className="h-4 w-4" />إلغاء المقارنة</button>
+                {!hasMixedTypes && compareApts.length >= 2 && compareTab === 'ai' && compareAiAnalysis && (
+                  <button onClick={() => setCompareTab('table')} className="px-4 py-2 rounded-xl bg-purple-500/10 text-purple-500 text-sm hover:bg-purple-500/20 transition-colors flex items-center gap-2"><GitCompare className="h-4 w-4" />العودة للجدول</button>
+                )}
+              </div>
             </div>
           </motion.div>
         </motion.div>
-      )}</AnimatePresence>
+        );
+      })()}</AnimatePresence>
 
       {/* Footer */}
       <footer className={`relative z-10 mt-auto py-6 border-t ${darkMode ? 'bg-slate-900/80 border-slate-700' : 'bg-white/80 border-slate-200'} backdrop-blur`}>
