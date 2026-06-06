@@ -270,7 +270,7 @@ model WalletTransaction {
   userId      String
   amount      Int
   balance     Int      @default(0)
-  method      String
+  method      String?
   reference   String?
   status      String   @default("pending")
   type        String   @default("charge")
