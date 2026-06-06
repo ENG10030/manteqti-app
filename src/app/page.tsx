@@ -4334,9 +4334,9 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
         </motion.div>
       )}</AnimatePresence>
 
-      {/* Selective Delete User Modal - AFTER dev panel for proper z-index stacking */}
-      {deleteUserModal.isOpen && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setDeleteUserModal({ isOpen: false, userId: '', userName: '', stats: null })}>
+      {/* Selective Delete User Modal - highest z-index to always appear on top */}
+      <AnimatePresence>{deleteUserModal.isOpen && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" style={{ zIndex: 99999 }} onClick={() => setDeleteUserModal({ isOpen: false, userId: '', userName: '', stats: null })}>
           <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className={`max-w-md w-full rounded-2xl shadow-2xl p-6 ${darkMode ? 'bg-slate-800 border border-slate-700' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center"><Trash2 className="h-6 w-6 text-red-500" /></div>
@@ -4373,7 +4373,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
             </div>
           </motion.div>
         </motion.div>
-      )}
+      )}</AnimatePresence>
 
       {/* Payment Modal */}
       <AnimatePresence>{paymentApartment && (
