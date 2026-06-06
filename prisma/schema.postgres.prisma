@@ -32,14 +32,15 @@ model User {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
-  apartments    Apartment[]
-  inquiries     Inquiry[]
-  payments      Payment[]
-  likes         Like[]
-  comments      Comment[]
-  messages      Message[]
-  editRequests  PropertyEditRequest[]
-  blockedUsers  BlockedUser[]  @relation("BlockedUserRelation")
+  apartments       Apartment[]
+  inquiries        Inquiry[]
+  payments         Payment[]
+  likes            Like[]
+  comments         Comment[]
+  messages         Message[]
+  editRequests     PropertyEditRequest[]
+  blockedUsers     BlockedUser[]  @relation("BlockedUserRelation")
+  walletTransactions WalletTransaction[]
 
   @@map("User")
 }
@@ -278,6 +279,8 @@ model WalletTransaction {
   reviewedBy  String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("WalletTransaction")
 }
