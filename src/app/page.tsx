@@ -1897,11 +1897,31 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
   };
 
   const deleteCommentDev = async (commentId: string) => {
-    try { await fetch(`/api/comments/${commentId}`, { method: 'DELETE' }); fetchAllComments(); fetchCommentActionLogs(); addToast('تم حذف التعليق نهائياً 🗑️', 'success'); } catch { addToast('حدث خطأ', 'error'); }
+    try {
+      const res = await fetch(`/api/comments/${commentId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        fetchAllComments();
+        fetchCommentActionLogs();
+        addToast('تم حذف التعليق نهائياً 🗑️', 'success');
+      } else {
+        addToast(data.error || 'حدث خطأ أثناء الحذف', 'error');
+      }
+    } catch { addToast('حدث خطأ في الاتصال', 'error'); }
   };
 
   const deleteOwnComment = async (commentId: string, apartmentId: string) => {
-    try { await fetch(`/api/comments/${commentId}`, { method: 'DELETE' }); fetchComments(apartmentId); fetchAllComments(); fetchCommentActionLogs(); addToast('تم حذف تعليقك ✅', 'success'); } catch { addToast('حدث خطأ', 'error'); }
+    try {
+      const res = await fetch(`/api/comments/${commentId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        fetchAllComments();
+        fetchCommentActionLogs();
+        addToast('تم حذف تعليقك ✅', 'success');
+      } else {
+        addToast(data.error || 'حدث خطأ أثناء الحذف', 'error');
+      }
+    } catch { addToast('حدث خطأ في الاتصال', 'error'); }
   };
 
   const restoreComment = async (commentId: string) => {
@@ -3123,7 +3143,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
               {/* 💬 Comments Section - New */}
               <div className={`mt-6 pt-6 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
-                <h3 className={`font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><MessageCircle className="h-5 w-5 text-violet-500" />التعليقات ({comments.filter(c => c.apartmentId === selectedApartment.id && (c.status === 'approved' || (currentUser && c.userId === currentUser.id) || isDeveloper)).length})</h3>
+                <h3 className={`font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><MessageCircle className="h-5 w-5 text-violet-500" />التعليقات ({comments.filter(c => c.apartmentId === selectedApartment.id && c.status !== 'deleted' && c.status !== 'rejected' && (c.status === 'approved' || (currentUser && c.userId === currentUser.id) || isDeveloper)).length})</h3>
                 
                 {/* Comment Input */}
                 {(currentUser || isDeveloper) ? (
@@ -3144,9 +3164,9 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
                 {/* Comments List */}
                 <div className="space-y-3 max-h-64 overflow-y-auto">
-                  {comments.filter(c => c.apartmentId === selectedApartment.id && (c.status === 'approved' || (currentUser && c.userId === currentUser.id) || isDeveloper)).length === 0 ? (
+                  {comments.filter(c => c.apartmentId === selectedApartment.id && c.status !== 'deleted' && c.status !== 'rejected' && (c.status === 'approved' || (currentUser && c.userId === currentUser.id) || isDeveloper)).length === 0 ? (
                     <p className={`text-center py-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>لا توجد تعليقات بعد</p>
-                  ) : comments.filter(c => c.apartmentId === selectedApartment.id && (c.status === 'approved' || (currentUser && c.userId === currentUser.id) || isDeveloper)).map(comment => {
+                  ) : comments.filter(c => c.apartmentId === selectedApartment.id && c.status !== 'deleted' && c.status !== 'rejected' && (c.status === 'approved' || (currentUser && c.userId === currentUser.id) || isDeveloper)).map(comment => {
                     const isOwn = currentUser && comment.userId === currentUser.id;
                     const avatarColor = ['#8B5CF6','#EF4444','#F59E0B','#10B981','#3B82F6','#EC4899'][comment.user.name.charAt(0).charCodeAt(0) % 6];
                     const d = new Date(comment.createdAt);
