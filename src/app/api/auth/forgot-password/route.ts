@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Generate a secure random 6-digit OTP for password reset
+    // Generate a secure random 6-digit OTP for password reset (v219)
     const otpCode = crypto.randomInt(100000, 999999).toString();
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // ساعة واحدة
 
@@ -73,21 +73,18 @@ export async function POST(request: NextRequest) {
       }
     });
 
+    // Check RESEND_API_KEY
+    if (!process.env.RESEND_API_KEY) {
+      console.warn('⚠️ RESEND_API_KEY is not set. Password reset email will NOT be sent. User:', normalizedEmail);
+    }
+
     // 📧 Send dedicated password reset email (not the OTP template)
     let emailSent = false;
     try {
-      if (!process.env.RESEND_API_KEY) {
-        console.error('⚠️ RESEND_API_KEY is not set! Password reset emails cannot be sent.');
-      } else {
-        const result = await sendPasswordResetEmail({ to: normalizedEmail, otp: otpCode, name: user.name });
-        emailSent = result.success;
-        if (!emailSent) {
-          console.error('Password reset email failed:', result.error);
-        }
-      }
-    } catch (err: any) {
-      // Silently fail to not leak info, but log
-      console.error('Password reset email exception:', err?.message);
+      const result = await sendPasswordResetEmail({ to: normalizedEmail, otp: otpCode, name: user.name });
+      emailSent = result.success;
+    } catch {
+      // Silently fail to not leak info
     }
 
     return NextResponse.json({

@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Generate new 6-digit OTP
+    // Generate new 6-digit OTP (v219)
     const otp = crypto.randomInt(100000, 999999).toString();
     const otpExpires = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
 

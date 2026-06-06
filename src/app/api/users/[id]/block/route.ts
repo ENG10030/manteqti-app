@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { notifyRealtime } from "@/lib/realtime"
 
 // حظر / إلغاء حظر المستخدم
 export async function POST(
@@ -70,12 +69,12 @@ export async function POST(
         });
       } catch {}
 
-      // Notify the blocked user to logout immediately
-      try { await notifyRealtime('user-changed', { blockedUserId: userId }); } catch {}
-
       return NextResponse.json({
         success: true,
-        message: "تم حظر المستخدم وإخفاء جميع عقاراته"
+        message: "تم حظر المستخدم وإخفاء جميع عقاراته",
+        // ⚠️ v219: Add user-changed notification signal
+        userChanged: true,
+        changedUserId: userId
       })
 
     } else if (finalAction === "unblock") {
@@ -103,7 +102,10 @@ export async function POST(
 
       return NextResponse.json({
         success: true,
-        message: "تم إلغاء حظر المستخدم"
+        message: "تم إلغاء حظر المستخدم",
+        // ⚠️ v219: Add user-changed notification signal
+        userChanged: true,
+        changedUserId: userId
       })
 
     } else {

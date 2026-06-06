@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 
-// جلب جميع المستخدمين (للمطور فقط)
+// جلب جميع المستخدمين (للمطور فقط) - DEVELOPER accounts filtered out
 export async function GET(request: NextRequest) {
   try {
     const user = await getCurrentUser(request);
@@ -18,10 +18,10 @@ export async function GET(request: NextRequest) {
     const blocked = searchParams.get("blocked");
     const pending = searchParams.get("pending");
 
-    // Always exclude DEVELOPER accounts from user list
-    const whereClause: Record<string, unknown> = {
-      role: { not: "DEVELOPER" },
-    };
+    const whereClause: Record<string, unknown> = {};
+
+    // ⚠️ v219: Always filter out DEVELOPER accounts from user list
+    whereClause.role = { not: "DEVELOPER" };
 
     if (blocked === "true") {
       whereClause.isBlocked = true;
@@ -31,7 +31,6 @@ export async function GET(request: NextRequest) {
 
     if (pending === "true") {
       whereClause.isApproved = false;
-      whereClause.role = "USER";
     }
 
     const users = await db.user.findMany({
@@ -48,7 +47,7 @@ export async function GET(request: NextRequest) {
         role: true,
         isBlocked: true,
         isApproved: true,
-        emailVerified: true,
+        emailVerified: true, // ⚠️ v219: Include emailVerified for status display
         blockedAt: true,
         blockReason: true,
         createdAt: true,

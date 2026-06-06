@@ -77,7 +77,7 @@ export async function POST(request: Request) {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Generate 6-digit OTP for email verification
+    // Generate 6-digit OTP for email verification (v219)
     const otp = crypto.randomInt(100000, 999999).toString();
     const otpExpires = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
     const hashedOtp = await bcrypt.hash(otp, 10);
@@ -100,19 +100,15 @@ export async function POST(request: Request) {
     });
 
     // Send OTP email for verification
-    let otpSent = false;
+    if (!process.env.RESEND_API_KEY) {
+      console.warn('⚠️ RESEND_API_KEY is not set. OTP email will NOT be sent. User:', userEmail);
+    }
+    
     try {
-      if (!process.env.RESEND_API_KEY) {
-        console.error('⚠️ RESEND_API_KEY is not set! OTP emails cannot be sent.');
-      } else {
-        const result = await sendOTPEmail({ to: userEmail, otp, name: name.trim() });
-        otpSent = result.success;
-        if (!otpSent) {
-          console.error('OTP email failed:', result.error);
-        }
-      }
-    } catch (err: any) {
-      console.error('Failed to send OTP email during registration:', err?.message);
+      await sendOTPEmail({ to: userEmail, otp, name: name.trim() });
+    } catch {
+      // If email fails, still create account but log error
+      console.error('Failed to send OTP email during registration');
     }
 
     return NextResponse.json({

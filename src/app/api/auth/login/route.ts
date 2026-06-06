@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 import { sign } from "jsonwebtoken";
 import { JWT_SECRET } from "@/lib/auth";
+import { sendOTPEmail } from "@/lib/email";
 import crypto from "crypto";
 
 // Rate limiting for user login (in-memory)
@@ -29,7 +30,10 @@ export async function POST(request: Request) {
     // Rate limiting
     const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
     if (!checkLoginRateLimit(clientIp)) {
-      return NextResponse.json({ error: "طلبات كثيرة. يرجى المحاولة بعد 15 دقيقة" }, { status: 429 });
+      return NextResponse.json({ 
+        error: "طلبات كثيرة. يرجى المحاولة بعد 15 دقيقة",
+        errorCode: "TOO_MANY_REQUESTS"
+      }, { status: 429 });
     }
 
     const body = await request.json();
@@ -58,83 +62,72 @@ export async function POST(request: Request) {
       }
     });
 
-    // ❌ Case 1: No account found
     if (!user) {
-      return NextResponse.json({
-        error: "لا يوجد حساب مسجل بهذا البريد الإلكتروني. يرجى إنشاء حساب أولاً",
-        code: "USER_NOT_FOUND"
+      // USER_NOT_FOUND - يوجه المستخدم للتسجيل
+      return NextResponse.json({ 
+        error: "البريد الإلكتروني غير مسجل. يرجى إنشاء حساب أولاً",
+        errorCode: "USER_NOT_FOUND",
+        redirectToRegister: true
       }, { status: 404 });
     }
 
-    // ❌ Case 2: Wrong password
     const isValidPassword = await bcrypt.compare(password, user.password);
+
     if (!isValidPassword) {
-      return NextResponse.json({
+      // WRONG_PASSWORD - كلمة المرور غير صحيحة
+      return NextResponse.json({ 
         error: "كلمة المرور غير صحيحة",
-        code: "WRONG_PASSWORD"
+        errorCode: "WRONG_PASSWORD"
       }, { status: 401 });
     }
 
-    // 🚫 Case 5: Account blocked
     if (user.isBlocked) {
-      return NextResponse.json({
+      // ACCOUNT_BLOCKED - حساب محظور مع سبب الحظر
+      return NextResponse.json({ 
         error: "تم حظر حسابك. يرجى التواصل مع الإدارة",
-        code: "ACCOUNT_BLOCKED",
-        blockReason: user.blockReason || null
+        errorCode: "ACCOUNT_BLOCKED",
+        blockReason: user.blockReason
       }, { status: 403 });
     }
 
-    // ⏳ Case 3: Email not verified → send OTP and return email
+    // ⚠️ SECURITY: Check email verification (developers bypass this)
     if (!user.emailVerified && user.role !== 'DEVELOPER') {
-      // Generate new OTP for verification
-      const otp = crypto.randomInt(100000, 999999).toString();
-      const otpExpires = new Date(Date.now() + 30 * 60 * 1000);
-      const hashedOtp = await bcrypt.hash(otp, 10);
-
-      await db.user.update({
-        where: { id: user.id },
-        data: { otp: hashedOtp, otpExpires }
-      });
-
-      // Try to send OTP email
+      // EMAIL_NOT_VERIFIED - يعيد إرسال OTP تلقائياً
+      // إعادة إرسال OTP تلقائياً
       try {
         if (process.env.RESEND_API_KEY) {
-          const { sendOTPEmail } = await import('@/lib/email');
-          await sendOTPEmail({ to: user.email || loginIdentifier, otp, name: user.name });
-        } else {
-          console.error('⚠️ RESEND_API_KEY not set, OTP email not sent');
+          const newOtp = crypto.randomInt(100000, 999999).toString();
+          const hashedOtp = await bcrypt.hash(newOtp, 10);
+          await db.user.update({
+            where: { id: user.id },
+            data: {
+              otp: hashedOtp,
+              otpExpires: new Date(Date.now() + 30 * 60 * 1000),
+            },
+          });
+          await sendOTPEmail({ to: user.email || user.identifier, otp: newOtp, name: user.name });
         }
-      } catch (err: any) {
-        console.error('Failed to send OTP on login attempt:', err?.message);
+      } catch {
+        // فشل إعادة الإرسال لا يمنع الرسالة
       }
 
-      return NextResponse.json({
-        error: "يجب تأكيد بريدك الإلكتروني أولاً",
-        code: "EMAIL_NOT_VERIFIED",
-        emailVerificationRequired: true,
-        email: user.email || loginIdentifier
+      return NextResponse.json({ 
+        error: "يجب تأكيد بريدك الإلكتروني أولاً. تم إعادة إرسال رمز التحقق",
+        errorCode: "EMAIL_NOT_VERIFIED",
+        requiresVerification: true,
+        autoOtpSent: true,
+        identifier: user.identifier
       }, { status: 403 });
     }
 
-    // ⏳ Case 4: Account not approved
-    if (!user.isApproved && user.role !== 'DEVELOPER') {
-      return NextResponse.json({
-        error: "حسابك قيد المراجعة. بانتظار موافقة الإدارة",
-        code: "ACCOUNT_PENDING",
-        pendingApproval: true,
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          identifier: user.identifier,
-          role: user.role,
-          isApproved: false,
-          emailVerified: user.emailVerified,
-        }
+    // ACCOUNT_PENDING - حساب قيد المراجعة (isApproved === false)
+    if (user.isApproved === false) {
+      return NextResponse.json({ 
+        error: "حسابك قيد المراجعة. يرجى الانتظار حتى يتم تأكيد حسابك من قبل الإدارة",
+        errorCode: "ACCOUNT_PENDING"
       }, { status: 403 });
     }
 
-    // ✅ Login successful
     const token = sign(
       { userId: user.id, identifier: user.identifier, role: user.role },
       JWT_SECRET,
@@ -143,7 +136,15 @@ export async function POST(request: Request) {
 
     const response = NextResponse.json({
       message: "تم تسجيل الدخول بنجاح",
-      user: { id: user.id, email: user.email, name: user.name, identifier: user.identifier, role: user.role, isApproved: user.isApproved, emailVerified: user.emailVerified },
+      user: { 
+        id: user.id, 
+        email: user.email, 
+        name: user.name, 
+        identifier: user.identifier, 
+        role: user.role,
+        isApproved: user.isApproved,
+        emailVerified: user.emailVerified
+      },
     });
 
     response.cookies.set("auth-token", token, {

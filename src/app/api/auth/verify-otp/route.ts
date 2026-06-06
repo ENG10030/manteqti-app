@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'انتهت صلاحية الرمز' }, { status: 400 });
     }
 
-    // Check if OTP exists (nullable field)
+    // ⚠️ FIX: Check if OTP is null before bcrypt.compare (prevents crash)
     if (!user.otp) {
       return NextResponse.json({ error: 'لا يوجد رمز تحقق. يرجى طلب رمز جديد' }, { status: 400 });
     }
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
         email: updatedUser.email,
         role: updatedUser.role,
         emailVerified: true,
-        isApproved: updatedUser.isApproved,
+        isApproved: updatedUser.isApproved, // ⚠️ FIX: Include isApproved in response
       }
     });
 

@@ -143,8 +143,8 @@ function App() {
   const [messageLoading, setMessageLoading] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState<Array<{ id: string; userId: string; reason: string | null; blockedAt: string; user: { id: string; name: string; identifier: string } }>>([]);
-  const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; identifier: string; email: string; isBlocked: boolean; blockReason?: string | null; isApproved?: boolean; emailVerified?: boolean; role?: string; phone?: string | null; createdAt: string }>>([]);
-  const [selectedUserDetail, setSelectedUserDetail] = useState<{ id: string; name: string; identifier: string; email: string; isBlocked: boolean; isApproved?: boolean; emailVerified?: boolean; role?: string; phone?: string | null; createdAt: string } | null>(null);
+  const [allUsers, setAllUsers] = useState<Array<{ id: string; name: string; identifier: string; email: string; isBlocked: boolean; blockReason?: string | null; isApproved?: boolean; role?: string; phone?: string | null; emailVerified?: boolean; createdAt: string }>>([]);
+  const [selectedUserDetail, setSelectedUserDetail] = useState<{ id: string; name: string; identifier: string; email: string; isBlocked: boolean; isApproved?: boolean; role?: string; phone?: string | null; emailVerified?: boolean; createdAt: string } | null>(null);
   const [userDetailLoading, setUserDetailLoading] = useState(false);
   const [userDetailData, setUserDetailData] = useState<{ apartments: Apartment[]; payments: Payment[]; inquiries: Inquiry[] }>({ apartments: [], payments: [], inquiries: [] });
   const [selectedApartment, setSelectedApartment] = useState<Apartment | null>(null);
@@ -178,7 +178,6 @@ function App() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
-  const [resetCode, setResetCode] = useState('');
   const [devEmail, setDevEmail] = useState('');
   const [devPassword, setDevPassword] = useState('');
   const [showDevPassword, setShowDevPassword] = useState(false);
@@ -205,8 +204,9 @@ function App() {
   const [devPasswordChange, setDevPasswordChange] = useState({ current: '', new: '', confirm: '' });
   const [favorites, setFavorites] = useState<string[]>([]);
   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; type: 'danger' | 'warning' | 'info'; loading?: boolean; confirmText?: string; cancelText?: string; }>({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
-  // Delete user modal with selective options
-  const [deleteUserModal, setDeleteUserModal] = useState<{ isOpen: boolean; userId: string; userName: string; loading: boolean; stats: { apartments: number; payments: number; inquiries: number; likes: number; comments: number; messages: number; editRequests: number; blockedUsers: number }; options: { apartments: boolean; payments: boolean; inquiries: boolean; likes: boolean; comments: boolean; messages: boolean; editRequests: boolean; blockedUsers: boolean; }; }>({ isOpen: false, userId: '', userName: '', loading: false, stats: { apartments: 0, payments: 0, inquiries: 0, likes: 0, comments: 0, messages: 0, editRequests: 0, blockedUsers: 0 }, options: { apartments: true, payments: true, inquiries: true, likes: true, comments: true, messages: true, editRequests: true, blockedUsers: true } });
+  // v219: Selective delete options for user deletion
+  const [deleteUserModal, setDeleteUserModal] = useState<{ isOpen: boolean; userId: string; userName: string; stats: { apartments: number; inquiries: number; payments: number; messages: number; likes: number; comments: number; editRequests: number } | null }>({ isOpen: false, userId: '', userName: '', stats: null });
+  const [deleteOptions, setDeleteOptions] = useState({ keepApartments: false, keepInquiries: false, keepPayments: false, keepMessages: false, keepLikes: false, keepComments: false, keepEditRequests: false });
   const [settings, setSettings] = useState<{ 
     contactFee: number; 
     regularFee: number;
@@ -460,12 +460,6 @@ function App() {
       }
       // Step 5: ALL data loaded — ONE transition to main UI
       if (!cancelled) {
-        // Restore pending OTP if user refreshed page before verifying
-        const pendingOtp = localStorage.getItem('manteqti_pending_otp');
-        if (pendingOtp && !currentUserRef.current) {
-          setShowOtpVerification(true);
-          setOtpEmail(pendingOtp);
-        }
         setLoading(false);
         setInitialLoad(false);
         initialLoadRef.current = false;
@@ -512,22 +506,11 @@ function App() {
         setIsDeveloper(isDev);
         isDeveloperRef.current = isDev;
       } else {
-        // User was deleted, blocked, or session expired — clear everything and notify
-        const wasLoggedIn = !!currentUserRef.current;
         setCurrentUser(null);
         currentUserRef.current = null;
         setIsBlocked(false);
         setIsDeveloper(false);
         isDeveloperRef.current = false;
-        setUserPayments([]);
-        setMyPendingApartments([]);
-        setLikes([]);
-        setFavorites([]);
-        if (wasLoggedIn) {
-          // Clear the auth cookie on server side
-          try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
-          addToast('تم تسجيل الخروج — حسابك لم يعد متاحاً', 'error');
-        }
       }
     } catch {}
   };
@@ -573,54 +556,46 @@ function App() {
 
   const handleDeleteUser = async (userId: string, userName: string, confirmed: boolean = false) => {
     if (!confirmed) {
-      // Open the selective delete modal — fetch user stats first
-      setDeleteUserModal(prev => ({ ...prev, isOpen: true, userId, userName, loading: true, options: { apartments: true, payments: true, inquiries: true, likes: true, comments: true, messages: true, editRequests: true, blockedUsers: true } }));
-      // Fetch user stats
+      // v219: Open selective delete modal instead of simple confirm
+      setDeleteOptions({ keepApartments: false, keepInquiries: false, keepPayments: false, keepMessages: false, keepLikes: false, keepComments: false, keepEditRequests: false });
+      // Fetch user stats for display
       try {
         const res = await fetch(`/api/users/${userId}/block`);
         if (res.ok) {
           const data = await res.json();
-          setDeleteUserModal(prev => ({
-            ...prev,
-            loading: false,
-            stats: {
-              apartments: data.apartments?.length || 0,
-              payments: 0, // Will be fetched from user detail
-              inquiries: 0,
-              likes: 0,
-              comments: 0,
-              messages: 0,
-              editRequests: 0,
-              blockedUsers: 0,
-            }
-          }));
-        } else {
-          setDeleteUserModal(prev => ({ ...prev, loading: false }));
+          if (data.apartments) {
+            setDeleteUserModal({
+              isOpen: true, userId, userName,
+              stats: {
+                apartments: data.apartments.length,
+                inquiries: 0, payments: 0, messages: 0, likes: 0, comments: 0, editRequests: 0
+              }
+            });
+            return;
+          }
         }
-      } catch {
-        setDeleteUserModal(prev => ({ ...prev, loading: false }));
-      }
+      } catch {}
+      setDeleteUserModal({ isOpen: true, userId, userName, stats: null });
       return;
     }
-    // confirmed = execute delete with selected options
-    setDeleteUserModal(prev => ({ ...prev, loading: true }));
+    // Execute selective delete
     try {
-      const res = await fetch(`/api/users/${deleteUserModal.userId}/delete`, {
+      const res = await fetch(`/api/users/${userId}/delete`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deleteOptions: deleteUserModal.options }),
+        body: JSON.stringify({ options: deleteOptions })
       });
       if (res.ok) {
         const data = await res.json();
-        fetchAllUsers(); fetchDevData(); fetchBlockedUsers(); fetchApartments(0, false);
-        if (selectedUserDetail?.id === deleteUserModal.userId) { setSelectedUserDetail(null); setUserDetailData({ apartments: [], payments: [], inquiries: [] }); }
+        fetchAllUsers(); fetchDevData(); fetchBlockedUsers();
+        if (selectedUserDetail?.id === userId) { setSelectedUserDetail(null); setUserDetailData({ apartments: [], payments: [], inquiries: [] }); }
+        setDeleteUserModal({ isOpen: false, userId: '', userName: '', stats: null });
         addToast(data.message || 'تم حذف المستخدم ✅', 'success');
       } else {
         const data = await res.json();
         addToast(data.error || 'فشل حذف المستخدم', 'error');
       }
     } catch { addToast('حدث خطأ', 'error'); }
-    finally { setDeleteUserModal({ isOpen: false, userId: '', userName: '', loading: false, stats: { apartments: 0, payments: 0, inquiries: 0, likes: 0, comments: 0, messages: 0, editRequests: 0, blockedUsers: 0 }, options: { apartments: true, payments: true, inquiries: true, likes: true, comments: true, messages: true, editRequests: true, blockedUsers: true } }); }
   };
 
   const handleDevSendMessage = async () => {
@@ -961,8 +936,6 @@ function App() {
       await Promise.allSettled([
         fetchSettingsRef.current?.(),
         fetchApartmentsRef.current?.(0, false),
-        // Recheck auth periodically to catch deleted/blocked users (fallback when socket.io unavailable)
-        recheckAuthRef.current?.(),
         ...(currentUserRef.current ? [fetchMessagesRef.current?.()] : []),
       ]);
     }, 30000);
@@ -1159,31 +1132,34 @@ function App() {
         if (rememberMe) { localStorage.setItem('manteqti_remembered_identifier', authIdentifier.trim().toLowerCase()); localStorage.setItem('manteqti_remember_me', 'true'); }
         else { localStorage.removeItem('manteqti_remembered_identifier'); localStorage.removeItem('manteqti_remember_me'); }
         setAuthPassword('');
-      } else if (data.code === 'USER_NOT_FOUND') {
-        // ❌ مفيش حساب - يحول تلقائي لإنشاء حساب
-        addToast('لا يوجد حساب مسجل بهذا البريد الإلكتروني. يرجى إنشاء حساب أولاً', 'error');
+      } else if (data.errorCode === 'USER_NOT_FOUND') {
+        // الحساب غير موجود - يوجه للتسجيل
+        addToast(data.error, 'error');
         setAuthStep('register');
-      } else if (data.code === 'WRONG_PASSWORD') {
-        // ❌ كلمة السر غلط
-        addToast('كلمة المرور غير صحيحة', 'error');
-      } else if (data.code === 'EMAIL_NOT_VERIFIED') {
-        // ⏳ الإيميل مش مؤكد - يفتح نافذة OTP
+      } else if (data.errorCode === 'WRONG_PASSWORD') {
+        // كلمة المرور غير صحيحة
+        addToast(data.error, 'error');
+      } else if (data.errorCode === 'EMAIL_NOT_VERIFIED') {
+        // البريد غير مؤكد - يعيد إرسال OTP تلقائياً ويفتح نافذة التحقق
+        setShowAuth(false);
+        setShowOtpVerification(true);
+        setOtpEmail(data.identifier || authIdentifier.trim().toLowerCase());
+        addToast(data.autoOtpSent ? 'تم إعادة إرسال رمز التحقق تلقائياً ✅' : data.error, 'info');
+      } else if (data.errorCode === 'ACCOUNT_BLOCKED') {
+        // حساب محظور
+        addToast(data.blockReason ? `${data.error}\nالسبب: ${data.blockReason}` : data.error, 'error');
+      } else if (data.errorCode === 'ACCOUNT_PENDING') {
+        // حساب قيد المراجعة
+        addToast(data.error, 'info');
+      } else if (data.errorCode === 'TOO_MANY_REQUESTS') {
+        addToast(data.error, 'error');
+      } else if (data.requiresVerification) {
+        // fallback للإصدارات القديمة من الـ API
         setShowAuth(false);
         setShowOtpVerification(true);
         setOtpEmail(data.email || authIdentifier.trim().toLowerCase());
-        localStorage.setItem('manteqti_pending_otp', data.email || authIdentifier.trim().toLowerCase());
-        addToast('يجب تأكيد بريدك الإلكتروني أولاً! تم إرسال رمز التحقق', 'info');
-      } else if (data.code === 'ACCOUNT_PENDING') {
-        // ⏳ الحساب مش مُعتمد
-        setCurrentUser(data.user); setShowAuth(false);
-        if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
-        addToast('حسابك قيد المراجعة. بانتظار موافقة الإدارة ⏳', 'info');
-      } else if (data.code === 'ACCOUNT_BLOCKED') {
-        // 🚫 الحساب محظور
-        addToast(data.blockReason ? `تم حظر حسابك: ${data.blockReason}` : 'تم حظر حسابك. يرجى التواصل مع الإدارة', 'error');
-      } else {
-        addToast(data.error || 'خطأ في تسجيل الدخول', 'error');
-      }
+        addToast('يجب تأكيد البريد الإلكتروني أولاً!', 'info');
+      } else addToast(data.error || 'خطأ في تسجيل الدخول', 'error');
     } catch { addToast('حدث خطأ في الاتصال', 'error'); }
     finally { setAuthLoading(false); }
   };
@@ -1199,11 +1175,10 @@ function App() {
           setShowAuth(false);
           setShowOtpVerification(true);
           setOtpEmail(authIdentifier.trim().toLowerCase());
-          localStorage.setItem('manteqti_pending_otp', authIdentifier.trim().toLowerCase());
           addToast('تم إنشاء الحساب! يرجى تأكيد البريد الإلكتروني', 'info');
         } else {
           // Check if user needs approval
-          if (data.user && data.user.isApproved === false) {
+          if (data.user && !data.user.isApproved) {
             setCurrentUser(data.user); setShowAuth(false);
             if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
             addToast('تم إنشاء الحساب بنجاح! حسابك قيد المراجعة وسيتم إشعارك فور الموافقة ⏳', 'info');
@@ -1234,7 +1209,6 @@ function App() {
         setCurrentUser(data.user);
         setShowAuth(false);
         setOtpCode('');
-        localStorage.removeItem('manteqti_pending_otp');
         addToast('تم تأكيد البريد الإلكتروني بنجاح! 🎉', 'success');
       } else {
         addToast(data.error || 'رمز التأكيد غير صحيح', 'error');
@@ -1269,17 +1243,7 @@ function App() {
     setForgotLoading(true);
     try {
       const res = await fetch('/api/auth/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: forgotEmail }) });
-      if (res.ok) {
-        setForgotSuccess(true);
-        // Auto-open reset password modal after 2 seconds
-        setTimeout(() => {
-          setShowForgotPassword(false);
-          setForgotSuccess(false);
-          setShowResetPassword(true);
-          setResetCode('');
-        }, 2000);
-        addToast('تم إرسال رمز الاستعادة! شوف الإيميل', 'success');
-      }
+      if (res.ok) { setForgotSuccess(true); addToast('تم إرسال رمز استعادة كلمة المرور ✅', 'success'); }
       else addToast('حدث خطأ', 'error');
     } catch { addToast('حدث خطأ', 'error'); }
     finally { setForgotLoading(false); }
@@ -1288,19 +1252,12 @@ function App() {
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) { addToast('كلمتا المرور غير متطابقتين', 'error'); return; }
-    if (newPassword.length < 8) { addToast('كلمة المرور يجب أن تكون 8 أحرف على الأقل', 'error'); return; }
-    if (resetCode.length !== 6) { addToast('الرمز لازم يكون 6 أرقام', 'error'); return; }
+    if (newPassword.length < 6) { addToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'error'); return; }
     setResetLoading(true);
     try {
-      const res = await fetch('/api/auth/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: forgotEmail, code: resetCode, newPassword, confirmPassword }) });
-      if (res.ok) {
-        setShowResetPassword(false); setShowForgotPassword(false);
-        setNewPassword(''); setConfirmPassword(''); setResetCode('');
-        addToast('تم تغيير كلمة المرور بنجاح! سجل دخول', 'success');
-      } else {
-        const data = await res.json();
-        addToast(data.error || 'حدث خطأ', 'error');
-      }
+      const res = await fetch('/api/auth/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: forgotEmail, newPassword }) });
+      if (res.ok) { setShowResetPassword(false); setShowForgotPassword(false); addToast('تم تغيير كلمة المرور بنجاح!', 'success'); }
+      else addToast('حدث خطأ', 'error');
     } catch { addToast('حدث خطأ', 'error'); }
     finally { setResetLoading(false); }
   };
@@ -1923,6 +1880,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
   );
 
   // Show pending approval screen for unapproved non-developer users
+  // ⚠️ v219: Use strict comparison === false to avoid undefined being truthy
   if (currentUser && currentUser.isApproved === false && !isDeveloper) {
     return (
       <div className={`min-h-screen flex flex-col ${darkMode ? 'bg-slate-900' : 'bg-gradient-to-br from-slate-50 via-amber-50/30 to-orange-50/30'} p-4`} dir="rtl">
@@ -2206,97 +2164,40 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
       {/* Confirm Dialog */}
       <ConfirmDialog {...confirmDialog} darkMode={darkMode} onCancel={() => setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' })} />
 
-      {/* Delete User Modal - Selective deletion */}
+      {/* v219: Selective Delete User Modal */}
       {deleteUserModal.isOpen && (
-        <AnimatePresence>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDeleteUserModal(prev => ({ ...prev, isOpen: false }))}>
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()}
-              className={`w-full max-w-lg rounded-2xl shadow-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
-              {/* Header */}
-              <div className={`p-5 border-b ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-red-500/10 flex items-center justify-center">
-                    <Trash2 className="h-6 w-6 text-red-500" />
-                  </div>
-                  <div>
-                    <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>حذف مستخدم</h3>
-                    <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{deleteUserModal.userName}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Body */}
-              <div className={`p-5 ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
-                <p className={`text-sm mb-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>اختر البيانات التي تريد حذفها مع المستخدم:</p>
-
-                {/* Quick actions */}
-                <div className="flex gap-2 mb-4">
-                  <button onClick={() => setDeleteUserModal(prev => ({ ...prev, options: { apartments: true, payments: true, inquiries: true, likes: true, comments: true, messages: true, editRequests: true, blockedUsers: true } }))}
-                    className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${deleteUserModal.options.apartments && deleteUserModal.options.payments && deleteUserModal.options.inquiries && deleteUserModal.options.likes && deleteUserModal.options.comments && deleteUserModal.options.messages ? (darkMode ? 'bg-violet-600 text-white' : 'bg-violet-100 text-violet-700') : (darkMode ? 'bg-slate-700 text-slate-400 hover:bg-slate-600' : 'bg-slate-100 text-slate-500 hover:bg-slate-200')}`}>
-                    تحديد الكل
-                  </button>
-                  <button onClick={() => setDeleteUserModal(prev => ({ ...prev, options: { apartments: false, payments: false, inquiries: false, likes: false, comments: false, messages: false, editRequests: false, blockedUsers: false } }))}
-                    className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${!deleteUserModal.options.apartments && !deleteUserModal.options.payments && !deleteUserModal.options.inquiries && !deleteUserModal.options.likes && !deleteUserModal.options.comments && !deleteUserModal.options.messages ? (darkMode ? 'bg-violet-600 text-white' : 'bg-violet-100 text-violet-700') : (darkMode ? 'bg-slate-700 text-slate-400 hover:bg-slate-600' : 'bg-slate-100 text-slate-500 hover:bg-slate-200')}`}>
-                    إلغاء الكل
-                  </button>
-                </div>
-
-                {/* Options grid */}
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { key: 'apartments' as const, label: 'العقارات', icon: '🏠', count: deleteUserModal.stats.apartments, cascade: false },
-                    { key: 'payments' as const, label: 'المدفوعات', icon: '💰', count: deleteUserModal.stats.payments, cascade: false },
-                    { key: 'inquiries' as const, label: 'الاستفسارات', icon: '📩', count: deleteUserModal.stats.inquiries, cascade: false },
-                    { key: 'likes' as const, label: 'الإعجابات', icon: '❤️', count: deleteUserModal.stats.likes, cascade: true },
-                    { key: 'comments' as const, label: 'التعليقات', icon: '💬', count: deleteUserModal.stats.comments, cascade: true },
-                    { key: 'messages' as const, label: 'الرسائل', icon: '📨', count: deleteUserModal.stats.messages, cascade: true },
-                    { key: 'editRequests' as const, label: 'طلبات التعديل', icon: '✏️', count: deleteUserModal.stats.editRequests, cascade: true },
-                    { key: 'blockedUsers' as const, label: 'قائمة المحظورين', icon: '🚫', count: deleteUserModal.stats.blockedUsers, cascade: true },
-                  ].map(item => (
-                    <button
-                      key={item.key}
-                      onClick={() => setDeleteUserModal(prev => ({ ...prev, options: { ...prev.options, [item.key]: !prev.options[item.key] } }))}
-                      className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-right relative ${
-                        deleteUserModal.options[item.key]
-                          ? (darkMode ? 'border-violet-500 bg-violet-500/10' : 'border-violet-400 bg-violet-50')
-                          : (darkMode ? 'border-slate-700 bg-slate-700/50' : 'border-slate-200 bg-slate-50')
-                      }`}
-                      title={item.cascade ? 'هذه البيانات مرتبطة بالمستخدم وستُحذف تلقائياً' : undefined}
-                    >
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg ${deleteUserModal.options[item.key] ? (darkMode ? 'bg-violet-600' : 'bg-violet-100') : (darkMode ? 'bg-slate-600' : 'bg-slate-200')}`}>
-                        {item.icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium ${deleteUserModal.options[item.key] ? (darkMode ? 'text-violet-300' : 'text-violet-700') : (darkMode ? 'text-slate-400' : 'text-slate-500')}`}>{item.label}</p>
-                        <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{item.count} عنصر{item.cascade && !deleteUserModal.options[item.key] ? ' (cascade)' : ''}</p>
-                      </div>
-                      <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
-                        deleteUserModal.options[item.key]
-                          ? 'bg-violet-500 border-violet-500'
-                          : (darkMode ? 'border-slate-600' : 'border-slate-300')
-                      }`}>
-                        {deleteUserModal.options[item.key] && <Check className="h-3 w-3 text-white" />}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className={`p-5 border-t flex items-center justify-between ${darkMode ? 'border-slate-700 bg-slate-800/80' : 'border-slate-200 bg-slate-50'}`}>
-                <button onClick={() => setDeleteUserModal(prev => ({ ...prev, isOpen: false }))}
-                  className={`px-5 py-2.5 rounded-xl font-medium text-sm transition-all ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>
-                  إلغاء
-                </button>
-                <button onClick={() => handleDeleteUser(deleteUserModal.userId, deleteUserModal.userName, true)} disabled={deleteUserModal.loading}
-                  className="px-5 py-2.5 rounded-xl font-medium text-sm text-white bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 disabled:opacity-50 flex items-center gap-2 transition-all">
-                  {deleteUserModal.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                  حذف المستخدم
-                </button>
-              </div>
-            </motion.div>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setDeleteUserModal({ isOpen: false, userId: '', userName: '', stats: null })}>
+          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className={`max-w-md w-full rounded-2xl shadow-2xl p-6 ${darkMode ? 'bg-slate-800 border border-slate-700' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center"><Trash2 className="h-6 w-6 text-red-500" /></div>
+              <div><h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'}`}>🗑️ حذف "{deleteUserModal.userName}"</h3><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>اختر البيانات المراد الاحتفاظ بها</p></div>
+            </div>
+            <div className={`rounded-xl p-4 space-y-3 mb-4 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+              <p className={`text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>⚙️ البيانات المراد الاحتفاظ بها:</p>
+              {[
+                { key: 'keepApartments' as const, label: 'العقارات', desc: 'تحويل ملكيتها (بدل حذفها)', cascade: false },
+                { key: 'keepInquiries' as const, label: 'الاستفسارات', desc: 'إزالة ربطها بالمستخدم', cascade: false },
+                { key: 'keepPayments' as const, label: 'المدفوعات', desc: 'إزالة ربطها بالمستخدم', cascade: false },
+                { key: 'keepMessages' as const, label: 'الرسائل', desc: 'سيتم حذفها (cascade)', cascade: true },
+                { key: 'keepLikes' as const, label: 'الإعجابات', desc: 'حذفها فقط (cascade)', cascade: true },
+                { key: 'keepComments' as const, label: 'التعليقات', desc: 'حذفها فقط (cascade)', cascade: true },
+                { key: 'keepEditRequests' as const, label: 'طلبات التعديل', desc: 'حذفها فقط (cascade)', cascade: true },
+              ].map(opt => (
+                <label key={opt.key} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer ${opt.cascade ? (darkMode ? 'bg-amber-900/20 border border-amber-800/30' : 'bg-amber-50 border border-amber-200/50') : (darkMode ? 'hover:bg-slate-600' : 'hover:bg-slate-100')}`}>
+                  <input type="checkbox" checked={deleteOptions[opt.key]} onChange={(e) => setDeleteOptions(prev => ({ ...prev, [opt.key]: e.target.checked }))} className="w-4 h-4 rounded accent-violet-500" />
+                  <div className="flex-1"><span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{opt.label}</span>{opt.cascade && <span className="text-amber-500 text-xs mr-1">(cascade)</span>}<p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{opt.desc}</p></div>
+                </label>
+              ))}
+            </div>
+            <div className={`p-3 rounded-lg mb-4 ${darkMode ? 'bg-red-900/20 border border-red-800/30' : 'bg-red-50 border border-red-200/50'}`}>
+              <p className="text-red-500 text-sm font-medium">⚠️ لا يمكن التراجع عن حذف المستخدم!</p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => handleDeleteUser(deleteUserModal.userId, deleteUserModal.userName, true)} className="flex-1 py-2.5 rounded-xl bg-red-500 text-white font-medium hover:bg-red-600 transition-colors">حذف نهائي</button>
+              <button onClick={() => setDeleteUserModal({ isOpen: false, userId: '', userName: '', stats: null })} className={`flex-1 py-2.5 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>إلغاء</button>
+            </div>
           </motion.div>
-        </AnimatePresence>
+        </motion.div>
       )}
 
       {/* Toasts */}
@@ -2444,8 +2345,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                   <div><span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>الهاتف:</span> <span className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{selectedUserDetail.phone || 'غير محدد'}</span></div>
                   <div><span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>تاريخ التسجيل:</span> <span className={`font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{new Date(selectedUserDetail.createdAt).toLocaleDateString('ar-EG')}</span></div>
                   <div><span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>حالة التأكيد:</span> {selectedUserDetail.isApproved ? <span className="text-emerald-500 font-medium">✅ مؤكد</span> : <span className="text-amber-500 font-medium">⏳ غير مؤكد</span>}</div>
-                  <div><span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>تأكيد البريد:</span> {selectedUserDetail.emailVerified !== false ? <span className="text-emerald-500 font-medium">✅ مؤكد</span> : <span className="text-amber-500 font-medium">📧 غير مؤكد</span>}</div>
-                  <div><span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>حالة الحساب:</span> {selectedUserDetail.isBlocked ? <span className="text-red-500 font-medium">🚫 محظور</span> : selectedUserDetail.emailVerified === false ? <span className="text-amber-500 font-medium">⏳ بانتظار تأكيد البريد</span> : <span className="text-emerald-500 font-medium">✅ نشط</span>}</div>
+                  <div><span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>حالة الحظر:</span> {selectedUserDetail.isBlocked ? <span className="text-red-500 font-medium">🚫 محظور</span> : selectedUserDetail.emailVerified === false ? <span className="text-amber-500 font-medium">📧 بانتظار البريد</span> : <span className="text-emerald-500 font-medium">✅ نشط</span>}</div>
                 </div>
                 <div className="flex gap-2 mt-4 flex-wrap">
                   <button onClick={() => setDevMessageTo({ userId: selectedUserDetail.id, userName: selectedUserDetail.name })} className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm hover:bg-blue-600 flex items-center gap-1"><Send className="h-4 w-4" />إرسال رسالة</button>
@@ -3239,9 +3139,12 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${u.isApproved === false || u.emailVerified === false ? 'bg-amber-500' : u.isBlocked ? 'bg-red-500' : 'bg-gradient-to-br from-emerald-500 to-teal-600'}`}>{u.name?.charAt(0) || '?'}</div>
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${u.isApproved === false ? 'bg-amber-500' : u.isBlocked ? 'bg-red-500' : u.emailVerified === false ? 'bg-orange-500' : 'bg-gradient-to-br from-emerald-500 to-teal-600'}`}>{u.name?.charAt(0) || '?'}</div>
                             <p className={`font-medium truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{u.name}</p>
-                            {u.isBlocked ? <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700 shrink-0">🚫 محظور</span> : u.emailVerified === false ? <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700 shrink-0">📧 بانتظار البريد</span> : u.isApproved === true ? <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700 shrink-0">✅ نشط</span> : <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700 shrink-0">⏳ غير مؤكد</span>}
+                            {u.isBlocked && <span className="px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700 shrink-0">🚫 محظور</span>}
+                            {!u.isBlocked && u.emailVerified === false && <span className="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-700 shrink-0">📧 بانتظار البريد</span>}
+                            {u.isApproved === false && <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700 shrink-0">⏳ بانتظار التأكيد</span>}
+                            {u.isApproved === true && u.isBlocked === false && <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700 shrink-0">✅ نشط</span>}
                           </div>
                           <p className={`text-sm mt-1 truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>📧 {u.identifier || u.email}{u.phone ? ` • 📞 ${u.phone}` : ''}</p>
                           <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>📅 تاريخ التسجيل: {new Date(u.createdAt).toLocaleDateString('ar-EG')} • {new Date(u.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</p>
@@ -3718,7 +3621,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               <button onClick={() => setShowForgotPassword(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
             </div>
             {forgotSuccess ? (
-              <div className="text-center py-4"><CheckCircle2 className="h-16 w-16 mx-auto mb-4 text-emerald-500" /><p className={darkMode ? 'text-slate-300' : 'text-slate-600'}>تم إرسال رمز استعادة كلمة المرور إلى بريدك الإلكتروني</p></div>
+              <div className="text-center py-4"><CheckCircle2 className="h-16 w-16 mx-auto mb-4 text-emerald-500" /><p className={darkMode ? 'text-slate-300' : 'text-slate-600'}>تم إرسال رمز استعادة كلمة المرور ✅</p></div>
             ) : (
               <form onSubmit={handleForgotPassword} className="space-y-4">
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>البريد الإلكتروني</label><input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
@@ -3734,15 +3637,12 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowResetPassword(false)}>
           <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
             <div className="flex items-center justify-between mb-6">
-              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>🔑 تغيير كلمة المرور</h2>
+              <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>كلمة المرور الجديدة</h2>
               <button onClick={() => setShowResetPassword(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
             </div>
-            <p className={`text-sm mb-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>أدخل الرمز اللي وصلك على الإيميل ({forgotEmail})</p>
             <form onSubmit={handleResetPassword} className="space-y-4">
-              <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رمز الاستعادة (6 أرقام)</label><input type="text" maxLength={6} value={resetCode} onChange={(e) => setResetCode(e.target.value.replace(/\D/g, ''))} placeholder="000000" className={`w-full px-4 py-3 rounded-xl border text-center text-2xl tracking-[0.5em] font-mono ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
               <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>كلمة المرور الجديدة</label><input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
               <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>تأكيد كلمة المرور</label><input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
-              <button type="button" onClick={async () => { try { await fetch('/api/auth/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: forgotEmail }) }); addToast('تم إعادة إرسال الرمز', 'success'); } catch { addToast('حدث خطأ', 'error'); } }} className={`w-full py-2 text-sm rounded-xl ${darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-700'} disabled:opacity-50`}>إعادة إرسال الرمز</button>
               <button type="submit" disabled={resetLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-medium disabled:opacity-50">{resetLoading ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : 'تغيير كلمة المرور'}</button>
             </form>
           </motion.div>
