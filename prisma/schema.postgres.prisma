@@ -273,6 +273,7 @@ model WalletTransaction {
   reference   String?
   status      String   @default("pending")
   type        String   @default("charge")
+  description String?
   notes       String?
   reviewedBy  String?
   createdAt   DateTime @default(now())
