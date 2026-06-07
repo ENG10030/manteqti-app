@@ -1,212 +1,168 @@
-import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { verify } from "jsonwebtoken";
-import { cookies } from "next/headers";
-import { JWT_SECRET } from "@/lib/auth";
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
 
-export const dynamic = "force-dynamic";
-
-async function verifyDeveloper(request: Request): Promise<boolean> {
-  try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("auth-token")?.value;
-    if (!token) return false;
-    const decoded = verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as unknown as { role?: string };
-    return decoded.role === "DEVELOPER";
-  } catch {
-    return false;
-  }
+// Simple dev password check (same as dev panel)
+async function verifyDev(request: NextRequest) {
+  const { password } = await request.json().catch(() => ({}));
+  const devPassword = process.env.DEV_PASSWORD || 'dev1234';
+  return password === devPassword;
 }
 
-// GET - Export all data as JSON backup
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    if (!(await verifyDeveloper(request))) {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+    // Verify developer
+    if (!(await verifyDev(request))) {
+      return NextResponse.json({ error: 'كلمة مرور المطور غير صحيحة' }, { status: 403 });
     }
 
-    const [users, apartments, inquiries, payments, messages, likes, comments, blockedUsers, settings, editRequests, approvalLogs, operationLogs] = await Promise.all([
-      db.user.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, identifier: true, name: true, email: true, phone: true, role: true, isBlocked: true, blockedAt: true, blockReason: true, isApproved: true, emailVerified: true, createdAt: true, updatedAt: true } }),
-      db.apartment.findMany({ orderBy: { createdAt: "asc" } }),
-      db.inquiry.findMany({ orderBy: { createdAt: "asc" } }),
-      db.payment.findMany({ orderBy: { createdAt: "asc" } }),
-      db.message.findMany({ orderBy: { createdAt: "asc" } }),
-      db.like.findMany({ orderBy: { createdAt: "asc" } }),
-      db.comment.findMany({ orderBy: { createdAt: "asc" } }),
-      db.blockedUser.findMany({ orderBy: { blockedAt: "asc" } }),
-      db.settings.findMany(),
-      db.propertyEditRequest.findMany({ orderBy: { createdAt: "asc" } }),
-      db.approvalLog.findMany({ orderBy: { createdAt: "asc" } }),
-      db.operationLog.findMany({ orderBy: { createdAt: "asc" } }),
-    ]);
+    const { action } = await request.json().catch(() => ({}));
 
-    const backup = {
-      version: "v71",
-      exportedAt: new Date().toISOString(),
-      counts: {
-        users: users.length,
-        apartments: apartments.length,
-        inquiries: inquiries.length,
-        payments: payments.length,
-        messages: messages.length,
-        likes: likes.length,
-        comments: comments.length,
-        blockedUsers: blockedUsers.length,
-        editRequests: editRequests.length,
-        approvalLogs: approvalLogs.length,
-        operationLogs: operationLogs.length,
-      },
-      data: {
-        users,
+    if (action === 'export') {
+      // Export all data as JSON backup
+      const [
         apartments,
-        inquiries,
+        users,
+        comments,
         payments,
+        inquiries,
         messages,
         likes,
-        comments,
-        blockedUsers,
         settings,
         editRequests,
         approvalLogs,
         operationLogs,
-      },
-    };
+        commentActionLogs,
+      ] = await Promise.all([
+        db.apartment.findMany({ orderBy: { createdAt: 'desc' } }),
+        db.user.findMany({ orderBy: { createdAt: 'desc' } }),
+        db.comment.findMany({ orderBy: { createdAt: 'desc' } }),
+        db.payment.findMany({ orderBy: { createdAt: 'desc' } }),
+        db.inquiry.findMany({ orderBy: { createdAt: 'desc' } }),
+        db.message.findMany({ orderBy: { createdAt: 'desc' } }),
+        db.like.findMany({ orderBy: { createdAt: 'desc' } }),
+        db.siteSettings.findFirst(),
+        db.editRequest.findMany({ orderBy: { createdAt: 'desc' } }),
+        db.approvalLog.findMany({ orderBy: { createdAt: 'desc' } }),
+        db.operationLog.findMany({ orderBy: { createdAt: 'desc' } }),
+        db.commentActionLog.findMany({ orderBy: { createdAt: 'desc' } }),
+      ]);
 
-    return new NextResponse(JSON.stringify(backup, null, 2), {
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Disposition": `attachment; filename="manteqti-backup-${new Date().toISOString().split("T")[0]}.json"`,
-        "Cache-Control": "no-cache",
-      },
-    });
-  } catch (error: any) {
-    console.error("Backup error:", error);
-    return NextResponse.json({ error: "فشل التصدير" }, { status: 500 });
-  }
-}
+      const backup = {
+        version: 'v223',
+        exportedAt: new Date().toISOString(),
+        counts: {
+          apartments: apartments.length,
+          users: users.length,
+          comments: comments.length,
+          payments: payments.length,
+          inquiries: inquiries.length,
+          messages: messages.length,
+          likes: likes.length,
+          editRequests: editRequests.length,
+          approvalLogs: approvalLogs.length,
+          operationLogs: operationLogs.length,
+          commentActionLogs: commentActionLogs.length,
+        },
+        data: {
+          apartments,
+          users,
+          comments,
+          payments,
+          inquiries,
+          messages,
+          likes,
+          settings,
+          editRequests,
+          approvalLogs,
+          operationLogs,
+          commentActionLogs,
+        },
+      };
 
-// POST - Restore data from JSON backup
-export async function POST(request: NextRequest) {
-  try {
-    if (!(await verifyDeveloper(request))) {
-      return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
+      return NextResponse.json({ success: true, backup });
     }
 
-    const body = await request.json();
-    const { data, mode } = body; // mode: "merge" (default) or "replace"
+    if (action === 'import') {
+      // Restore from JSON backup
+      const { backup } = await request.json();
+      if (!backup || !backup.data) {
+        return NextResponse.json({ error: 'بيانات النسخة الاحتياطية غير صالحة' }, { status: 400 });
+      }
 
-    if (!data) {
-      return NextResponse.json({ error: "البيانات مطلوبة" }, { status: 400 });
-    }
+      const { apartments, users, comments, payments, inquiries, messages, likes, settings, editRequests, approvalLogs, operationLogs, commentActionLogs } = backup.data;
+      const results: Record<string, number> = {};
 
-    const results: Record<string, number> = {};
+      // Helper to import with upsert
+      async function importMany(model: any, records: any[], uniqueFields: string[]) {
+        if (!records || records.length === 0) return 0;
+        let imported = 0;
+        for (const record of records) {
+          try {
+            // Clean the record - remove id for new insert, keep for existing
+            const cleanRecord = { ...record };
+            const whereClause: any = {};
+            for (const field of uniqueFields) {
+              whereClause[field] = cleanRecord[field];
+            }
+            // Try to find existing
+            const existing = await model.findFirst({ where: whereClause });
+            if (existing) {
+              // Update existing
+              const { id, createdAt, updatedAt, ...updateData } = cleanRecord;
+              await model.update({ where: { id: existing.id }, data: updateData });
+            } else {
+              // Create new (remove id to auto-generate)
+              const { id, ...createData } = cleanRecord;
+              await model.create({ data: createData });
+            }
+            imported++;
+          } catch (e) {
+            // Skip failed records
+            console.error(`Import error for record:`, e);
+          }
+        }
+        return imported;
+      }
 
-    // Restore users
-    if (data.users?.length) {
-      for (const user of data.users) {
-        const existing = await db.user.findUnique({ where: { identifier: user.identifier } });
-        if (existing) {
-          // Update existing user but keep password if new one looks hashed
-        // 🔒 حماية: لا تسمح بتغيير role من خلال الـ backup
-        // Keep the existing role unless it's a new user
-          await db.user.update({
-            where: { id: existing.id },
-            data: {
-              name: user.name,
-              email: user.email,
-              phone: user.phone,
-              // role: لا يتم تغييره عبر الـ backup
-              isBlocked: user.isBlocked,
-              isApproved: user.isApproved,
-              emailVerified: user.emailVerified,
-              blockReason: user.blockReason,
-            },
-          });
-        } else {
-          await db.user.create({
-            data: {
-              id: user.id,
-              identifier: user.identifier,
-              name: user.name,
-              email: user.email,
-              phone: user.phone,
-              password: user.password,
-              role: "USER",
-              isBlocked: user.isBlocked,
-              isApproved: user.isApproved,
-              emailVerified: user.emailVerified,
-              blockReason: user.blockReason,
-              createdAt: new Date(user.createdAt),
-            },
-          });
+      // Import in order (users first, then apartments, then related data)
+      if (users) results.users = await importMany(db.user, users, ['identifier']);
+      if (settings) {
+        try {
+          const existingSettings = await db.siteSettings.findFirst();
+          if (existingSettings) {
+            const { id, createdAt, updatedAt, ...updateData } = settings;
+            await db.siteSettings.update({ where: { id: existingSettings.id }, data: updateData });
+          } else {
+            const { id, ...createData } = settings;
+            await db.siteSettings.create({ data: createData });
+          }
+          results.settings = 1;
+        } catch (e) {
+          console.error('Settings import error:', e);
+          results.settings = 0;
         }
       }
-      results.users = data.users.length;
+      if (apartments) results.apartments = await importMany(db.apartment, apartments, ['title', 'userId']);
+      if (comments) results.comments = await importMany(db.comment, comments, ['id']);
+      if (payments) results.payments = await importMany(db.payment, payments, ['id']);
+      if (inquiries) results.inquiries = await importMany(db.inquiry, inquiries, ['id']);
+      if (messages) results.messages = await importMany(db.message, messages, ['id']);
+      if (likes) results.likes = await importMany(db.like, likes, ['userId', 'apartmentId']);
+      if (editRequests) results.editRequests = await importMany(db.editRequest, editRequests, ['id']);
+      if (approvalLogs) results.approvalLogs = await importMany(db.approvalLog, approvalLogs, ['id']);
+      if (operationLogs) results.operationLogs = await importMany(db.operationLog, operationLogs, ['id']);
+      if (commentActionLogs) results.commentActionLogs = await importMany(db.commentActionLog, commentActionLogs, ['id']);
+
+      return NextResponse.json({
+        success: true,
+        message: 'تم استعادة النسخة الاحتياطية بنجاح',
+        results,
+      });
     }
 
-    // Restore apartments
-    if (data.apartments?.length) {
-      for (const apt of data.apartments) {
-        const existing = await db.apartment.findUnique({ where: { id: apt.id } });
-        if (!existing) {
-          await db.apartment.create({
-            data: {
-              id: apt.id,
-              title: apt.title,
-              price: apt.price,
-              area: apt.area,
-              bedrooms: apt.bedrooms,
-              bathrooms: apt.bathrooms,
-              floor: apt.floor,
-              apartmentSize: apt.apartmentSize,
-              description: apt.description,
-              ownerPhone: apt.ownerPhone,
-              mapLink: apt.mapLink,
-              imageUrl: apt.imageUrl,
-              images: apt.images,
-              videoUrl: apt.videoUrl,
-              videos: apt.videos,
-              amenities: apt.amenities,
-              isFeatured: apt.isFeatured,
-              isVip: apt.isVip,
-              type: apt.type,
-              status: apt.status,
-              statusChangedAt: apt.statusChangedAt ? new Date(apt.statusChangedAt) : null,
-              paymentRef: apt.paymentRef,
-              createdBy: apt.createdBy,
-              approvedBy: apt.approvedBy,
-              approvedAt: apt.approvedAt ? new Date(apt.approvedAt) : null,
-              contactHidden: apt.contactHidden,
-              views: apt.views,
-              createdAt: new Date(apt.createdAt),
-            },
-          });
-        }
-      }
-      results.apartments = data.apartments.length;
-    }
-
-    // Restore settings
-    if (data.settings?.length) {
-      for (const s of data.settings) {
-        const existing = await db.settings.findFirst();
-        if (existing) {
-          await db.settings.update({ where: { id: existing.id }, data: { ...s, id: existing.id } });
-        } else {
-          await db.settings.create({ data: s });
-        }
-      }
-      results.settings = data.settings.length;
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: "تم استعادة البيانات بنجاح",
-      restored: results,
-      totalRestored: Object.values(results).reduce((a, b) => a + b, 0),
-    });
-  } catch (error: any) {
-    console.error("Restore error:", error);
-    return NextResponse.json({ error: "فشل الاستعادة" }, { status: 500 });
+    return NextResponse.json({ error: 'إجراء غير صالح. استخدم action: export أو import' }, { status: 400 });
+  } catch (error) {
+    console.error('Backup API error:', error);
+    return NextResponse.json({ error: 'حدث خطأ أثناء العملية' }, { status: 500 });
   }
 }

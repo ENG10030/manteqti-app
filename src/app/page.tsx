@@ -15,7 +15,7 @@ import {
   VideoIcon, Activity, Wallet, Key, ArrowUp, Layers,
   Download, Smartphone, Zap, Save,
   Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen,
-  GitCompare, Trophy, ScrollText, ClipboardCheck
+  GitCompare, Trophy, ScrollText, ClipboardCheck, HardDrive, Upload, Database
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
 // socket.io-client imported dynamically in useEffect to prevent Vercel SSR/hydration issues
@@ -43,7 +43,7 @@ interface Apartment {
   id: string; title: string; price: number; area: string; bedrooms: number; bathrooms: number; floor?: number | null; apartmentSize?: number | null;
   description: string; ownerPhone: string; mapLink: string; imageUrl?: string; images?: string[];
   videoUrl?: string; videos?: string[]; amenities?: string[]; isFeatured?: boolean; isVip?: boolean;
-  type: 'rent' | 'sale'; status: string; paymentRef?: string; createdBy?: string; views?: number; createdAt: string;
+  type: 'rent' | 'sale'; status: string; paymentRef?: string; createdBy?: string; views?: number; createdAt: string; statusChangedAt?: string | null;
 }
 
 interface Inquiry { id: string; apartmentId: string; userId?: string; name: string; email: string; phone: string; message: string; lifecycleStatus: string; createdAt: string; apartment?: { id: string; title: string; price: number; type: string } | null; payment?: { id: string; status: string; method: string } | null; }
@@ -171,6 +171,11 @@ function App() {
   const [paymentApartment, setPaymentApartment] = useState<Apartment | null>(null);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editStatusWarning, setEditStatusWarning] = useState<string | null>(null);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupRestoreLoading, setBackupRestoreLoading] = useState(false);
+  const [lastBackupData, setLastBackupData] = useState<string | null>(null);
+  const [backupInfo, setBackupInfo] = useState<{ exportedAt: string; version: string; counts: Record<string, number> } | null>(null);
   const [myPendingApartments, setMyPendingApartments] = useState<Apartment[]>([]);
   const [showMyPending, setShowMyPending] = useState(false);
 
@@ -265,7 +270,7 @@ function App() {
   });
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'favorites' | 'payments' | 'messages' | 'userApprovals' | 'users' | 'blocked' | 'settings' | 'logs' | 'editRequests' | 'userLogs' | 'commentManage'>('stats');
+  const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'favorites' | 'payments' | 'messages' | 'userApprovals' | 'users' | 'blocked' | 'settings' | 'logs' | 'editRequests' | 'userLogs' | 'commentManage' | 'backup'>('stats');
   const [likes, setLikes] = useState<Array<{ id: string; apartmentId: string; userId: string; user: { id: string; name: string }; apartment: { id: string; title: string } | null; createdAt: string }>>([]);
   const [comments, setComments] = useState<Array<{ id: string; apartmentId: string; userId: string; content: string; status: string; user: { id: string; name: string }; createdAt: string }>>([]);
   const [newComment, setNewComment] = useState('');
@@ -843,6 +848,81 @@ function App() {
     finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
   };
 
+  // ===== Backup & Restore Handlers =====
+  const handleBackup = async () => {
+    setBackupLoading(true);
+    try {
+      const res = await fetch('/api/backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: devPassword || process.env.NEXT_PUBLIC_DEV_PASSWORD || 'dev1234', action: 'export' }),
+      });
+      const data = await res.json();
+      if (res.ok && data.backup) {
+        const jsonStr = JSON.stringify(data.backup, null, 2);
+        setLastBackupData(jsonStr);
+        setBackupInfo({ exportedAt: data.backup.exportedAt, version: data.backup.version, counts: data.backup.counts });
+        // Auto-download
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `manteqti-backup-${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        addToast(`تم تصدير النسخة الاحتياطية بنجاح (${jsonStr.length > 1024 ? (jsonStr.length / 1024).toFixed(1) + ' KB' : jsonStr.length + ' B'})`, 'success');
+      } else {
+        addToast(data.error || 'فشل التصدير', 'error');
+      }
+    } catch { addToast('حدث خطأ في الاتصال', 'error'); }
+    finally { setBackupLoading(false); }
+  };
+
+  const handleRestore = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      setBackupRestoreLoading(true);
+      try {
+        const text = await file.text();
+        const backup = JSON.parse(text);
+        setConfirmDialog({
+          isOpen: true,
+          title: '⚠️ استعادة النسخة الاحتياطية',
+          message: `سيتم استعادة البيانات من النسخة الاحتياطية (${backup.version || 'غير معروف'} - ${backup.exportedAt ? new Date(backup.exportedAt).toLocaleDateString('ar-EG') : 'تاريخ غير معروف'})\n\n⚠️ قد يتم تحديث البيانات الحالية!\n\nهل أنت متأكد؟`,
+          confirmText: 'استعادة',
+          cancelText: 'إلغاء',
+          type: 'danger',
+          onConfirm: async () => {
+            setConfirmDialog(prev => ({ ...prev, loading: true }));
+            try {
+              const res = await fetch('/api/backup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: devPassword || process.env.NEXT_PUBLIC_DEV_PASSWORD || 'dev1234', action: 'import', backup }),
+              });
+              const data = await res.json();
+              if (res.ok) {
+                addToast(data.message || 'تمت الاستعادة بنجاح ✅', 'success');
+                // Refresh all data
+                fetchAllApartments(); fetchDevData(); fetchAllUsers(); fetchBlockedUsers(); fetchPayments(); fetchAllComments(); fetchCommentActionLogs();
+                setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+              } else {
+                addToast(data.error || 'فشلت الاستعادة', 'error');
+                setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
+              }
+            } catch { addToast('حدث خطأ في الاتصال', 'error'); setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+            finally { setBackupRestoreLoading(false); }
+          },
+        });
+      } catch { addToast('ملف النسخة الاحتياطية غير صالح', 'error'); setBackupRestoreLoading(false); }
+    };
+    input.click();
+  };
+
   // Fetch messages for a specific user (for log display)
   const fetchUserMessagesForLog = async (userId: string) => {
     try {
@@ -1408,10 +1488,23 @@ function App() {
   const handleEditApartment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editApartment) return;
+    // Warning confirmation for sold/rented/unavailable
+    if (['sold', 'rented', 'unavailable'].includes(editApartment.status) && editStatusWarning) {
+      const statusLabel = { sold: 'تم البيع', rented: 'تم التأجير', unavailable: 'غير متاح' }[editApartment.status];
+      setConfirmDialog({ isOpen: true, title: `⚠️ تغيير الحالة إلى "${statusLabel}"`, message: `سيتم حذف العقار تلقائياً بعد 48 ساعة من تغيير الحالة إلى "${statusLabel}"\n\nهل أنت متأكد من الحفظ؟`, confirmText: 'حفظ والتأكيد', cancelText: 'إلغاء', type: 'warning', onConfirm: () => { setConfirmDialog({ ...confirmDialog, isOpen: false }); doEditApartment(); } });
+      return;
+    }
+    doEditApartment();
+  };
+
+  const doEditApartment = async () => {
+    if (!editApartment) return;
     setEditSubmitting(true);
+    setEditStatusWarning(null);
     try {
       // Build clean payload - only send fields the backend expects
       // Convert images/videos arrays back to JSON strings for the DB
+      const needsAutoDelete = ['sold', 'rented', 'unavailable'].includes(editApartment.status);
       const editPayload = {
         title: editApartment.title,
         description: editApartment.description || '',
@@ -1425,6 +1518,7 @@ function App() {
         mapLink: editApartment.mapLink || null,
         type: editApartment.type,
         status: editApartment.status,
+        statusChangedAt: needsAutoDelete ? new Date().toISOString() : null,
         isFeatured: editApartment.isFeatured ?? false,
         isVip: editApartment.isVip ?? false,
         images: Array.isArray(editApartment.images) ? JSON.stringify(editApartment.images) : (editApartment.images || null),
@@ -3198,7 +3292,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الدور</label><select value={editApartment.floor || ''} onChange={(e) => setEditApartment({ ...editApartment, floor: e.target.value ? parseInt(e.target.value) : undefined })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="">بدون تحديد</option>{['أرضي', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15+'].map(n => <option key={n} value={n === 'أرضي' ? '0' : n === '15+' ? '15' : n}>{n}</option>)}</select></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📏 مساحة الشقة (م²) <span className="text-red-500">*</span></label><input type="number" min="1" placeholder="مثال: 120" value={editApartment.apartmentSize || ''} onChange={(e) => setEditApartment({ ...editApartment, apartmentSize: e.target.value ? parseInt(e.target.value) : undefined })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الهاتف</label><input type="tel" value={editApartment.ownerPhone} onChange={(e) => setEditApartment({ ...editApartment, ownerPhone: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحالة</label><select value={editApartment.status} onChange={(e) => setEditApartment({ ...editApartment, status: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="available">متاح</option><option value="reserved">محجوز</option><option value="unavailable">غير متاح</option><option value="sold">تم البيع</option><option value="rented">تم التأجير</option></select></div>
+                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحالة</label><select value={editApartment.status} onChange={(e) => { const newStatus = e.target.value; if (['sold', 'rented', 'unavailable'].includes(newStatus) && !['sold', 'rented', 'unavailable'].includes(editApartment.status)) { setEditStatusWarning(newStatus); } setEditApartment({ ...editApartment, status: newStatus }); }} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="available">متاح</option><option value="reserved">محجوز</option><option value="unavailable">غير متاح</option><option value="sold">تم البيع</option><option value="rented">تم التأجير</option></select>{editStatusWarning && <p className="text-amber-500 text-xs mt-1.5 flex items-center gap-1"><AlertTriangle className="h-3 w-3" />⚠️ سيتم حذف العقار تلقائياً بعد 48 ساعة من حفظ التعديلات</p>}</div>
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الوصف</label><textarea value={editApartment.description} onChange={(e) => setEditApartment({ ...editApartment, description: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} rows={3} /></div>
               </div>
               <div className="flex gap-3 mt-6">
@@ -3252,7 +3346,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <button onClick={() => setShowDevPanel(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
               </div>
               <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
-                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل' }, { id: 'userApprovals', icon: ShieldCheck, label: 'تأكيد المستخدمين', count: pendingUsers.length }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'userLogs', icon: BookOpen, label: 'سجل المستخدمين', count: approvalLogs.length }, { id: 'editRequests', icon: FilePen, label: 'طلبات التعديل', count: editRequests.filter(e => e.status === 'pending').length }, { id: 'blocked', icon: Ban, label: 'محظورين' }, { id: 'commentManage', icon: ScrollText, label: 'إدارة التعليقات', count: comments.length }, { id: 'settings', icon: Settings, label: 'الإعدادات' }, { id: 'logs', icon: Activity, label: 'السجل' } ].map(tab => (
+                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل' }, { id: 'userApprovals', icon: ShieldCheck, label: 'تأكيد المستخدمين', count: pendingUsers.length }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'userLogs', icon: BookOpen, label: 'سجل المستخدمين', count: approvalLogs.length }, { id: 'editRequests', icon: FilePen, label: 'طلبات التعديل', count: editRequests.filter(e => e.status === 'pending').length }, { id: 'blocked', icon: Ban, label: 'محظورين' }, { id: 'commentManage', icon: ScrollText, label: 'إدارة التعليقات', count: comments.length }, { id: 'settings', icon: Settings, label: 'الإعدادات' }, { id: 'logs', icon: Activity, label: 'السجل' }, { id: 'backup', icon: Database, label: 'النسخ الاحتياطي' } ].map(tab => (
                   <button key={tab.id} onClick={() => setDevTab(tab.id as any)} className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-all ${devTab === tab.id ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                     <tab.icon className="h-4 w-4" />{tab.label}
                     {tab.count !== undefined && tab.count > 0 && <span className={`px-2 py-0.5 rounded-full text-xs ${devTab === tab.id ? 'bg-white/20' : 'bg-amber-500 text-white'}`}>{tab.count}</span>}
@@ -3426,16 +3520,24 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                               {!apt.isFeatured && !apt.isVip && <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-500 text-white">عادي</span>}
                             </div>
                             <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.price.toLocaleString()} {settings.currency} • {statusConfig[apt.status]?.label}</p>
+                            {(apt.statusChangedAt && ['sold', 'rented', 'unavailable'].includes(apt.status)) && (() => {
+                              const elapsed = Date.now() - new Date(apt.statusChangedAt).getTime();
+                              const remaining = Math.max(0, 48 * 60 * 60 * 1000 - elapsed);
+                              const hours = Math.floor(remaining / (60 * 60 * 1000));
+                              const mins = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000));
+                              return <p className="text-xs text-red-500 font-medium">⏰ حذف تلقائي بعد {hours}س {mins}د</p>;
+                            })()}
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-2 items-center">
                           <select value={apt.status} onChange={(e) => { 
                             const newStatus = e.target.value;
-                            if (newStatus === 'sold' || newStatus === 'rented') {
+                            if (newStatus === 'sold' || newStatus === 'rented' || newStatus === 'unavailable') {
+                              const statusLabel = { sold: 'تم البيع', rented: 'تم التأجير', unavailable: 'غير متاح' }[newStatus];
                               setConfirmDialog({
                                 isOpen: true,
-                                title: 'تغيير حالة العقار',
-                                message: `سيتم حذف العقار تلقائياً بعد 48 ساعة من تغيير الحالة إلى "${newStatus === 'sold' ? 'تم البيع' : 'تم التأجير'}"\n\nهل أنت متأكد؟`,
+                                title: '⚠️ تغيير حالة العقار',
+                                message: `سيتم حذف العقار تلقائياً بعد 48 ساعة من تغيير الحالة إلى "${statusLabel}"\n\nهل أنت متأكد؟`,
                                 confirmText: 'تأكيد',
                                 cancelText: 'إلغاء',
                                 onConfirm: () => {
@@ -3443,14 +3545,14 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                                   setAllApartments([...allApartments]);
                                   fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus, statusChangedAt: new Date().toISOString() }) });
                                   setConfirmDialog({ ...confirmDialog, isOpen: false });
-                                  addToast('تم تغيير الحالة - سيُحذف بعد 48 ساعة', 'success');
+                                  addToast(`تم تغيير الحالة إلى "${statusLabel}" - سيُحذف بعد 48 ساعة`, 'success');
                                 },
                                 type: 'warning'
                               });
                             } else {
                               apt.status = newStatus;
                               setAllApartments([...allApartments]);
-                              fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) });
+                              fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus, statusChangedAt: null }) });
                             }
                           }} className={`px-3 py-1 rounded-lg text-sm ${darkMode ? 'bg-slate-600 text-white' : 'bg-white border'}`}><option value="available">متاح</option><option value="preview">في معاينة</option><option value="reserved">محجوز</option><option value="sold">تم البيع</option><option value="rented">تم التأجير</option><option value="unavailable">غير متاح</option></select>
                           <div className="flex gap-1">
@@ -4327,6 +4429,84 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       })}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Backup Tab - النسخ الاحتياطي */}
+              {devTab === 'backup' && (
+                <div className="space-y-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center"><Database className="h-6 w-6 text-white" /></div>
+                    <div>
+                      <h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'}`}>💾 النسخ الاحتياطي والاستعادة</h3>
+                      <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>تصدير واستيراد بيانات الموقع بالكامل</p>
+                    </div>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-6">
+                    {/* Export */}
+                    <div className={`rounded-2xl p-6 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center"><Download className="h-5 w-5 text-emerald-600" /></div>
+                        <div>
+                          <h4 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>📦 تصدير نسخة احتياطية</h4>
+                          <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>تحميل جميع البيانات كملف JSON</p>
+                        </div>
+                      </div>
+                      <div className={`rounded-xl p-3 mb-4 text-xs space-y-1 ${darkMode ? 'bg-slate-600' : 'bg-white'}`}>
+                        <p className={`font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>يشمل التصدير:</p>
+                        <div className={`grid grid-cols-2 gap-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                          <span>🏠 العقارات ({allApartments.length})</span>
+                          <span>👥 المستخدمين ({allUsers.length})</span>
+                          <span>💬 التعليقات ({comments.length})</span>
+                          <span>💳 المدفوعات ({payments.length})</span>
+                          <span>📩 الرسائل</span>
+                          <span>❤️ الإعجابات ({likes.length})</span>
+                          <span>⚙️ الإعدادات</span>
+                          <span>📋 السجلات</span>
+                        </div>
+                      </div>
+                      <button onClick={handleBackup} disabled={backupLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium hover:shadow-lg hover:shadow-emerald-500/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                        {backupLoading ? <><Loader2 className="h-5 w-5 animate-spin" />جاري التصدير...</> : <><Download className="h-5 w-5" />تصدير النسخة الاحتياطية</>}
+                      </button>
+                      {backupInfo && (
+                        <div className={`mt-3 p-3 rounded-xl text-xs ${darkMode ? 'bg-emerald-900/20 border border-emerald-800/30' : 'bg-emerald-50 border border-emerald-200'}`}>
+                          <p className="text-emerald-600 font-medium">✅ آخر نسخة: {new Date(backupInfo.exportedAt).toLocaleString('ar-EG')}</p>
+                          <p className="text-emerald-500">الإصدار: {backupInfo.version}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Import */}
+                    <div className={`rounded-2xl p-6 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center"><Upload className="h-5 w-5 text-amber-600" /></div>
+                        <div>
+                          <h4 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>📥 استعادة نسخة احتياطية</h4>
+                          <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>رفع ملف JSON لاستعادة البيانات</p>
+                        </div>
+                      </div>
+                      <div className={`rounded-xl p-4 mb-4 ${darkMode ? 'bg-red-900/20 border border-red-800/30' : 'bg-red-50 border border-red-200'}`}>
+                        <p className="text-red-500 text-sm font-medium mb-2">⚠️ تحذير مهم</p>
+                        <ul className={`text-xs space-y-1 ${darkMode ? 'text-red-400' : 'text-red-500'}`}>
+                          <li>• سيتم تحديث البيانات الحالية</li>
+                          <li>• تأكد من الملف قبل الاستعادة</li>
+                          <li>• لا يمكن التراجع بعد الاستعادة</li>
+                        </ul>
+                      </div>
+                      <button onClick={handleRestore} disabled={backupRestoreLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium hover:shadow-lg hover:shadow-amber-500/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                        {backupRestoreLoading ? <><Loader2 className="h-5 w-5 animate-spin" />جاري الاستعادة...</> : <><Upload className="h-5 w-5" />اختيار ملف واستعادة</>}
+                      </button>
+                      <div className={`mt-3 p-3 rounded-xl text-xs ${darkMode ? 'bg-slate-600' : 'bg-white'}`}>
+                        <p className={`font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📋 خطوات الاستعادة:</p>
+                        <ol className={`mt-1 space-y-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                          <li>1. اختر ملف JSON النسخة الاحتياطية</li>
+                          <li>2. راجع معلومات النسخة</li>
+                          <li>3. اضغط "استعادة" للتأكيد</li>
+                        </ol>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
