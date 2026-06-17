@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
         db.inquiry.findMany({ orderBy: { createdAt: 'desc' } }),
         db.message.findMany({ orderBy: { createdAt: 'desc' } }),
         db.like.findMany({ orderBy: { createdAt: 'desc' } }),
-        db.siteSettings.findFirst(),
+        db.settings.findFirst(),
         db.editRequest.findMany({ orderBy: { createdAt: 'desc' } }),
         db.approvalLog.findMany({ orderBy: { createdAt: 'desc' } }),
         db.operationLog.findMany({ orderBy: { createdAt: 'desc' } }),
