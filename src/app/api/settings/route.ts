@@ -17,7 +17,7 @@ async function isDeveloper(request: Request): Promise<boolean> {
   if (!token) return false;
 
   try {
-    const decoded = verify(token, JWT_SECRET) as unknown as { userId: string; role?: string; identifier?: string };
+    const decoded = verify(token, JWT_SECRET!) as unknown as { userId: string; role?: string; identifier?: string };
     
     if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
 
@@ -40,7 +40,7 @@ async function getCurrentUserId(request: Request): Promise<string | null> {
   if (!token) return null;
 
   try {
-    const decoded = verify(token, JWT_SECRET) as unknown as { userId: string };
+    const decoded = verify(token, JWT_SECRET!) as unknown as { userId: string };
     return decoded.userId;
   } catch {
     return null;
