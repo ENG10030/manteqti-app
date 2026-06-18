@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { notifyRealtime } from "@/lib/realtime";
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable is not configured');
 }
@@ -17,7 +17,7 @@ async function isDeveloper(request: Request): Promise<boolean> {
   if (!token) return false;
 
   try {
-    const decoded = verify(token, JWT_SECRET) as unknown as { userId: string; role?: string; identifier?: string };
+    const decoded = verify(token, JWT_SECRET) as { userId: string; role?: string; identifier?: string };
     
     if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
 
@@ -40,7 +40,7 @@ async function getCurrentUserId(request: Request): Promise<string | null> {
   if (!token) return null;
 
   try {
-    const decoded = verify(token, JWT_SECRET) as unknown as { userId: string };
+    const decoded = verify(token, JWT_SECRET) as { userId: string };
     return decoded.userId;
   } catch {
     return null;

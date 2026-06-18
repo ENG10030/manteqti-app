@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
         db.message.findMany({ orderBy: { createdAt: 'desc' } }),
         db.like.findMany({ orderBy: { createdAt: 'desc' } }),
         db.settings.findFirst(),
-        db.editRequest.findMany({ orderBy: { createdAt: 'desc' } }),
+        db.propertyEditRequest.findMany({ orderBy: { createdAt: 'desc' } }),
         db.approvalLog.findMany({ orderBy: { createdAt: 'desc' } }),
         db.operationLog.findMany({ orderBy: { createdAt: 'desc' } }),
         db.commentActionLog.findMany({ orderBy: { createdAt: 'desc' } }),
@@ -128,13 +128,13 @@ export async function POST(request: NextRequest) {
       if (users) results.users = await importMany(db.user, users, ['identifier']);
       if (settings) {
         try {
-          const existingSettings = await db.siteSettings.findFirst();
+          const existingSettings = await db.settings.findFirst();
           if (existingSettings) {
             const { id, createdAt, updatedAt, ...updateData } = settings;
-            await db.siteSettings.update({ where: { id: existingSettings.id }, data: updateData });
+            await db.settings.update({ where: { id: existingSettings.id }, data: updateData });
           } else {
             const { id, ...createData } = settings;
-            await db.siteSettings.create({ data: createData });
+            await db.settings.create({ data: createData });
           }
           results.settings = 1;
         } catch (e) {
@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
       if (inquiries) results.inquiries = await importMany(db.inquiry, inquiries, ['id']);
       if (messages) results.messages = await importMany(db.message, messages, ['id']);
       if (likes) results.likes = await importMany(db.like, likes, ['userId', 'apartmentId']);
-      if (editRequests) results.editRequests = await importMany(db.editRequest, editRequests, ['id']);
+      if (editRequests) results.editRequests = await importMany(db.propertyEditRequest, editRequests, ['id']);
       if (approvalLogs) results.approvalLogs = await importMany(db.approvalLog, approvalLogs, ['id']);
       if (operationLogs) results.operationLogs = await importMany(db.operationLog, operationLogs, ['id']);
       if (commentActionLogs) results.commentActionLogs = await importMany(db.commentActionLog, commentActionLogs, ['id']);
