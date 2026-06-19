@@ -908,7 +908,7 @@ function App() {
               if (res.ok) {
                 addToast(data.message || 'تمت الاستعادة بنجاح ✅', 'success');
                 // Refresh all data
-                fetchAllApartments(); fetchDevData(); fetchAllUsers(); fetchBlockedUsers(); fetchPayments(); fetchAllComments(); fetchCommentActionLogs();
+                fetchApartments(); fetchDevData(); fetchAllUsers(); fetchBlockedUsers(); fetchPayments(); fetchAllComments(); fetchCommentActionLogs();
                 setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
               } else {
                 addToast(data.error || 'فشلت الاستعادة', 'error');
