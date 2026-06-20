@@ -855,7 +855,7 @@ function App() {
       const res = await fetch('/api/backup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: devPassword || process.env.NEXT_PUBLIC_DEV_PASSWORD || 'dev1234', action: 'export' }),
+        body: JSON.stringify({ password: devPassword, action: 'export' }),
       });
       const data = await res.json();
       if (res.ok && data.backup) {
@@ -902,7 +902,7 @@ function App() {
               const res = await fetch('/api/backup', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password: devPassword || process.env.NEXT_PUBLIC_DEV_PASSWORD || 'dev1234', action: 'import', backup }),
+                body: JSON.stringify({ password: devPassword, action: 'import', backup }),
               });
               const data = await res.json();
               if (res.ok) {

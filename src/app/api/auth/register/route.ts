@@ -114,14 +114,6 @@ export async function POST(request: Request) {
     return NextResponse.json({
       message: "تم إنشاء الحساب. يرجى تأكيد بريدك الإلكتروني بالرمز المرسل",
       requiresVerification: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        identifier: user.identifier,
-        role: user.role,
-        emailVerified: false,
-      },
     });
 
   } catch (error) {

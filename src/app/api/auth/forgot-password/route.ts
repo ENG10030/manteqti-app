@@ -87,11 +87,10 @@ export async function POST(request: NextRequest) {
       // Silently fail to not leak info
     }
 
+    // SECURITY: Always return the same message to prevent email enumeration
     return NextResponse.json({
       success: true,
-      message: emailSent 
-        ? 'تم إرسال رمز الاستعادة إلى بريدك الإلكتروني ✅' 
-        : 'إذا كان البريد مسجل، ستصلك رسالة لاستعادة كلمة المرور',
+      message: 'إذا كان البريد مسجل، ستصلك رسالة لاستعادة كلمة المرور',
     });
 
   } catch (error) {
