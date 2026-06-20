@@ -1,24 +1,72 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { verify } from 'jsonwebtoken';
 
-// Simple dev password check (same as dev panel)
-async function verifyDev(request: NextRequest) {
-  const { password } = await request.json().catch(() => ({}));
-  const devPassword = process.env.DEV_PASSWORD || 'dev1234';
-  return password === devPassword;
+const JWT_SECRET = process.env.JWT_SECRET;
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
+
+// Rate limiting for backup endpoint (3 attempts per 15 minutes)
+const backupRateLimit = new Map<string, { count: number; windowStart: number }>();
+
+function checkBackupRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = backupRateLimit.get(ip);
+  if (!entry || now - entry.windowStart > 15 * 60 * 1000) {
+    backupRateLimit.set(ip, { count: 1, windowStart: now });
+    return true;
+  }
+  if (entry.count >= 3) return false;
+  entry.count += 1;
+  return true;
+}
+
+// Verify developer via JWT cookie OR password
+async function verifyDev(request: NextRequest): Promise<boolean> {
+  // Check 1: JWT cookie
+  const cookieHeader = request.headers.get('cookie');
+  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, '&') || '');
+  const token = cookies.get('auth-token');
+
+  if (token && JWT_SECRET) {
+    try {
+      const decoded = verify(token, JWT_SECRET!) as unknown as { userId: string; role?: string; identifier?: string };
+      if (decoded.role === 'DEVELOPER' || decoded.identifier === DEVELOPER_EMAIL) return true;
+      const user = await db.user.findUnique({
+        where: { id: decoded.userId },
+        select: { role: true, identifier: true },
+      });
+      if (user?.role === 'DEVELOPER' || user?.identifier === DEVELOPER_EMAIL) return true;
+    } catch {}
+  }
+
+  // Check 2: body password (must also be rate limited)
+  return false;
 }
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify developer
-    if (!(await verifyDev(request))) {
-      return NextResponse.json({ error: 'كلمة مرور المطور غير صحيحة' }, { status: 403 });
+    // Rate limiting
+    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    if (!checkBackupRateLimit(clientIp)) {
+      return NextResponse.json({ error: 'طلبات كثيرة. يرجى المحاولة بعد 15 دقيقة' }, { status: 429 });
     }
 
-    const { action } = await request.json().catch(() => ({}));
+    // Parse body once
+    const body = await request.json();
+    const { password, action } = body;
+
+    // Verify developer via JWT or password
+    let isDev = await verifyDev(request);
+    if (!isDev && password) {
+      const devPassword = process.env.DEV_PASSWORD || 'dev1234';
+      isDev = password === devPassword;
+    }
+
+    if (!isDev) {
+      return NextResponse.json({ error: 'غير مصرح لك' }, { status: 403 });
+    }
 
     if (action === 'export') {
-      // Export all data as JSON backup
       const [
         apartments,
         users,
@@ -83,8 +131,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'import') {
-      // Restore from JSON backup
-      const { backup } = await request.json();
+      const { backup } = body;
       if (!backup || !backup.data) {
         return NextResponse.json({ error: 'بيانات النسخة الاحتياطية غير صالحة' }, { status: 400 });
       }
@@ -92,39 +139,32 @@ export async function POST(request: NextRequest) {
       const { apartments, users, comments, payments, inquiries, messages, likes, settings, editRequests, approvalLogs, operationLogs, commentActionLogs } = backup.data;
       const results: Record<string, number> = {};
 
-      // Helper to import with upsert
       async function importMany(model: any, records: any[], uniqueFields: string[]) {
         if (!records || records.length === 0) return 0;
         let imported = 0;
         for (const record of records) {
           try {
-            // Clean the record - remove id for new insert, keep for existing
             const cleanRecord = { ...record };
             const whereClause: any = {};
             for (const field of uniqueFields) {
               whereClause[field] = cleanRecord[field];
             }
-            // Try to find existing
             const existing = await model.findFirst({ where: whereClause });
             if (existing) {
-              // Update existing
               const { id, createdAt, updatedAt, ...updateData } = cleanRecord;
               await model.update({ where: { id: existing.id }, data: updateData });
             } else {
-              // Create new (remove id to auto-generate)
               const { id, ...createData } = cleanRecord;
               await model.create({ data: createData });
             }
             imported++;
           } catch (e) {
-            // Skip failed records
             console.error(`Import error for record:`, e);
           }
         }
         return imported;
       }
 
-      // Import in order (users first, then apartments, then related data)
       if (users) results.users = await importMany(db.user, users, ['identifier']);
       if (settings) {
         try {

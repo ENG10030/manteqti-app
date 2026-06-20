@@ -63,26 +63,24 @@ export async function POST(request: Request) {
     });
 
     if (!user) {
-      // USER_NOT_FOUND - يوجه المستخدم للتسجيل
+      // Generic error to prevent user enumeration
       return NextResponse.json({ 
-        error: "البريد الإلكتروني غير مسجل. يرجى إنشاء حساب أولاً",
-        errorCode: "USER_NOT_FOUND",
-        redirectToRegister: true
-      }, { status: 404 });
+        error: "بيانات الدخول غير صحيحة",
+        errorCode: "INVALID_CREDENTIALS"
+      }, { status: 401 });
     }
 
     const isValidPassword = await bcrypt.compare(password, user.password);
 
     if (!isValidPassword) {
-      // WRONG_PASSWORD - كلمة المرور غير صحيحة
+      // Generic error - same as user not found to prevent enumeration
       return NextResponse.json({ 
-        error: "كلمة المرور غير صحيحة",
-        errorCode: "WRONG_PASSWORD"
+        error: "بيانات الدخول غير صحيحة",
+        errorCode: "INVALID_CREDENTIALS"
       }, { status: 401 });
     }
 
     if (user.isBlocked) {
-      // ACCOUNT_BLOCKED - حساب محظور مع سبب الحظر
       return NextResponse.json({ 
         error: "تم حظر حسابك. يرجى التواصل مع الإدارة",
         errorCode: "ACCOUNT_BLOCKED",
@@ -92,8 +90,6 @@ export async function POST(request: Request) {
 
     // ⚠️ SECURITY: Check email verification (developers bypass this)
     if (!user.emailVerified && user.role !== 'DEVELOPER') {
-      // EMAIL_NOT_VERIFIED - يعيد إرسال OTP تلقائياً
-      // إعادة إرسال OTP تلقائياً
       try {
         if (process.env.RESEND_API_KEY) {
           const newOtp = crypto.randomInt(100000, 999999).toString();
