@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             name: true,
-            identifier: true,
+            // ⛔ SECURITY: Do NOT expose identifier (email) in public comments
           }
         },
         ...(includeLogs ? {
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
           select: {
             id: true,
             name: true,
-            identifier: true,
+            // ⛔ SECURITY: Do NOT expose identifier (email) in responses
           }
         }
       }

@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAiClient } from '@/lib/ai';
+import { cookies } from 'next/headers';
+import { verify } from 'jsonwebtoken';
+import { JWT_SECRET } from '@/lib/auth';
+
+// Rate limiting for AI description generation (prevent API cost abuse)
+const descRateLimit = new Map<string, { count: number; windowStart: number }>();
+const MAX_DESC_REQUESTS = 10;
+const DESC_WINDOW_MS = 60 * 60 * 1000; // 10 per hour
 
 function generateFallbackDescription(data: {
   type: string;
@@ -35,6 +43,30 @@ ${area} - موقع متميز قريب من جميع الخدمات والمرا
 
 export async function POST(request: NextRequest) {
   try {
+    // ⛔ SECURITY: Require authentication to prevent API cost abuse
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
+    }
+    try {
+      verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'جلسة غير صالحة' }, { status: 401 });
+    }
+
+    // Rate limiting by IP
+    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const now = Date.now();
+    const entry = descRateLimit.get(clientIp);
+    if (!entry || now - entry.windowStart > DESC_WINDOW_MS) {
+      descRateLimit.set(clientIp, { count: 1, windowStart: now });
+    } else if (entry.count >= MAX_DESC_REQUESTS) {
+      return NextResponse.json({ error: 'طلبات كثيرة. يرجى المحاولة بعد ساعة' }, { status: 429 });
+    } else {
+      entry.count += 1;
+    }
+
     const { type, area, bedrooms, bathrooms, features, price } = await request.json();
 
     // Try to use AI SDK for generating description

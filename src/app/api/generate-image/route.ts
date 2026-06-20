@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import { verify } from 'jsonwebtoken';
+import { JWT_SECRET } from '@/lib/auth';
 
 const PLACEHOLDER_IMAGES = [
   'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&q=80',
@@ -13,6 +16,18 @@ const PLACEHOLDER_IMAGES = [
 
 export async function POST(request: NextRequest) {
   try {
+    // ⛔ SECURITY: Require authentication
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
+    }
+    try {
+      verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'جلسة غير صالحة' }, { status: 401 });
+    }
+
     const { prompt, size = '1344x768' } = await request.json();
 
     if (!prompt) {

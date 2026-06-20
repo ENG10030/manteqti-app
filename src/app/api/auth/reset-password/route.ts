@@ -2,9 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import { sendPasswordChangedEmail } from '@/lib/email';
+import { cookies } from 'next/headers';
+import { verify } from 'jsonwebtoken';
+import { JWT_SECRET } from '@/lib/auth';
 
+// ⛔ SECURITY: GET requires auth to prevent email enumeration
 export async function GET(request: NextRequest) {
   try {
+    // Require authentication
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
+    }
+    try {
+      verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'جلسة غير صالحة' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const email = searchParams.get('email');
 
@@ -25,7 +41,6 @@ export async function GET(request: NextRequest) {
     });
 
     if (!user) {
-      // Don't reveal if user exists
       return NextResponse.json({ success: true, canReset: false });
     }
 
@@ -78,8 +93,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'انتهت صلاحية الرمز. يرجى طلب رمز جديد' }, { status: 400 });
     }
 
-    // Use bcrypt.compare since token is now hashed (TypeScript: guarded by null check above)
-    const isTokenValid = await bcrypt.compare(code, user.passwordResetToken!);
+    // Use bcrypt.compare since token is now hashed
+    const isTokenValid = await bcrypt.compare(code, user.passwordResetToken);
 
     if (!isTokenValid) {
       return NextResponse.json({ error: 'رمز الاستعادة غير صحيح' }, { status: 400 });

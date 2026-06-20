@@ -75,12 +75,17 @@ export async function POST(request: NextRequest) {
       if (user) {
         await db.approvalLog.create({
           data: {
+            entityType: 'EmailEvent',
+            entityId: emailId || 'unknown',
             action: `EMAIL_${status.toUpperCase()}`,
             userId: user.id,
-            userName: user.name || toEmail,
-            userEmail: toEmail,
-            reason: `${eventType}: ${reason || 'No reason'}`,
-            performedBy: fromEmail || 'webhook',
+            details: JSON.stringify({
+              event: eventType,
+              email: toEmail,
+              from: fromEmail,
+              reason,
+              timestamp: new Date().toISOString(),
+            }),
           },
         });
 
@@ -109,11 +114,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Health check for webhook
+// Health check for webhook (no configuration details exposed)
 export async function GET() {
-  return NextResponse.json({ 
-    status: 'ok', 
-    message: 'Resend Webhook endpoint is active',
-    hint: 'Configure in Resend Dashboard → Webhooks → POST https://your-domain.com/api/email-webhook'
-  });
+  return NextResponse.json({ status: 'ok' });
 }

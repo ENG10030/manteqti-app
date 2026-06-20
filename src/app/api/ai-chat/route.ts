@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Rate limiting for chat (prevent abuse)
+const chatRateLimit = new Map<string, { count: number; windowStart: number }>();
+const MAX_CHAT_REQUESTS = 30;
+const CHAT_WINDOW_MS = 60 * 1000; // 30 per minute
+
 // ردود ذكية مبرمجة للمساعد
 const smartResponses: { keywords: string[]; reply: string }[] = [
   {
@@ -56,6 +61,18 @@ const defaultReply = `🏠 أهلاً بك في منطقتي!
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting by IP
+    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const now = Date.now();
+    const entry = chatRateLimit.get(clientIp);
+    if (!entry || now - entry.windowStart > CHAT_WINDOW_MS) {
+      chatRateLimit.set(clientIp, { count: 1, windowStart: now });
+    } else if (entry.count >= MAX_CHAT_REQUESTS) {
+      return NextResponse.json({ reply: 'عذراً، لديك الكثير من الطلبات. يرجى المحاولة لاحقاً.' });
+    } else {
+      entry.count += 1;
+    }
+
     const body = await request.json();
     const message = (body.message || body.text || '').toLowerCase().trim();
 

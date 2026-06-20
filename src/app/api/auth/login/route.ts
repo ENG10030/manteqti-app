@@ -81,6 +81,7 @@ export async function POST(request: Request) {
     }
 
     if (user.isBlocked) {
+      // ACCOUNT_BLOCKED - حساب محظور مع سبب الحظر
       return NextResponse.json({ 
         error: "تم حظر حسابك. يرجى التواصل مع الإدارة",
         errorCode: "ACCOUNT_BLOCKED",
@@ -90,6 +91,8 @@ export async function POST(request: Request) {
 
     // ⚠️ SECURITY: Check email verification (developers bypass this)
     if (!user.emailVerified && user.role !== 'DEVELOPER') {
+      // EMAIL_NOT_VERIFIED - يعيد إرسال OTP تلقائياً
+      // إعادة إرسال OTP تلقائياً
       try {
         if (process.env.RESEND_API_KEY) {
           const newOtp = crypto.randomInt(100000, 999999).toString();

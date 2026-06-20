@@ -77,16 +77,34 @@ const DEFAULT_SETTINGS = {
 };
 
 // GET - جلب الإعدادات (public - all users see the same current settings)
-export async function GET() {
+// Supports efficient polling via ?since=timestamp parameter
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const since = searchParams.get('since');
+
     let settings = await db.settings.findFirst();
 
     if (!settings) {
       settings = await db.settings.create({ data: DEFAULT_SETTINGS });
     }
 
+    // Efficient polling: if client provides 'since' and settings haven't changed, return 304
+    if (since) {
+      const sinceDate = new Date(since);
+      if (settings.updatedAt && !isNaN(sinceDate.getTime()) && settings.updatedAt <= sinceDate) {
+        return new NextResponse(null, { status: 304 });
+      }
+    }
+
     return NextResponse.json(
-      { settings },
+      { 
+        settings: {
+          ...settings,
+          // Ensure updatedAt is always an ISO string
+          updatedAt: settings.updatedAt?.toISOString() || new Date().toISOString(),
+        }
+      },
       { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache' } }
     );
   } catch (error) {

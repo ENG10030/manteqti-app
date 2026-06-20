@@ -15,18 +15,38 @@ export async function GET(
 
     const apartment = await db.apartment.findUnique({
       where: { id },
-      include: {
-        inquiries: {
-          orderBy: { createdAt: 'desc' },
-        },
-      },
     });
 
     if (!apartment) {
       return NextResponse.json({ error: 'العقار غير موجود' }, { status: 404 });
     }
 
-    return NextResponse.json(apartment);
+    // ⛔ SECURITY: Return sanitized apartment data (no user PII, no inquiry details)
+    // Use /api/[id]/details for full details with proper auth
+    const sanitized = {
+      id: apartment.id,
+      title: apartment.title,
+      description: apartment.description,
+      price: apartment.price,
+      area: apartment.area,
+      bedrooms: apartment.bedrooms,
+      bathrooms: apartment.bathrooms,
+      floor: apartment.floor,
+      apartmentSize: apartment.apartmentSize,
+      type: apartment.type,
+      status: apartment.status,
+      imageUrl: apartment.imageUrl,
+      images: apartment.images,
+      videos: apartment.videos,
+      amenities: apartment.amenities,
+      isFeatured: apartment.isFeatured,
+      isVip: apartment.isVip,
+      views: apartment.views,
+      createdAt: apartment.createdAt,
+      updatedAt: apartment.updatedAt,
+    };
+
+    return NextResponse.json(sanitized);
   } catch (error) {
     console.error('Error fetching apartment:', error);
     return NextResponse.json({ error: 'حدث خطأ' }, { status: 500 });

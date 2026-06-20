@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAiClient } from "@/lib/ai";
+import { cookies } from 'next/headers';
+import { verify } from 'jsonwebtoken';
+import { JWT_SECRET } from '@/lib/auth';
+
+// Rate limiting for AI comparison
+const compareRateLimit = new Map<string, { count: number; windowStart: number }>();
+const MAX_COMPARE_REQUESTS = 5;
+const COMPARE_WINDOW_MS = 60 * 60 * 1000; // 5 per hour
 
 interface ApartmentData {
   id: string;
@@ -88,6 +96,30 @@ function generateMockAnalysis(apartments: ApartmentData[]) {
 
 export async function POST(request: NextRequest) {
   try {
+    // ⛔ SECURITY: Require authentication to prevent AI cost abuse
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth-token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
+    }
+    try {
+      verify(token, JWT_SECRET);
+    } catch {
+      return NextResponse.json({ error: 'جلسة غير صالحة' }, { status: 401 });
+    }
+
+    // Rate limiting by IP
+    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const now = Date.now();
+    const entry = compareRateLimit.get(clientIp);
+    if (!entry || now - entry.windowStart > COMPARE_WINDOW_MS) {
+      compareRateLimit.set(clientIp, { count: 1, windowStart: now });
+    } else if (entry.count >= MAX_COMPARE_REQUESTS) {
+      return NextResponse.json({ error: 'طلبات كثيرة. يرجى المحاولة بعد ساعة' }, { status: 429 });
+    } else {
+      entry.count += 1;
+    }
+
     const body = await request.json();
     const { apartments } = body as { apartments: ApartmentData[] };
 

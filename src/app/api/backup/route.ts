@@ -20,9 +20,8 @@ function checkBackupRateLimit(ip: string): boolean {
   return true;
 }
 
-// Verify developer via JWT cookie OR password
+// Verify developer via JWT cookie ONLY (no password fallback for security)
 async function verifyDev(request: NextRequest): Promise<boolean> {
-  // Check 1: JWT cookie
   const cookieHeader = request.headers.get('cookie');
   const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, '&') || '');
   const token = cookies.get('auth-token');
@@ -39,7 +38,7 @@ async function verifyDev(request: NextRequest): Promise<boolean> {
     } catch {}
   }
 
-  // Check 2: body password (must also be rate limited)
+  // ⛔ NO PASSWORD FALLBACK - JWT only for security
   return false;
 }
 
@@ -55,18 +54,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { password, action } = body;
 
-    // Verify developer via JWT or password
-    let isDev = await verifyDev(request);
-    if (!isDev && password) {
-      const devPassword = process.env.DEV_PASSWORD || 'dev1234';
-      isDev = password === devPassword;
-    }
+    // Verify developer via JWT ONLY
+    const isDev = await verifyDev(request);
 
     if (!isDev) {
       return NextResponse.json({ error: 'غير مصرح لك' }, { status: 403 });
     }
 
     if (action === 'export') {
+      // Export all data as JSON backup
       const [
         apartments,
         users,
@@ -131,6 +127,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'import') {
+      // Restore from JSON backup (body already parsed at top)
       const { backup } = body;
       if (!backup || !backup.data) {
         return NextResponse.json({ error: 'بيانات النسخة الاحتياطية غير صالحة' }, { status: 400 });
@@ -139,32 +136,39 @@ export async function POST(request: NextRequest) {
       const { apartments, users, comments, payments, inquiries, messages, likes, settings, editRequests, approvalLogs, operationLogs, commentActionLogs } = backup.data;
       const results: Record<string, number> = {};
 
+      // Helper to import with upsert
       async function importMany(model: any, records: any[], uniqueFields: string[]) {
         if (!records || records.length === 0) return 0;
         let imported = 0;
         for (const record of records) {
           try {
+            // Clean the record - remove id for new insert, keep for existing
             const cleanRecord = { ...record };
             const whereClause: any = {};
             for (const field of uniqueFields) {
               whereClause[field] = cleanRecord[field];
             }
+            // Try to find existing
             const existing = await model.findFirst({ where: whereClause });
             if (existing) {
+              // Update existing
               const { id, createdAt, updatedAt, ...updateData } = cleanRecord;
               await model.update({ where: { id: existing.id }, data: updateData });
             } else {
+              // Create new (remove id to auto-generate)
               const { id, ...createData } = cleanRecord;
               await model.create({ data: createData });
             }
             imported++;
           } catch (e) {
+            // Skip failed records
             console.error(`Import error for record:`, e);
           }
         }
         return imported;
       }
 
+      // Import in order (users first, then apartments, then related data)
       if (users) results.users = await importMany(db.user, users, ['identifier']);
       if (settings) {
         try {
