@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { requireApprovedUser } from '@/lib/auth-middleware';
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 
 // جلب طلبات التعديل
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET);
+      decoded = verify(token, JWT_SECRET!);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }

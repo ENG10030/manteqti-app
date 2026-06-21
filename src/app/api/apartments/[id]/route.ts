@@ -4,7 +4,7 @@ import { verify } from "jsonwebtoken";
 import { notifyApartmentsChanged } from "@/lib/realtime";
 import { sendApartmentApprovedEmail, sendApartmentRejectedEmail } from "@/lib/email";
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 
 async function getCurrentUser(request: Request) {
@@ -15,7 +15,7 @@ async function getCurrentUser(request: Request) {
   if (!token) return null;
 
   try {
-    const decoded = verify(token, JWT_SECRET) as unknown as { userId: string };
+    const decoded = verify(token, JWT_SECRET!) as unknown as { userId: string };
     return await db.user.findUnique({
       where: { id: decoded.userId },
     });
@@ -104,7 +104,7 @@ export async function PUT(
         ownerPhone: body.ownerPhone,
         mapLink: body.mapLink,
         status: body.status,
-        statusChangedAt: body.statusChangedAt ? new Date(body.statusChangedAt) : undefined,
+        statusChangedAt: body.statusChangedAt ? new Date(body.statusChangedAt) : (body.statusChangedAt === null ? null : undefined),
         isFeatured: body.isFeatured,
         isVip: body.isVip,
       },

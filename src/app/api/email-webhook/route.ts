@@ -75,15 +75,16 @@ export async function POST(request: NextRequest) {
       if (user) {
         await db.approvalLog.create({
           data: {
-            entityType: 'EmailEvent',
-            entityId: emailId || 'unknown',
             action: `EMAIL_${status.toUpperCase()}`,
             userId: user.id,
-            details: JSON.stringify({
+            userName: toEmail || 'unknown',
+            userEmail: fromEmail || null,
+            reason: JSON.stringify({
               event: eventType,
+              entityType: 'EmailEvent',
+              entityId: emailId || 'unknown',
               email: toEmail,
               from: fromEmail,
-              reason,
               timestamp: new Date().toISOString(),
             }),
           },

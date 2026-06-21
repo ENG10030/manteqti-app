@@ -6,7 +6,7 @@ import { requireApprovedUser } from '@/lib/auth-middleware';
 import { sendNewMessageEmail } from '@/lib/email';
 import { notifyRealtime } from '@/lib/realtime';
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 
 // Helper: get authenticated user from token
@@ -15,7 +15,7 @@ async function getAuthUser(request: NextRequest) {
   const token = cookieStore.get('auth-token')?.value;
   if (!token) return null;
   try {
-    const decoded = verify(token, JWT_SECRET) as unknown as { userId: string; role?: string };
+    const decoded = verify(token, JWT_SECRET!) as unknown as { userId: string; role?: string };
     return decoded;
   } catch {
     return null;

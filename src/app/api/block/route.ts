@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
 
@@ -14,7 +14,7 @@ async function isDeveloper(request: Request) {
   if (!token) return false;
 
   try {
-    const decoded = verify(token, JWT_SECRET) as unknown as { userId: string; role?: string; identifier?: string };
+    const decoded = verify(token, JWT_SECRET!) as unknown as { userId: string; role?: string; identifier?: string };
     
     // التحقق من دور DEVELOPER أو بريد المطور
     if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;

@@ -4,7 +4,7 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable is not configured');
 }
@@ -60,7 +60,7 @@ export async function getAuthContext(request: NextRequest): Promise<{ auth: Auth
 
     let decoded: { userId: string; role?: string; identifier?: string };
     try {
-      decoded = verify(token, JWT_SECRET) as unknown as typeof decoded;
+      decoded = verify(token, JWT_SECRET!) as unknown as typeof decoded;
       if (!decoded.userId) {
         return { auth: null, errorResponse: NextResponse.json({ error: 'رمز المصادقة غير صالح' }, { status: 401 }) };
       }

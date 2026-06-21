@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 
 // جلب طلب تعديل محدد
@@ -18,7 +18,7 @@ export async function GET(
       return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
     }
     try {
-      verify(token, JWT_SECRET);
+      verify(token, JWT_SECRET!);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
@@ -63,7 +63,7 @@ export async function PUT(
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET);
+      decoded = verify(token, JWT_SECRET!);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }
@@ -185,7 +185,7 @@ export async function DELETE(
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET);
+      decoded = verify(token, JWT_SECRET!);
     } catch {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
     }

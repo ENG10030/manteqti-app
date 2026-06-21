@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
     }
     try {
-      verify(token, JWT_SECRET);
+      verify(token, JWT_SECRET!);
     } catch {
       return NextResponse.json({ error: 'جلسة غير صالحة' }, { status: 401 });
     }

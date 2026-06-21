@@ -65,7 +65,7 @@ export async function PUT(
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET);
+      decoded = verify(token, JWT_SECRET!);
     } catch {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }
@@ -141,7 +141,7 @@ export async function DELETE(
     }
     let decoded: any;
     try {
-      decoded = verify(token, JWT_SECRET);
+      decoded = verify(token, JWT_SECRET!);
     } catch {
       return NextResponse.json({ error: "غير مصرح" }, { status: 401 });
     }
