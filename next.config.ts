@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  // External packages - don't bundle, resolve at runtime (with .catch fallback in routes)
+  // External packages - don't bundle, resolve at runtime (with .catch fallback)
   serverExternalPackages: ["z-ai-web-dev-sdk"],
 };
 
