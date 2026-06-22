@@ -5,9 +5,9 @@ import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 import { timingSafeEqual } from 'crypto';
 
-// Rate limiting per IP (5 attempts per 15 minutes)
+// Rate limiting per IP (3 attempts per 15 minutes — stricter than user login)
 const rateLimitMap = new Map<string, { count: number; windowStart: number }>();
-const MAX_ATTEMPTS = 5;
+const MAX_ATTEMPTS = 3;
 const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
 function getClientIp(request: NextRequest): string {
@@ -49,9 +49,18 @@ export async function POST(request: NextRequest) {
 
     const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
     const DEVELOPER_PASSWORD = process.env.DEVELOPER_PASSWORD;
+    const DEVELOPER_IP_WHITELIST = process.env.DEVELOPER_IP_WHITELIST;
 
     if (!DEVELOPER_PASSWORD) {
       return NextResponse.json({ error: 'بيانات المطور غير مهيأة' }, { status: 500 });
+    }
+
+    // Optional IP whitelist for extra security
+    if (DEVELOPER_IP_WHITELIST) {
+      const allowedIps = DEVELOPER_IP_WHITELIST.split(',').map(ip => ip.trim());
+      if (!allowedIps.includes(clientIp)) {
+        return NextResponse.json({ error: 'بيانات الدخول غير صحيحة' }, { status: 401 });
+      }
     }
 
     if (email === DEVELOPER_EMAIL && safeCompare(password, DEVELOPER_PASSWORD)) {
@@ -60,13 +69,25 @@ export async function POST(request: NextRequest) {
         user = await db.user.findUnique({
           where: { identifier: DEVELOPER_EMAIL }
         });
+
+        // If user exists but password out of sync, update it
+        if (user && user.role === 'DEVELOPER') {
+          const isMatch = await bcrypt.compare(DEVELOPER_PASSWORD, user.password);
+          if (!isMatch) {
+            const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 12);
+            await db.user.update({
+              where: { id: user.id },
+              data: { password: hashedPassword }
+            });
+          }
+        }
       } catch {
         return NextResponse.json({ error: 'خطأ في قاعدة البيانات' }, { status: 500 });
       }
 
       if (!user) {
         try {
-          const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 10);
+          const hashedPassword = await bcrypt.hash(DEVELOPER_PASSWORD, 12);
           user = await db.user.create({
             data: {
               email: DEVELOPER_EMAIL,

@@ -17,10 +17,11 @@ export function isValidEmail(email: string): boolean {
 }
 
 /**
- * Validate password strength (at least 6 chars with complexity)
+ * Validate password strength (at least 8 chars with complexity)
+ * Matches the minimum enforced in register and reset-password routes
  */
 export function isStrongPassword(password: string): boolean {
-  if (password.length < 6) return false;
+  if (password.length < 8) return false;
   let score = 0;
   if (/[a-z]/.test(password)) score++;
   if (/[A-Z]/.test(password)) score++;

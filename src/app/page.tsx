@@ -678,18 +678,28 @@ function App() {
     });
   };
 
-  // Fetch settings
+  // Track last settings update timestamp for efficient polling (304 support)
+  const settingsLastUpdatedRef = useRef<string | null>(null);
+
+  // Fetch settings - uses ?since= for efficient 304 polling
   const fetchSettings = async () => {
     try {
-      const res = await fetch('/api/settings');
+      let url = '/api/settings';
+      if (settingsLastUpdatedRef.current) {
+        url += `?since=${encodeURIComponent(settingsLastUpdatedRef.current)}`;
+      }
+      const res = await fetch(url);
+      if (res.status === 304) return; // No changes - skip
       const data = await res.json();
       if (res.ok) {
         const s = data.settings || data;
-        setSettings({ 
-          contactFee: s.contactFee ?? 50, 
+        // Save the updatedAt timestamp for next poll
+        if (s.updatedAt) settingsLastUpdatedRef.current = s.updatedAt;
+        setSettings({
+          contactFee: s.contactFee ?? 50,
           regularFee: s.regularFee ?? 30,
-          featuredFee: s.featuredFee ?? 100, 
-          premiumFee: s.premiumFee ?? 200, 
+          featuredFee: s.featuredFee ?? 100,
+          premiumFee: s.premiumFee ?? 200,
           vipFee: s.vipFee ?? 300,
           saleDisplayFee: s.saleDisplayFee ?? 100,
           rentDisplayFee: s.rentDisplayFee ?? 75,
@@ -704,12 +714,24 @@ function App() {
   };
   useEffect(() => { fetchSettingsRef.current = fetchSettings; });
 
-  // Auto-refresh settings every 30 seconds so users see developer changes immediately
+  // Fast settings polling every 5 seconds with efficient 304 support
+  // Settings are lightweight (single DB row) so frequent polling is fine
   useEffect(() => {
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       fetchSettingsRef.current?.();
-    }, 30000);
+    }, 5000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Immediate settings fetch when tab becomes visible again
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const handler = () => {
+      if (!document.hidden) fetchSettingsRef.current?.();
+    };
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
   }, []);
 
   // Update settings
@@ -1040,6 +1062,7 @@ function App() {
   }, [isDeveloper, currentUser]);
 
   // Smart auto-refresh every 30 seconds with visibility API (skip when tab hidden)
+  // Settings use their own fast 5s poll — this handles apartments and messages only
   useEffect(() => {
     const interval = setInterval(async () => {
       if (initialLoadRef.current) return;
@@ -1047,7 +1070,6 @@ function App() {
       if (typeof document !== 'undefined' && document.hidden) return;
       // Use refs for stable access to latest functions
       await Promise.allSettled([
-        fetchSettingsRef.current?.(),
         fetchApartmentsRef.current?.(0, false),
         ...(currentUserRef.current ? [fetchMessagesRef.current?.()] : []),
       ]);

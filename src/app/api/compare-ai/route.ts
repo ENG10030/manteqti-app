@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAiClient } from "@/lib/ai";
-import { cookies } from 'next/headers';
-import { verify } from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
+import { getAuthContext } from '@/lib/auth-middleware';
 
 // Rate limiting for AI comparison
 const compareRateLimit = new Map<string, { count: number; windowStart: number }>();
@@ -97,16 +95,8 @@ function generateMockAnalysis(apartments: ApartmentData[]) {
 export async function POST(request: NextRequest) {
   try {
     // ⛔ SECURITY: Require authentication to prevent AI cost abuse
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 });
-    }
-    try {
-      verify(token, JWT_SECRET!);
-    } catch {
-      return NextResponse.json({ error: 'جلسة غير صالحة' }, { status: 401 });
-    }
+    const { auth, errorResponse } = await getAuthContext(request);
+    if (errorResponse || !auth) return errorResponse;
 
     // Rate limiting by IP
     const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';

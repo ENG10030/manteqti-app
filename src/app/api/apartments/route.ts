@@ -123,6 +123,14 @@ export async function POST(request: Request) {
       );
     }
 
+    // Email verification required (developers bypass)
+    if (!user.emailVerified && user.role !== 'DEVELOPER') {
+      return NextResponse.json(
+        { error: "يجب تأكيد بريدك الإلكتروني أولاً. تحقق من صندوق البريد", needVerification: true },
+        { status: 403 }
+      );
+    }
+
     // Only approved users or developers can create apartments
     if (!user.isApproved && user.role !== 'DEVELOPER') {
       return NextResponse.json(
@@ -158,12 +166,18 @@ export async function POST(request: Request) {
     // المطور ينشر مباشرة، المستخدم العادي يرسل للمراجعة
     const status = user.role === "DEVELOPER" ? "available" : "pending";
 
+    // Sanitize text inputs to prevent XSS in stored data
+    const sanitize = (s: string) => s.replace(/<[^>]*>/g, '').trim().slice(0, 500);
+    const sanitizedTitle = sanitize(String(title));
+    const sanitizedDescription = sanitize(String(description || ""));
+    const sanitizedArea = sanitize(String(area));
+
     const apartment = await db.apartment.create({
       data: {
-        title,
-        description: description || "",
+        title: sanitizedTitle,
+        description: sanitizedDescription,
         price: parseInt(price),
-        area,
+        area: sanitizedArea,
         bedrooms: parseInt(bedrooms) || 1,
         bathrooms: parseInt(bathrooms) || 1,
         floor: floor ? parseInt(floor) : null,

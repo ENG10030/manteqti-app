@@ -14,6 +14,7 @@ export interface AuthContext {
   role: string;
   isApproved: boolean;
   isBlocked: boolean;
+  emailVerified: boolean;
   identifier: string;
 }
 
@@ -76,6 +77,7 @@ export async function getAuthContext(request: NextRequest): Promise<{ auth: Auth
         role: true,
         isApproved: true,
         isBlocked: true,
+        emailVerified: true,
         identifier: true,
       },
     });
@@ -95,6 +97,7 @@ export async function getAuthContext(request: NextRequest): Promise<{ auth: Auth
         role: user.role,
         isApproved: user.isApproved,
         isBlocked: user.isBlocked,
+        emailVerified: user.emailVerified,
         identifier: user.identifier,
       },
       errorResponse: null,
@@ -115,9 +118,17 @@ export async function requireApprovedUser(request: NextRequest): Promise<{ auth:
     return { auth: null, errorResponse: errorResponse as NextResponse };
   }
 
-  // Developers always pass (they bypass approval)
+  // Developers always pass (they bypass approval and email verification)
   if (auth.role === 'DEVELOPER') {
     return { auth, errorResponse: null };
+  }
+
+  // Users must have verified their email before taking actions
+  if (!auth.emailVerified) {
+    return {
+      auth: null,
+      errorResponse: NextResponse.json({ error: 'يجب تأكيد بريدك الإلكتروني أولاً. تحقق من صندوق البريد', needVerification: true }, { status: 403 }),
+    };
   }
 
   // Regular users must be approved

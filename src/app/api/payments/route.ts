@@ -1,31 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { cookies } from 'next/headers';
-import { verify } from 'jsonwebtoken';
+import { requireApprovedUser, requireDeveloper, getAuthContext } from '@/lib/auth-middleware';
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
-
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET!);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
+    const { auth, errorResponse } = await getAuthContext(request);
+    if (errorResponse || !auth) return errorResponse;
 
-    const isDeveloper = decoded.role === 'DEVELOPER';
+    const isDeveloper = auth.role === 'DEVELOPER';
 
     // المطور يرى كل المدفوعات، المستخدم العادي يرى مدفوعاته فقط
     const where: any = {};
     if (!isDeveloper) {
-      where.userId = decoded.userId;
+      where.userId = auth.userId;
     }
 
     const payments = await db.payment.findMany({
@@ -73,17 +60,8 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET!);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
+    const { auth, errorResponse } = await requireApprovedUser(request);
+    if (errorResponse || !auth) return errorResponse;
 
     const data = await request.json();
 
@@ -96,7 +74,7 @@ export async function POST(request: NextRequest) {
         amount: data.amount,
         transactionRef: data.transactionRef,
         paymentLink: data.paymentLink,
-        userId: decoded.userId
+        userId: auth.userId
       }
     });
 
@@ -121,21 +99,8 @@ export async function POST(request: NextRequest) {
 // Body: { ids: string[] } لحذف محددة, أو {} لحذف الكل
 export async function DELETE(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth-token')?.value;
-    if (!token) {
-      return NextResponse.json({ error: 'يجب تسجيل الدخول' }, { status: 401 });
-    }
-    let decoded: any;
-    try {
-      decoded = verify(token, JWT_SECRET!);
-    } catch {
-      return NextResponse.json({ error: 'غير مصرح' }, { status: 401 });
-    }
-
-    if (decoded.role !== 'DEVELOPER') {
-      return NextResponse.json({ error: 'غير مصرح - للمطور فقط' }, { status: 403 });
-    }
+    const { auth, errorResponse } = await requireDeveloper(request);
+    if (errorResponse || !auth) return errorResponse;
 
     const body = await request.json();
     const ids: string[] = body.ids;
