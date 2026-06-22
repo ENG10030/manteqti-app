@@ -83,10 +83,33 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const since = searchParams.get('since');
 
-    let settings = await db.settings.findFirst();
+    let settings;
+    try {
+      settings = await db.settings.findFirst();
+    } catch {
+      // Table might not exist yet in production
+      settings = null;
+    }
 
     if (!settings) {
-      settings = await db.settings.create({ data: DEFAULT_SETTINGS });
+      try {
+        settings = await db.settings.create({ data: DEFAULT_SETTINGS });
+      } catch {
+        // If create also fails, return defaults without saving
+        return NextResponse.json({
+          settings: {
+            id: 'default',
+            ...DEFAULT_SETTINGS,
+            usdtTronAddress: null,
+            paymentAutoConfirm: false,
+            paymentSecurityPin: null,
+            walletMinCharge: 10,
+            walletMaxCharge: 50000,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }
+        });
+      }
     }
 
     // Efficient polling: if client provides 'since' and settings haven't changed, return 304

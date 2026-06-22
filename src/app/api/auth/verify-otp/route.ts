@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
     // Generate JWT token and set auth-token cookie (same as login)
     const token = sign(
       { userId: updatedUser.id, identifier: updatedUser.identifier, role: updatedUser.role },
-      JWT_SECRET,
+      JWT_SECRET!,
       { expiresIn: '7d' }
     );
 

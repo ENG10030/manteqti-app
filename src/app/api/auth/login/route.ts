@@ -129,7 +129,7 @@ export async function POST(request: Request) {
 
     const token = sign(
       { userId: user.id, identifier: user.identifier, role: user.role },
-      JWT_SECRET,
+      JWT_SECRET!,
       { expiresIn: "7d" }
     );
 

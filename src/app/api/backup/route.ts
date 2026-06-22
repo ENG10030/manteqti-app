@@ -50,16 +50,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'طلبات كثيرة. يرجى المحاولة بعد 15 دقيقة' }, { status: 429 });
     }
 
-    // Parse body once
-    const body = await request.json();
-    const { password, action } = body;
-
-    // Verify developer via JWT ONLY
+    // Verify developer via JWT ONLY (before parsing body)
     const isDev = await verifyDev(request);
-
     if (!isDev) {
       return NextResponse.json({ error: 'غير مصرح لك' }, { status: 403 });
     }
+
+    // Parse body after auth check
+    let body: any;
+    try {
+      body = await request.json();
+    } catch {
+      body = {};
+    }
+    const { action } = body;
 
     if (action === 'export') {
       // Export all data as JSON backup

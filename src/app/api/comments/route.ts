@@ -22,7 +22,13 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, unknown> = {};
     if (apartmentId) where.apartmentId = apartmentId;
-    if (status) where.status = status;
+    // ⛔ SECURITY: Only allow filtering by status if explicitly requested
+    // By default, hide pending/rejected comments from public
+    if (!status) {
+      where.status = 'approved';
+    } else {
+      where.status = status;
+    }
     if (userId) where.userId = userId;
 
     const comments = await db.comment.findMany({

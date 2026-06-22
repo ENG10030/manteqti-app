@@ -117,5 +117,5 @@ export async function POST(request: NextRequest) {
 
 // Health check for webhook (no configuration details exposed)
 export async function GET() {
-  return NextResponse.json({ status: 'ok' });
+  return NextResponse.json({ error: 'Method not allowed' }, { status: 405 });
 }

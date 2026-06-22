@@ -29,11 +29,7 @@ function checkRateLimit(ip: string): boolean {
 }
 
 function safeCompare(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    // Still do a constant-time comparison to avoid timing leaks on length difference
-    timingSafeEqual(Buffer.from(a), Buffer.from(b));
-    return false;
-  }
+  if (a.length !== b.length) return false;
   return timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }
 
@@ -90,7 +86,7 @@ export async function POST(request: NextRequest) {
 
       const token = jwt.sign(
         { userId: user.id, identifier: user.identifier, role: user.role },
-        JWT_SECRET,
+        JWT_SECRET!,
         { expiresIn: '7d' }
       );
 
@@ -125,7 +121,7 @@ export async function POST(request: NextRequest) {
 
     const token = jwt.sign(
       { userId: user.id, identifier: user.identifier, role: user.role },
-      JWT_SECRET,
+      JWT_SECRET!,
       { expiresIn: '7d' }
     );
 

@@ -88,7 +88,13 @@ export async function GET(request: Request) {
       ],
     });
 
-    return NextResponse.json(apartments);
+    // ⛔ SECURITY: Remove ownerPhone from public response
+    const sanitizedApartments = apartments.map(apt => {
+      const { ownerPhone, ...safeApt } = apt;
+      return safeApt;
+    });
+
+    return NextResponse.json(sanitizedApartments);
   } catch (error: any) {
     console.error("Get apartments error:", error);
     return NextResponse.json(

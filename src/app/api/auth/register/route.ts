@@ -72,7 +72,13 @@ export async function POST(request: Request) {
     });
 
     if (existingUser) {
-      return NextResponse.json({ error: "البريد الإلكتروني مستخدم بالفعل" }, { status: 400 });
+      // If the existing user never verified their email (OTP expired), allow re-registration
+      if (!existingUser.emailVerified) {
+        // Delete the old unverified account and allow re-registration
+        await db.user.delete({ where: { id: existingUser.id } });
+      } else {
+        return NextResponse.json({ error: "البريد الإلكتروني مستخدم بالفعل" }, { status: 400 });
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
