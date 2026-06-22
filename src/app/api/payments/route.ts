@@ -5,7 +5,7 @@ import { requireApprovedUser, requireDeveloper, getAuthContext } from '@/lib/aut
 export async function GET(request: NextRequest) {
   try {
     const { auth, errorResponse } = await getAuthContext(request);
-    if (errorResponse || !auth) return errorResponse;
+    if (!auth) return errorResponse!;
 
     const isDeveloper = auth.role === 'DEVELOPER';
 
@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { auth, errorResponse } = await requireApprovedUser(request);
-    if (errorResponse || !auth) return errorResponse;
+    if (!auth) return errorResponse!;
 
     const data = await request.json();
 
@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const { auth, errorResponse } = await requireDeveloper(request);
-    if (errorResponse || !auth) return errorResponse;
+    if (!auth) return errorResponse!;
 
     const body = await request.json();
     const ids: string[] = body.ids;

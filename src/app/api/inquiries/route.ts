@@ -7,7 +7,7 @@ import { requireApprovedUser, getAuthContext } from '@/lib/auth-middleware';
 export async function GET(request: NextRequest) {
   try {
     const { auth, errorResponse } = await getAuthContext(request);
-    if (errorResponse || !auth) return errorResponse;
+    if (!auth) return errorResponse!;
 
     if (auth.role !== 'DEVELOPER') {
       return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { auth, errorResponse } = await requireApprovedUser(request);
-    if (errorResponse || !auth) return errorResponse;
+    if (!auth) return errorResponse!;
 
     const data = await request.json();
 

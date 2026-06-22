@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
   try {
     // ⛔ SECURITY: Require authentication to prevent AI cost abuse
     const { auth, errorResponse } = await getAuthContext(request);
-    if (errorResponse || !auth) return errorResponse;
+    if (!auth) return errorResponse!;
 
     // Rate limiting by IP
     const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
