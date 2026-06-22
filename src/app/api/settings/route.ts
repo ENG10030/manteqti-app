@@ -1,61 +1,36 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
-import { notifyRealtime } from "@/lib/realtime";
 
 const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET environment variable is not configured');
-}
 const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || "ahmadmamdouh10030@gmail.com";
 
 async function isDeveloper(request: Request): Promise<boolean> {
   const cookieHeader = request.headers.get("cookie");
   const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
   const token = cookies.get("auth-token");
-
   if (!token) return false;
 
   try {
     const decoded = verify(token, JWT_SECRET!) as unknown as { userId: string; role?: string; identifier?: string };
-    
     if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
-
     const user = await db.user.findUnique({
       where: { id: decoded.userId },
       select: { role: true, identifier: true },
     });
-
     return user?.role === "DEVELOPER" || user?.identifier === DEVELOPER_EMAIL;
   } catch {
     return false;
   }
 }
 
-async function getCurrentUserId(request: Request): Promise<string | null> {
-  const cookieHeader = request.headers.get("cookie");
-  const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
-  const token = cookies.get("auth-token");
-
-  if (!token) return null;
-
-  try {
-    const decoded = verify(token, JWT_SECRET!) as unknown as { userId: string };
-    return decoded.userId;
-  } catch {
-    return null;
-  }
-}
-
-// Validate fee value - must be non-negative integer
-function validateFee(value: any): number {
-  const num = parseInt(value);
+function validateFee(value: unknown): number {
+  const num = parseInt(String(value));
   if (isNaN(num) || num < 0) return 0;
   return num;
 }
 
-// Validate currency - max 10 chars, no HTML
-function validateCurrency(value: any): string {
+function validateCurrency(value: unknown): string {
   if (typeof value !== 'string') return 'ج.م';
   const sanitized = value.replace(/<[^>]*>/g, '').trim().slice(0, 10);
   return sanitized || 'ج.م';
@@ -76,8 +51,8 @@ const DEFAULT_SETTINGS = {
   currency: "ج.م",
 };
 
-// GET - جلب الإعدادات (public - all users see the same current settings)
-// Supports efficient polling via ?since=timestamp parameter
+// GET - جلب الإعدادات (public)
+// يدعم الـ polling الفعال عبر ?since=timestamp
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -87,7 +62,6 @@ export async function GET(request: Request) {
     try {
       settings = await db.settings.findFirst();
     } catch {
-      // Table might not exist yet in production
       settings = null;
     }
 
@@ -95,7 +69,6 @@ export async function GET(request: Request) {
       try {
         settings = await db.settings.create({ data: DEFAULT_SETTINGS });
       } catch {
-        // If create also fails, return defaults without saving
         return NextResponse.json({
           settings: {
             id: 'default',
@@ -112,7 +85,7 @@ export async function GET(request: Request) {
       }
     }
 
-    // Efficient polling: if client provides 'since' and settings haven't changed, return 304
+    // 304: لو الإعدادات لم تتغير منذ آخر تحقق
     if (since) {
       const sinceDate = new Date(since);
       if (settings.updatedAt && !isNaN(sinceDate.getTime()) && settings.updatedAt <= sinceDate) {
@@ -121,10 +94,9 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json(
-      { 
+      {
         settings: {
           ...settings,
-          // Ensure updatedAt is always an ISO string
           updatedAt: settings.updatedAt?.toISOString() || new Date().toISOString(),
         }
       },
@@ -132,14 +104,11 @@ export async function GET(request: Request) {
     );
   } catch (error) {
     console.error("Get settings error:", error);
-    return NextResponse.json(
-      { error: "حدث خطأ أثناء جلب الإعدادات" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "حدث خطأ أثناء جلب الإعدادات" }, { status: 500 });
   }
 }
 
-// PUT - تحديث الإعدادات (developer only) - changes take effect immediately for ALL users
+// PUT - تحديث الإعدادات (developer only)
 export async function PUT(request: Request) {
   try {
     if (!(await isDeveloper(request))) {
@@ -148,8 +117,8 @@ export async function PUT(request: Request) {
 
     const body = await request.json();
 
-    // Server-side validation
-    const validatedData = {
+    // التحقق من صحة القيم
+    const updateData: Record<string, unknown> = {
       contactFee: validateFee(body.contactFee),
       regularFee: validateFee(body.regularFee),
       featuredFee: validateFee(body.featuredFee),
@@ -164,33 +133,43 @@ export async function PUT(request: Request) {
       currency: validateCurrency(body.currency),
     };
 
-    let settings = await db.settings.findFirst();
+    // تحديث أو إنشاء الإعدادات
+    const existing = await db.settings.findFirst();
 
-    if (!settings) {
-      settings = await db.settings.create({ data: validatedData });
+    let settings;
+    if (!existing) {
+      settings = await db.settings.create({ data: updateData });
     } else {
       settings = await db.settings.update({
-        where: { id: settings.id },
-        data: validatedData,
+        where: { id: existing.id },
+        data: updateData,
       });
     }
 
-    // Log settings change
-    const currentUserId = await getCurrentUserId(request);
+    // تسجيل العملية (بدون تعطيل العملية لو فشل)
     try {
+      const cookieHeader = request.headers.get("cookie");
+      const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
+      const token = cookies.get("auth-token");
+      let userId: string | null = null;
+      if (token) {
+        try {
+          const decoded = verify(token, JWT_SECRET!) as unknown as { userId: string };
+          userId = decoded.userId;
+        } catch {}
+      }
       await db.operationLog.create({
         data: {
           action: 'UPDATE_SETTINGS',
           entityType: 'Settings',
           entityId: settings.id,
-          userId: currentUserId,
-          details: JSON.stringify(validatedData),
+          userId,
+          details: JSON.stringify(updateData),
         },
       });
-    } catch {}
-
-    // Notify ALL connected clients about settings change immediately
-    notifyRealtime('settings-updated', validatedData);
+    } catch {
+      // ignore log errors
+    }
 
     return NextResponse.json({
       message: "تم تحديث الإعدادات بنجاح ✅",
@@ -198,9 +177,6 @@ export async function PUT(request: Request) {
     });
   } catch (error) {
     console.error("Update settings error:", error);
-    return NextResponse.json(
-      { error: "حدث خطأ أثناء تحديث الإعدادات" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "حدث خطأ أثناء تحديث الإعدادات" }, { status: 500 });
   }
 }
