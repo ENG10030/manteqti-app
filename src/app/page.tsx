@@ -2443,16 +2443,12 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               <div>
                 <h1 className="text-2xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent">منطقتي | Manteqti</h1>
                 <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لوحة الشقق الذكية</p>
-                <div className={`mt-1.5 flex items-center gap-2 px-2.5 py-1.5 rounded-lg ${darkMode ? 'bg-slate-800/60 border border-slate-700/50' : 'bg-slate-50 border border-slate-200/60'}`}>
-                  <div className="flex items-center gap-1.5">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold tracking-wider text-white bg-gradient-to-r from-blue-600 to-blue-500 shadow-sm shadow-blue-500/20`}>EIG</span>
-                    <span className={`text-[11px] font-semibold tracking-wide ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>ENGINEERS INTEGRATED GROUP</span>
-                    <span className={`text-[11px] font-medium ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>· Developed by</span>
-                  </div>
-                  <div className={`w-px h-3 ${darkMode ? 'bg-slate-600' : 'bg-slate-300'}`}></div>
-                  <div className="flex items-center gap-1.5">
-                    <span className={`text-[11px] font-semibold ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>مجموعة المهندسين المتكاملة</span>
-                    <span className={`text-[11px] font-medium ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>· مطور الموقع</span>
+                <div className="mt-2 flex items-center justify-center">
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-black tracking-widest text-white bg-purple-700">ECG</span>
+                  <div className="mr-2 flex flex-col leading-tight">
+                    <span className={`text-[10px] ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Developed by</span>
+                    <span className={`text-[13px] font-bold tracking-wide ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>ENGINEERS Integrated GROUP</span>
+                    <span className={`text-[11px] font-medium ${darkMode ? 'text-slate-300' : 'text-slate-600'}`} dir="rtl">مجموعة المهندسون الشاملة - شركة المطور</span>
                   </div>
                 </div>
               </div>
@@ -2878,16 +2874,12 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
       <footer className={`relative z-10 mt-auto py-6 border-t ${darkMode ? 'bg-slate-900/80 border-slate-700' : 'bg-white/80 border-slate-200'} backdrop-blur`}>
         <div className="max-w-7xl mx-auto px-4 text-center">
           <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>© 2026 منطقتي | Manteqti - جميع الحقوق محفوظة</p>
-          <div className={`mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg ${darkMode ? 'bg-slate-800/60 border border-slate-700/50' : 'bg-slate-50 border border-slate-200/60'}`}>
-            <div className="flex items-center gap-1.5">
-              <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold tracking-wider text-white bg-gradient-to-r from-blue-600 to-blue-500`}>EIG</span>
-              <span className={`text-[11px] font-semibold tracking-wide ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>ENGINEERS INTEGRATED GROUP</span>
-              <span className={`text-[11px] font-medium ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>· Developed by</span>
-            </div>
-            <div className={`w-px h-3 ${darkMode ? 'bg-slate-600' : 'bg-slate-300'}`}></div>
-            <div className="flex items-center gap-1.5">
-              <span className={`text-[11px] font-semibold ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>مجموعة المهندسين المتكاملة</span>
-              <span className={`text-[11px] font-medium ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>· مطور الموقع</span>
+          <div className="mt-3 flex items-center justify-center">
+            <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-black tracking-widest text-white bg-purple-700">ECG</span>
+            <div className="mr-2 flex flex-col leading-tight">
+              <span className={`text-[10px] ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Developed by</span>
+              <span className={`text-[13px] font-bold tracking-wide ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>ENGINEERS Integrated GROUP</span>
+              <span className={`text-[11px] font-medium ${darkMode ? 'text-slate-300' : 'text-slate-600'}`} dir="rtl">مجموعة المهندسون الشاملة - شركة المطور</span>
             </div>
           </div>
         </div>
