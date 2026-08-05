@@ -407,6 +407,67 @@ function App() {
     return () => { cancelled = true; if (socketRef.current) { socketRef.current.disconnect(); socketRef.current = null; } };
   }, []); // Empty deps = connect only ONCE on mount
 
+  // ========== REAL-TIME CHANGES POLLING (بدون socket.io) ==========
+  // بيشتغل على Vercel - كل 3 ثواني بيشوف في تغييرات جديدة
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let lastCheckTime = new Date().toISOString();
+    let cancelled = false;
+
+    const pollChanges = async () => {
+      if (cancelled) return;
+      try {
+        const res = await fetch(`/api/changes?since=${encodeURIComponent(lastCheckTime)}`);
+        if (!res.ok || cancelled) return;
+        const { changes, serverTime } = await res.json();
+        if (!changes || changes.length === 0) return;
+
+        // تحديث الوقت للـ poll الجاية
+        if (serverTime) lastCheckTime = serverTime;
+
+        // أنواع التغييرات وتحديث الداتا المناسبة
+        const types = new Set(changes.map((c: { type: string }) => c.type));
+        
+        if (types.has('settings')) {
+          fetchSettingsRef.current?.();
+        }
+        if (types.has('apartments')) {
+          fetchApartmentsRef.current?.(0, false);
+        }
+        if (types.has('messages')) {
+          fetchMessagesRef.current?.();
+        }
+        if (types.has('inquiries') || types.has('payments') || types.has('users')) {
+          fetchDevDataRef.current?.();
+        }
+        if (types.has('payments')) {
+          fetchUserPaymentsRef.current?.();
+        }
+        if (types.has('users')) {
+          recheckAuthRef.current?.();
+        }
+      } catch {
+        // silent - next poll will retry
+      }
+    };
+
+    const interval = setInterval(() => {
+      if (!document.hidden) pollChanges();
+    }, 3000);
+
+    // لما التاب يرجع focuses، جيب التغييرات فوراً
+    const handleVisibility = () => {
+      if (!document.hidden) pollChanges();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
   useEffect(() => { fetchUserPaymentsRef.current = fetchUserPayments; });
   useEffect(() => { recheckAuthRef.current = recheckAuth; });
 
