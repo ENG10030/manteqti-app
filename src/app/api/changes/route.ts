@@ -74,15 +74,15 @@ export async function GET(request: Request) {
         const msgChanges = await db.message.findMany({
           where: {
             OR: [
-              { senderId: userId, updatedAt: { gt: since } },
-              { receiverId: userId, updatedAt: { gt: since } },
+              { senderId: userId, createdAt: { gt: since } },
+              { receiverId: userId, createdAt: { gt: since } },
             ],
           },
-          select: { id: true, updatedAt: true },
+          select: { id: true, createdAt: true },
           take: 10,
         });
         for (const msg of msgChanges) {
-          changes.push({ type: 'messages', id: msg.id, action: 'updated', updatedAt: msg.updatedAt.toISOString() });
+          changes.push({ type: 'messages', id: msg.id, action: 'updated', updatedAt: msg.createdAt.toISOString() });
         }
       } catch {}
     }
