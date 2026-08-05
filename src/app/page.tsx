@@ -51,7 +51,24 @@ interface Inquiry { id: string; apartmentId: string; userId?: string; name: stri
 interface Payment { id: string; inquiryId: string; method: string; status: string; amount: number; userId?: string; createdAt: string; inquiry?: { id: string; apartmentId: string; name: string; email: string; phone: string; apartment?: { id: string; title: string; price: number } | null } | null; }
 
 interface Toast { id: string; message: string; type: 'success' | 'error' | 'info'; }
-interface User { id: string; identifier: string; name: string; emailVerified?: boolean; isApproved?: boolean; }
+interface User { id: string; identifier: string; name: string; emailVerified?: boolean; isApproved?: boolean; walletBalance?: number; }
+
+// معاملة المحفظة
+interface WalletTransaction {
+  id: string;
+  userId: string;
+  amount: number;
+  balance: number;
+  method: string;
+  reference?: string;
+  status: string;
+  type: string;
+  description?: string;
+  notes?: string;
+  reviewedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 // Edit Request Interface
 interface PropertyEditRequest {
@@ -297,6 +314,21 @@ function App() {
   const [aiAction, setAiAction] = useState<string | null>(null);
   const [aiResponse, setAiResponse] = useState<string>('');
   const [aiLoading, setAiLoading] = useState(false);
+
+  // ========== حالة المحفظة ==========
+  const [showWallet, setShowWallet] = useState(false);
+  const [walletTab, setWalletTab] = useState<'charge' | 'transactions'>('charge');
+  const [walletTransactions, setWalletTransactions] = useState<WalletTransaction[]>([]);
+  const [walletTransactionsLoading, setWalletTransactionsLoading] = useState(false);
+  const [chargeAmount, setChargeAmount] = useState('');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+  const [cardType, setCardType] = useState<'visa' | 'mastercard' | 'amex' | null>(null);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   // Operation Logs
   const [operationLogs, setOperationLogs] = useState<any[]>([]);
@@ -568,6 +600,90 @@ function App() {
     init();
     return () => { cancelled = true; };
   }, []); // Run ONCE on mount — no cascade!
+
+  // ========== دالة جلب معاملات المحفظة ==========
+  const fetchWalletTransactions = async () => {
+    setWalletTransactionsLoading(true);
+    try {
+      const res = await fetch('/api/wallet/transactions');
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setWalletTransactions(data);
+      }
+    } catch {
+      // سنتعامل مع الأخطاء بصمت
+    } finally {
+      setWalletTransactionsLoading(false);
+    }
+  };
+
+  // ========== دالة معالجة الشحن ==========
+  const handleWalletCharge = async () => {
+    const amount = parseInt(chargeAmount);
+    if (!amount || amount <= 0) { addToast('يرجى إدخال مبلغ صحيح', 'error'); return; }
+    if (!selectedPaymentMethod) { addToast('يرجى اختيار طريقة الدفع', 'error'); return; }
+    if (selectedPaymentMethod === 'visa') {
+      if (!cardNumber || cardNumber.replace(/\s/g, '').length < 16) { addToast('يرجى إدخال رقم البطاقة بشكل صحيح', 'error'); return; }
+      if (!cardExpiry || cardExpiry.length < 5) { addToast('يرجى إدخال تاريخ الانتهاء', 'error'); return; }
+      if (!cardCvv || cardCvv.length < 3) { addToast('يرجى إدخال رمز الأمان', 'error'); return; }
+    }
+    setIsProcessingPayment(true);
+    try {
+      const res = await fetch('/api/wallet/charge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount,
+          method: selectedPaymentMethod,
+          cardNumber: selectedPaymentMethod === 'visa' ? cardNumber : undefined,
+          cardExpiry: selectedPaymentMethod === 'visa' ? cardExpiry : undefined,
+          cardCvv: selectedPaymentMethod === 'visa' ? cardCvv : undefined,
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        // تحديث رصيد المستخدم الحالي
+        if (data.balance !== undefined) {
+          setCurrentUser(prev => prev ? { ...prev, walletBalance: data.balance } : null);
+          currentUserRef.current = currentUserRef.current ? { ...currentUserRef.current, walletBalance: data.balance } : null;
+        }
+        setShowPaymentSuccess(true);
+        setShowConfetti(true);
+        setTimeout(() => setShowConfetti(false), 4000);
+        // إعادة تعيين الحقول
+        setChargeAmount('');
+        setSelectedPaymentMethod('');
+        setCardNumber('');
+        setCardExpiry('');
+        setCardCvv('');
+        setCardType(null);
+        fetchWalletTransactions();
+        setTimeout(() => setShowPaymentSuccess(false), 3000);
+      } else {
+        addToast(data.error || 'فشل عملية الشحن', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ أثناء عملية الشحن، حاول مرة أخرى', 'error');
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
+  // ========== دالة تحويل الوقت النسبي ==========
+  const getRelativeTime = (dateStr: string): string => {
+    const now = new Date();
+    const date = new Date(dateStr);
+    const diffMs = now.getTime() - date.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHour / 24);
+    if (diffSec < 60) return 'الآن';
+    if (diffMin < 60) return `منذ ${diffMin} دقيقة`;
+    if (diffHour < 24) return `منذ ${diffHour} ساعة`;
+    if (diffDay < 30) return `منذ ${diffDay} يوم`;
+    return date.toLocaleDateString('ar-EG');
+  };
 
   const fetchUserPayments = async () => {
     try {
@@ -2327,15 +2443,17 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               <div>
                 <h1 className="text-2xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent">منطقتي | Manteqti</h1>
                 <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لوحة الشقق الذكية</p>
-                <div className="mt-2 flex flex-col items-start">
+                <div className={`mt-1.5 flex items-center gap-2 px-2.5 py-1.5 rounded-lg ${darkMode ? 'bg-slate-800/60 border border-slate-700/50' : 'bg-slate-50 border border-slate-200/60'}`}>
                   <div className="flex items-center gap-1.5">
-                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-[10px] font-black tracking-wider text-white bg-gradient-to-br from-violet-600 to-indigo-600 shadow-md shadow-violet-600/30">ECG</span>
-                    <div className="flex flex-col leading-tight">
-                      <span className={`text-[10px] ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Developed by</span>
-                      <span className={`text-[12px] font-bold tracking-wide ${darkMode ? 'text-violet-300' : 'text-violet-700'}`}>ENGINEERS Integrated GROUP</span>
-                    </div>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold tracking-wider text-white bg-gradient-to-r from-blue-600 to-blue-500 shadow-sm shadow-blue-500/20`}>EIG</span>
+                    <span className={`text-[11px] font-semibold tracking-wide ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>ENGINEERS INTEGRATED GROUP</span>
+                    <span className={`text-[11px] font-medium ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>· Developed by</span>
                   </div>
-                  <span className={`text-[11px] font-semibold mt-0.5 pr-[34px] ${darkMode ? 'text-slate-300' : 'text-slate-600'}`} dir="rtl">مجموعة المهندسون الشاملة - شركة المطور</span>
+                  <div className={`w-px h-3 ${darkMode ? 'bg-slate-600' : 'bg-slate-300'}`}></div>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[11px] font-semibold ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>مجموعة المهندسين المتكاملة</span>
+                    <span className={`text-[11px] font-medium ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>· مطور الموقع</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2379,6 +2497,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     {myPendingApartments.length > 0 && <span className="absolute -top-1 -left-1 w-5 h-5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center">{myPendingApartments.length}</span>}
                   </button>
                   <button onClick={() => { fetchUserPayments(); setShowMyPayments(true); }} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-100 hover:bg-slate-200'} transition-all`} title="المدفوعات"><CreditCard className="h-4 w-4" /></button>
+                  <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { fetchWalletTransactions(); setShowWallet(true); }} className="p-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/20" title="المحفظة"><Wallet className="h-4 w-4" /></motion.button>
                   <button onClick={handleLogout} className="p-3 rounded-xl bg-rose-500/10 text-rose-500"><LogOut className="h-5 w-5" /></button>
                 </div>
               ) : (
@@ -2759,15 +2878,17 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
       <footer className={`relative z-10 mt-auto py-6 border-t ${darkMode ? 'bg-slate-900/80 border-slate-700' : 'bg-white/80 border-slate-200'} backdrop-blur`}>
         <div className="max-w-7xl mx-auto px-4 text-center">
           <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>© 2026 منطقتي | Manteqti - جميع الحقوق محفوظة</p>
-          <div className="mt-3 flex flex-col items-center">
+          <div className={`mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg ${darkMode ? 'bg-slate-800/60 border border-slate-700/50' : 'bg-slate-50 border border-slate-200/60'}`}>
             <div className="flex items-center gap-1.5">
-              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-[10px] font-black tracking-wider text-white bg-gradient-to-br from-violet-600 to-indigo-600 shadow-md shadow-violet-600/30">ECG</span>
-              <div className="flex flex-col leading-tight">
-                <span className={`text-[10px] ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Developed by</span>
-                <span className={`text-[12px] font-bold tracking-wide ${darkMode ? 'text-violet-300' : 'text-violet-700'}`}>ENGINEERS Integrated GROUP</span>
-              </div>
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold tracking-wider text-white bg-gradient-to-r from-blue-600 to-blue-500`}>EIG</span>
+              <span className={`text-[11px] font-semibold tracking-wide ${darkMode ? 'text-blue-300' : 'text-blue-700'}`}>ENGINEERS INTEGRATED GROUP</span>
+              <span className={`text-[11px] font-medium ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>· Developed by</span>
             </div>
-            <span className={`text-[11px] font-semibold mt-0.5 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`} dir="rtl">مجموعة المهندسون الشاملة - شركة المطور</span>
+            <div className={`w-px h-3 ${darkMode ? 'bg-slate-600' : 'bg-slate-300'}`}></div>
+            <div className="flex items-center gap-1.5">
+              <span className={`text-[11px] font-semibold ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>مجموعة المهندسين المتكاملة</span>
+              <span className={`text-[11px] font-medium ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>· مطور الموقع</span>
+            </div>
           </div>
         </div>
       </footer>
@@ -2815,6 +2936,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
   <>
     <button onClick={() => { fetchMyPendingApartments(); setShowMyPending(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><User className="h-5 w-5" />حسابي{myPendingApartments.length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-amber-500 text-white text-xs">{myPendingApartments.length}</span>}</button>
     <button onClick={() => { fetchUserPayments(); setShowMyPayments(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><CreditCard className="h-5 w-5" />المدفوعات</button>
+    <button onClick={() => { fetchWalletTransactions(); setShowWallet(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white"><Wallet className="h-5 w-5" />المحفظة{currentUser?.walletBalance !== undefined && currentUser.walletBalance > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-white/20 text-xs">{currentUser.walletBalance.toLocaleString()} ج.م</span>}</button>
     <button onClick={() => { handleLogout(); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-red-400' : 'bg-slate-100 text-red-500'}`}><LogOut className="h-5 w-5" />تسجيل الخروج</button>
   </>
 ) : (
@@ -4348,6 +4470,56 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     </div>
                     <p className={`text-xs mt-2 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>💡 الأسعار تتحدث للمستخدمين تلقائياً بدون تحديث الصفحة</p>
                   </div>
+
+                  {/* ========== إعدادات المحفظة والدفع ========== */}
+                  <div className={`p-4 rounded-xl border-2 ${darkMode ? 'bg-slate-700 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200'}`}>
+                    <h3 className={`font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Wallet className="h-5 w-5 text-emerald-500" />إعدادات المحفظة والدفع</h3>
+
+                    {/* بطاقات طرق الدفع */}
+                    <p className={`text-sm font-medium mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>💳 طرق الدفع المتاحة:</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
+                      {[
+                        { name: 'فودافون كاش', icon: Smartphone, color: 'border-r-orange-500', iconBg: 'bg-orange-100 text-orange-600', account: '01012345678' },
+                        { name: 'أورانج ماني', icon: Smartphone, color: 'border-r-blue-500', iconBg: 'bg-blue-100 text-blue-600', account: '01234567890' },
+                        { name: 'إتصالات كاش', icon: Smartphone, color: 'border-r-yellow-500', iconBg: 'bg-yellow-100 text-yellow-600', account: '01555555555' },
+                        { name: 'إنستاباي', icon: Zap, color: 'border-r-purple-500', iconBg: 'bg-purple-100 text-purple-600', account: '@manteqti' },
+                        { name: 'تحويل بنكي', icon: Building2, color: 'border-r-slate-500', iconBg: 'bg-slate-100 text-slate-600', account: 'مصر فيروز - 123456' },
+                      ].map(m => (
+                        <div key={m.name} className={`flex items-center gap-3 p-3 rounded-xl border-r-4 ${m.color} ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm`}>
+                          <div className={`w-9 h-9 rounded-lg ${m.iconBg} flex items-center justify-center shrink-0`}><m.icon className="h-4 w-4" /></div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{m.name}</p>
+                            <p className={`text-xs font-mono ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{m.account}</p>
+                          </div>
+                          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" style={{ boxShadow: '0 0 8px rgba(52,211,153,0.6)' }} />
+                        </div>
+                      ))}
+                      {/* بطاقة فيزا مع مفتاح تبديل */}
+                      <div className={`flex items-center gap-3 p-3 rounded-xl border-r-4 border-r-indigo-500 ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm`}>
+                        <div className="w-9 h-9 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0"><CreditCard className="h-4 w-4" /></div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>بطاقة فيزا</p>
+                          <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>دفع مباشر بالبطاقة</p>
+                        </div>
+                        <div className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${true ? 'bg-emerald-500' : darkMode ? 'bg-slate-500' : 'bg-slate-300'}`}>
+                          <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${true ? 'left-5' : 'left-0.5'}`} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* حدود الشحن */}
+                    <p className={`text-sm font-medium mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📊 حدود الشحن:</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm`}>
+                        <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>💳 حد أدنى للشحن</p>
+                        <p className="text-2xl font-bold text-emerald-500 mt-1">10 <span className="text-sm font-normal">ج.م</span></p>
+                      </div>
+                      <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm`}>
+                        <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>💎 حد أقصى للشحن</p>
+                        <p className="text-2xl font-bold text-amber-500 mt-1">50,000 <span className="text-sm font-normal">ج.م</span></p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -4682,6 +4854,297 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
             </div>
             )}
             <button onClick={() => handlePayment()} disabled={settings.contactFee !== 0 && (!paymentMethod || paymentSubmitting)} className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium disabled:opacity-50">{paymentSubmitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : settings.contactFee === 0 ? 'الحصول مجاناً ✨' : 'تأكيد الطلب'}</button>
+          </motion.div>
+        </motion.div>
+      )}</AnimatePresence>
+
+      {/* ========== المحفظة - واجهة الشحن والمعاملات ========== */}
+      <AnimatePresence>{showWallet && (currentUser || isDeveloper) && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => { setShowWallet(false); setShowPaymentSuccess(false); setSelectedPaymentMethod(''); setChargeAmount(''); setCardNumber(''); setCardExpiry(''); setCardCvv(''); setCardType(null); }}>
+          <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-lg rounded-2xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
+
+            {/* === رأس المحفظة - تدرج أخضر === */}
+            <div className="relative bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 p-6 text-white">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center"><Wallet className="h-5 w-5" /></div>
+                  <h2 className="text-xl font-bold">المحفظة</h2>
+                </div>
+                <button onClick={() => { setShowWallet(false); setShowPaymentSuccess(false); setSelectedPaymentMethod(''); setChargeAmount(''); }} className="p-2 rounded-xl bg-white/20 hover:bg-white/30 transition-colors"><X className="h-5 w-5" /></button>
+              </div>
+              <div className="text-center">
+                <p className="text-white/80 text-sm mb-1">رصيدك الحالي</p>
+                <motion.p key={currentUser?.walletBalance ?? 0} initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="text-4xl font-bold" style={{ textShadow: '0 2px 10px rgba(0,0,0,0.2)' }}>
+                  {(currentUser?.walletBalance ?? 0).toLocaleString()}
+                </motion.p>
+                <p className="text-white/80 text-sm">ج.م</p>
+              </div>
+              <motion.div animate={{ scale: [1, 1.03, 1] }} transition={{ duration: 2, repeat: Infinity }} className="absolute top-4 left-4 w-3 h-3 rounded-full bg-emerald-300/50" />
+            </div>
+
+            {/* === التبويبات المتحركة === */}
+            <div className={`flex border-b ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+              {([ { key: 'charge' as const, label: 'شحن' }, { key: 'transactions' as const, label: 'معاملات' } ]).map(tab => (
+                <button key={tab.key} onClick={() => setWalletTab(tab.key)} className={`flex-1 py-3.5 text-sm font-medium relative transition-colors ${walletTab === tab.key ? 'text-emerald-600' : darkMode ? 'text-slate-400 hover:text-slate-300' : 'text-slate-500 hover:text-slate-700'}`}>
+                  <span className="flex items-center justify-center gap-2">
+                    {tab.key === 'charge' ? <Plus className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
+                    {tab.label}
+                  </span>
+                  {walletTab === tab.key && <motion.div layoutId="wallet-tab-indicator" className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-emerald-500 to-teal-500" />}
+                </button>
+              ))}
+            </div>
+
+            {/* === محتوى التبويبات === */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <AnimatePresence mode="wait">
+
+                {/* ========= تبويب الشحن ========= */}
+                {walletTab === 'charge' && (
+                  <motion.div key="charge" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }} className="space-y-5">
+
+                    {/* === رسالة نجاح الشحن === */}
+                    {showPaymentSuccess && (
+                      <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className={`text-center py-6 rounded-xl ${darkMode ? 'bg-emerald-900/30 border border-emerald-700' : 'bg-emerald-50 border border-emerald-200'}`}>
+                        <CheckCircle2 className="h-16 w-16 mx-auto mb-3 text-emerald-500" />
+                        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="text-xl font-bold text-emerald-600">تم بنجاح!</motion.p>
+                        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className={`text-sm mt-1 ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>تم شحن رصيدك</motion.p>
+                        <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs ${darkMode ? 'bg-emerald-800/40 text-emerald-300' : 'bg-emerald-100 text-emerald-700'}`}><ShieldCheck className="h-3.5 w-3.5" />معاملة آمنة ومؤمنة</div>
+                      </motion.div>
+                    )}
+
+                    {!showPaymentSuccess && (
+                      <>
+                        {/* === شبكة المبالغ السريعة === */}
+                        <div>
+                          <p className={`text-sm font-medium mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>اختر المبلغ</p>
+                          <div className="grid grid-cols-3 gap-3">
+                            {[50, 100, 200, 500, 1000, 2000].map(amount => (
+                              <motion.button key={amount} whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} onClick={() => setChargeAmount(String(amount))} className={`py-3.5 rounded-xl text-center font-bold transition-all ${chargeAmount === String(amount) ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30 scale-[1.05]' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'}`}>
+                                {amount}
+                                <span className="text-xs font-normal block">ج.م</span>
+                              </motion.button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* === إدخال مبلغ مخصص === */}
+                        <div>
+                          <p className={`text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>أو أدخل مبلغ مخصص</p>
+                          <div className="relative">
+                            <input type="number" value={chargeAmount} onChange={(e) => setChargeAmount(e.target.value)} placeholder="0" min="1" className={`w-full px-4 py-3.5 pr-14 rounded-xl border-2 text-lg font-bold transition-all ${chargeAmount && !['50','100','200','500','1000','2000'].includes(chargeAmount) ? 'border-emerald-500' : darkMode ? 'border-slate-600 bg-slate-700 text-white' : 'border-slate-200 bg-white text-slate-900'}`} />
+                            <span className={`absolute left-4 top-1/2 -translate-y-1/2 text-sm font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>ج.م</span>
+                          </div>
+                        </div>
+
+                        {/* === طرق الدفع === */}
+                        <div>
+                          <p className={`text-sm font-medium mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>طريقة الدفع</p>
+                          <div className="grid grid-cols-2 gap-3">
+                            {[
+                              { id: 'vodafone_cash', name: 'فودافون كاش', icon: Smartphone, color: 'from-orange-500 to-red-500', ring: 'ring-orange-500' },
+                              { id: 'orange_money', name: 'أورانج ماني', icon: Smartphone, color: 'from-blue-500 to-blue-600', ring: 'ring-blue-500' },
+                              { id: 'etisalat_cash', name: 'إتصالات كاش', icon: Smartphone, color: 'from-yellow-400 to-amber-500', ring: 'ring-yellow-500' },
+                              { id: 'instapay', name: 'إنستاباي', icon: Zap, color: 'from-purple-500 to-violet-600', ring: 'ring-purple-500' },
+                              { id: 'bank_transfer', name: 'تحويل بنكي', icon: Building2, color: 'from-slate-500 to-slate-600', ring: 'ring-slate-500' },
+                              { id: 'visa', name: 'بطاقة فيزا', icon: CreditCard, color: 'from-indigo-500 to-blue-600', ring: 'ring-indigo-500' },
+                            ].map(method => (
+                              <motion.button key={method.id} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => { setSelectedPaymentMethod(method.id); if (method.id !== 'visa') { setCardNumber(''); setCardExpiry(''); setCardCvv(''); setCardType(null); } }} className={`relative p-4 rounded-xl border-2 text-right transition-all ${selectedPaymentMethod === method.id ? `border-emerald-500 ${darkMode ? 'bg-emerald-900/20' : 'bg-emerald-50'} ring-2 ring-emerald-500/30` : darkMode ? 'border-slate-700 bg-slate-700/50 hover:border-slate-600' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${method.color} flex items-center justify-center`}><method.icon className="h-4 w-4 text-white" /></div>
+                                  <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{method.name}</span>
+                                </div>
+                                {selectedPaymentMethod === method.id && <div className="absolute top-2 left-2 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center"><Check className="h-3 w-3 text-white" /></div>}
+                              </motion.button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* === تعليمات طريقة الدفع === */}
+                        <AnimatePresence>
+                          {selectedPaymentMethod && selectedPaymentMethod !== 'visa' && (
+                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                              <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                                <p className={`text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📋 تعليمات الدفع:</p>
+                                {selectedPaymentMethod === 'vodafone_cash' && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>📱 أرسل المبلغ إلى رقم فودافون كاش الخاص بالمنصة، ثم اضغط تأكيد الشحن وسيتم مراجعة العملية.</p>}
+                                {selectedPaymentMethod === 'orange_money' && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>📱 أرسل المبلغ إلى رقم أورانج ماني الخاص بالمنصة، ثم اضغط تأكيد الشحن وسيتم مراجعة العملية.</p>}
+                                {selectedPaymentMethod === 'etisalat_cash' && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>📱 أرسل المبلغ إلى رقم إتصالات كاش الخاص بالمنصة، ثم اضغط تأكيد الشحن وسيتم مراجعة العملية.</p>}
+                                {selectedPaymentMethod === 'instapay' && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>⚡ أرسل المبلغ عبر إنستاباي إلى حساب المنصة، ثم اضغط تأكيد الشحن وسيتم مراجعة العملية.</p>}
+                                {selectedPaymentMethod === 'bank_transfer' && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>🏦 قم بتحويل المبلغ إلى الحساب البنكي الخاص بالمنصة، ثم اضغط تأكيد الشحن وسيتم مراجعة العملية.</p>}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+
+                        {/* === نموذج البطاقة (فيزا) === */}
+                        <AnimatePresence>
+                          {selectedPaymentMethod === 'visa' && (
+                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                              <div className="space-y-4">
+                                {/* بطاقة 3D معاينة */}
+                                <div className="perspective-[1000px]">
+                                  <motion.div
+                                    onMouseMove={(e) => {
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      const x = (e.clientX - rect.left) / rect.width - 0.5;
+                                      const rotY = x * 20;
+                                      e.currentTarget.style.transform = `perspective(1000px) rotateY(${rotY}deg)`;
+                                    }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.transform = 'perspective(1000px) rotateY(0deg)'; }}
+                                    className={`w-full aspect-[1.6/1] rounded-2xl p-5 flex flex-col justify-between transition-transform duration-200 ease-out bg-gradient-to-br ${cardType === 'amex' ? 'from-blue-600 to-blue-800' : 'from-slate-800 to-slate-900'} text-white shadow-2xl overflow-hidden relative`}
+                                  >
+                                    {/* شريحة ذهبية */}
+                                    <div className="flex items-center justify-between">
+                                      <div className="w-12 h-9 rounded-md bg-gradient-to-br from-amber-300 to-amber-500 shadow-inner" />
+                                      <div className="text-right">
+                                        {cardType === 'visa' && <span className="text-2xl font-bold italic tracking-wider" style={{ color: '#1a1f71' }}>VISA</span>}
+                                        {cardType === 'mastercard' && <div className="flex gap-1"><span className="w-7 h-7 rounded-full bg-red-500 opacity-90" /><span className="w-7 h-7 rounded-full bg-amber-400 opacity-90 -ml-3" /></div>}
+                                        {cardType === 'amex' && <span className="text-xl font-bold" style={{ color: '#006fcf' }}>AMEX</span>}
+                                        {!cardType && <CreditCard className="h-6 w-6 text-white/50" />}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <p className="text-lg font-mono tracking-[0.25em] mb-3">
+                                        {cardNumber ? cardNumber.split('').map((ch, i) => i >= cardNumber.length - 4 ? ch : '•').join('') : '•••• •••• •••• ••••'}
+                                      </p>
+                                      <div className="flex items-center justify-between text-sm">
+                                        <div><p className="text-white/50 text-[10px]">حامل البطاقة</p><p className="font-medium">{currentUser?.name || '---'}</p></div>
+                                        <div className="text-left"><p className="text-white/50 text-[10px]">تاريخ الانتهاء</p><p className="font-medium font-mono">{cardExpiry || 'MM/YY'}</p></div>
+                                      </div>
+                                    </div>
+                                  </motion.div>
+                                </div>
+
+                                {/* حقول الإدخال */}
+                                <div className="space-y-3">
+                                  <div>
+                                    <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رقم البطاقة</label>
+                                    <input type="text" value={cardNumber} onChange={(e) => {
+                                      const raw = e.target.value.replace(/\D/g, '').slice(0, 16);
+                                      const formatted = raw.replace(/(\d{4})/g, '$1 ').trim();
+                                      setCardNumber(formatted);
+                                      // كشف نوع البططة تلقائياً
+                                      if (raw.startsWith('4')) setCardType('visa');
+                                      else if (raw.startsWith('5')) setCardType('mastercard');
+                                      else if (raw.startsWith('3')) setCardType('amex');
+                                      else setCardType(null);
+                                    }} placeholder="0000 0000 0000 0000" className={`w-full px-4 py-3 rounded-xl border font-mono text-lg tracking-wider ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} dir="ltr" />
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>تاريخ الانتهاء</label>
+                                      <input type="text" value={cardExpiry} onChange={(e) => {
+                                        let v = e.target.value.replace(/\D/g, '').slice(0, 4);
+                                        if (v.length >= 3) v = v.slice(0, 2) + '/' + v.slice(2);
+                                        setCardExpiry(v);
+                                      }} placeholder="MM/YY" className={`w-full px-4 py-3 rounded-xl border font-mono text-lg ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} dir="ltr" />
+                                    </div>
+                                    <div>
+                                      <label className={`block text-sm font-medium mb-1.5 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رمز الأمان</label>
+                                      <input type="password" value={cardCvv} onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="•••" maxLength={4} className={`w-full px-4 py-3 rounded-xl border font-mono text-lg ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} dir="ltr" />
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+
+                        {/* === زر تأكيد الشحن === */}
+                        <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} onClick={handleWalletCharge} disabled={!chargeAmount || parseInt(chargeAmount) <= 0 || !selectedPaymentMethod || isProcessingPayment} className="w-full py-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-lg disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2">
+                          {isProcessingPayment ? (
+                            <>
+                              {/* حركة المعالجة - دائرتين متداخلتين */}
+                              <div className="relative w-6 h-6">
+                                <div className="absolute inset-0 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                <div className="absolute inset-1 border-2 border-white/20 border-b-white rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '0.6s' }} />
+                              </div>
+                              <span>جاري المعالجة...</span>
+                            </>
+                          ) : (
+                            <><ArrowUp className="h-5 w-5" /><span>شحن الرصيد ({chargeAmount ? parseInt(chargeAmount).toLocaleString() : '0'} ج.م)</span></>
+                          )}
+                        </motion.button>
+                      </>
+                    )}
+                  </motion.div>
+                )}
+
+                {/* ========= تبويب المعاملات ========= */}
+                {walletTab === 'transactions' && (
+                  <motion.div key="transactions" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
+                    {walletTransactionsLoading ? (
+                      <div className="flex flex-col items-center py-16 gap-3"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>جاري تحميل المعاملات...</p></div>
+                    ) : walletTransactions.length === 0 ? (
+                      <div className="flex flex-col items-center py-16 gap-3">
+                        <div className={`w-20 h-20 rounded-full flex items-center justify-center ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}><Clock className={`h-10 w-10 ${darkMode ? 'text-slate-500' : 'text-slate-300'}`} /></div>
+                        <p className={`text-lg font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لا توجد معاملات بعد</p>
+                        <p className={`text-sm ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>ابدأ بشحن رصيدك لرؤية المعاملات هنا</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {walletTransactions.map(tx => {
+                          const isPositive = tx.type === 'charge' || tx.amount > 0;
+                          const statusConfig: Record<string, { label: string; cls: string }> = {
+                            pending: { label: 'قيد المراجعة', cls: 'bg-amber-100 text-amber-700' },
+                            completed: { label: 'مكتمل', cls: 'bg-emerald-100 text-emerald-700' },
+                            failed: { label: 'فشل', cls: 'bg-red-100 text-red-700' },
+                          };
+                          const st = statusConfig[tx.status] || { label: tx.status, cls: 'bg-slate-100 text-slate-600' };
+                          const methodIcons: Record<string, any> = {
+                            vodafone_cash: <Smartphone className="h-4 w-4 text-orange-500" />,
+                            orange_money: <Smartphone className="h-4 w-4 text-blue-500" />,
+                            etisalat_cash: <Smartphone className="h-4 w-4 text-yellow-500" />,
+                            instapay: <Zap className="h-4 w-4 text-purple-500" />,
+                            bank_transfer: <Building2 className="h-4 w-4 text-slate-500" />,
+                            visa: <CreditCard className="h-4 w-4 text-indigo-500" />,
+                          };
+                          return (
+                            <div key={tx.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'} flex items-center gap-3`}>
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isPositive ? 'bg-emerald-100' : 'bg-red-100'}`}>{methodIcons[tx.method] || <Wallet className="h-4 w-4 text-slate-400" />}</div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <p className={`font-medium text-sm truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{tx.description || `شحن رصيد - ${tx.method}`}</p>
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0 ${st.cls}`}>{st.label}</span>
+                                </div>
+                                <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{getRelativeTime(tx.createdAt)}</p>
+                              </div>
+                              <div className="text-left shrink-0">
+                                <p className={`font-bold ${isPositive ? 'text-emerald-500' : 'text-red-500'}`}>{isPositive ? '+' : '-'}{Math.abs(tx.amount).toLocaleString()} <span className="text-xs font-normal">ج.م</span></p>
+                                <p className={`text-[10px] ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>رصيد: {tx.balance.toLocaleString()}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* === تأثير الكونفيتي === */}
+            {showConfetti && (
+              <div className="absolute inset-0 pointer-events-none overflow-hidden z-50">
+                <style>{`
+                  @keyframes wallet-confetti-fall {
+                    0% { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+                    100% { transform: translateY(500px) rotate(720deg); opacity: 0; }
+                  }
+                `}</style>
+                {Array.from({ length: 50 }).map((_, i) => {
+                  const colors = ['#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#3b82f6', '#ec4899', '#14b8a6'];
+                  const color = colors[i % colors.length];
+                  const left = Math.random() * 100;
+                  const delay = Math.random() * 1.5;
+                  const size = 6 + Math.random() * 8;
+                  const rotation = Math.random() * 360;
+                  return (
+                    <div key={i} className="absolute rounded-sm" style={{ left: `${left}%`, top: '-10px', width: `${size}px`, height: `${size}px`, backgroundColor: color, transform: `rotate(${rotation}deg)`, animation: `wallet-confetti-fall ${2 + Math.random() * 2}s ease-in ${delay}s forwards` }} />
+                  );
+                })}
+              </div>
+            )}
           </motion.div>
         </motion.div>
       )}</AnimatePresence>
