@@ -4467,48 +4467,70 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                   <div className={`p-4 rounded-xl border-2 ${darkMode ? 'bg-slate-700 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200'}`}>
                     <h3 className={`font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Wallet className="h-5 w-5 text-emerald-500" />إعدادات المحفظة والدفع</h3>
 
-                    {/* بطاقات طرق الدفع */}
-                    <p className={`text-sm font-medium mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>💳 طرق الدفع المتاحة:</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
+                    {/* تصنيف: محافظ جوال */}
+                    <p className={`text-xs font-bold tracking-wider uppercase mb-2 ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>📱 محافظ جوال</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 mb-4">
                       {[
-                        { name: 'فودافون كاش', icon: Smartphone, color: 'border-r-orange-500', iconBg: 'bg-orange-100 text-orange-600', account: '01012345678' },
-                        { name: 'أورانج ماني', icon: Smartphone, color: 'border-r-blue-500', iconBg: 'bg-blue-100 text-blue-600', account: '01234567890' },
-                        { name: 'إتصالات كاش', icon: Smartphone, color: 'border-r-yellow-500', iconBg: 'bg-yellow-100 text-yellow-600', account: '01555555555' },
-                        { name: 'إنستاباي', icon: Zap, color: 'border-r-purple-500', iconBg: 'bg-purple-100 text-purple-600', account: '@manteqti' },
-                        { name: 'تحويل بنكي', icon: Building2, color: 'border-r-slate-500', iconBg: 'bg-slate-100 text-slate-600', account: 'مصر فيروز - 123456' },
+                        { name: 'فودافون كاش', short: 'VF', color: 'border-r-orange-500', iconBg: 'bg-orange-100 text-orange-600', account: '01012345678', num: '0101 234 5678' },
+                        { name: 'أورانج ماني', short: 'OR', color: 'border-r-blue-500', iconBg: 'bg-blue-100 text-blue-600', account: '01234567890', num: '0123 456 7890' },
+                        { name: 'إتصالات كاش', short: 'ET', color: 'border-r-yellow-500', iconBg: 'bg-yellow-100 text-yellow-600', account: '01555555555', num: '0155 555 5555' },
                       ].map(m => (
-                        <div key={m.name} className={`flex items-center gap-3 p-3 rounded-xl border-r-4 ${m.color} ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm`}>
-                          <div className={`w-9 h-9 rounded-lg ${m.iconBg} flex items-center justify-center shrink-0`}><m.icon className="h-4 w-4" /></div>
+                        <div key={m.name} className={`flex items-center gap-2.5 p-2.5 rounded-xl border-r-4 ${m.color} ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm`}>
+                          <div className={`w-8 h-8 rounded-lg ${m.iconBg} flex items-center justify-center shrink-0 text-[10px] font-black`}>{m.short}</div>
                           <div className="flex-1 min-w-0">
-                            <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{m.name}</p>
-                            <p className={`text-xs font-mono ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{m.account}</p>
+                            <p className={`text-xs font-bold truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{m.name}</p>
+                            <p className={`text-[10px] font-mono ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{m.num}</p>
                           </div>
-                          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" style={{ boxShadow: '0 0 8px rgba(52,211,153,0.6)' }} />
+                          <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 2, repeat: Infinity }} className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" style={{ boxShadow: '0 0 10px rgba(52,211,153,0.8)' }} />
                         </div>
                       ))}
-                      {/* بطاقة فيزا مع مفتاح تبديل */}
-                      <div className={`flex items-center gap-3 p-3 rounded-xl border-r-4 border-r-indigo-500 ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm`}>
-                        <div className="w-9 h-9 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0"><CreditCard className="h-4 w-4" /></div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>بطاقة فيزا</p>
-                          <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>دفع مباشر بالبطاقة</p>
-                        </div>
-                        <div className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${true ? 'bg-emerald-500' : darkMode ? 'bg-slate-500' : 'bg-slate-300'}`}>
-                          <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${true ? 'left-5' : 'left-0.5'}`} />
-                        </div>
-                      </div>
                     </div>
 
-                    {/* حدود الشحن */}
-                    <p className={`text-sm font-medium mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📊 حدود الشحن:</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm`}>
-                        <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>💳 حد أدنى للشحن</p>
-                        <p className="text-2xl font-bold text-emerald-500 mt-1">10 <span className="text-sm font-normal">ج.م</span></p>
+                    {/* تصنيف: إنستاباي */}
+                    <p className={`text-xs font-bold tracking-wider uppercase mb-2 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>⚡ إنستاباي</p>
+                    <div className={`flex items-center gap-2.5 p-2.5 rounded-xl border-r-4 border-r-purple-500 ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm mb-4`}>
+                      <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center shrink-0 text-[10px] font-black">IP</div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>إنستاباي</p>
+                        <p className={`text-[10px] font-mono ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>@manteqti</p>
                       </div>
-                      <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm`}>
-                        <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>💎 حد أقصى للشحن</p>
-                        <p className="text-2xl font-bold text-amber-500 mt-1">50,000 <span className="text-sm font-normal">ج.م</span></p>
+                      <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 2, repeat: Infinity, delay: 0.3 }} className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" style={{ boxShadow: '0 0 10px rgba(52,211,153,0.8)' }} />
+                    </div>
+
+                    {/* تصنيف: تحويل بنكي */}
+                    <p className={`text-xs font-bold tracking-wider uppercase mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>🏦 تحويل بنكي</p>
+                    <div className={`flex items-center gap-2.5 p-2.5 rounded-xl border-r-4 border-r-slate-500 ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm mb-4`}>
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 text-[10px] font-black">BK</div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>مصر فيروز</p>
+                        <p className={`text-[10px] font-mono ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>123456</p>
+                      </div>
+                      <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 2, repeat: Infinity, delay: 0.6 }} className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" style={{ boxShadow: '0 0 10px rgba(52,211,153,0.8)' }} />
+                    </div>
+
+                    {/* تصنيف: بطاقات */}
+                    <p className={`text-xs font-bold tracking-wider uppercase mb-2 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>💳 بطاقات</p>
+                    <div className={`flex items-center gap-2.5 p-2.5 rounded-xl border-r-4 border-r-indigo-500 ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm mb-4`}>
+                      <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0"><CreditCard className="h-4 w-4" /></div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>بطاقة فيزا / ماستركارد</p>
+                        <p className={`text-[10px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>دفع مباشر بالبطاقة</p>
+                      </div>
+                      <motion.button whileTap={{ scale: 0.9 }} onClick={() => {}} className={`w-11 h-6 rounded-full relative cursor-pointer transition-colors duration-300 ${true ? 'bg-emerald-500' : darkMode ? 'bg-slate-500' : 'bg-slate-300'}`}>
+                        <motion.div animate={true ? { x: 20 } : { x: 2 }} transition={{ type: 'spring', stiffness: 500, damping: 30 }} className="absolute top-1 w-4 h-4 rounded-full bg-white shadow-lg" />
+                      </motion.button>
+                    </div>
+
+                    {/* تصنيف: حدود */}
+                    <p className={`text-xs font-bold tracking-wider uppercase mb-2 ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>📊 حدود الشحن</p>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div className={`p-3 rounded-xl ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm border ${darkMode ? 'border-slate-500' : 'border-slate-200'}`}>
+                        <p className={`text-[10px] mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>حد أدنى</p>
+                        <p className="text-xl font-bold text-emerald-500">10 <span className="text-xs font-normal">ج.م</span></p>
+                      </div>
+                      <div className={`p-3 rounded-xl ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm border ${darkMode ? 'border-slate-500' : 'border-slate-200'}`}>
+                        <p className={`text-[10px] mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>حد أقصى</p>
+                        <p className="text-xl font-bold text-amber-500">50,000 <span className="text-xs font-normal">ج.م</span></p>
                       </div>
                     </div>
                   </div>
