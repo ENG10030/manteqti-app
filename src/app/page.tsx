@@ -357,6 +357,8 @@ function App() {
   const fetchApartmentsRef = useRef<((retry?: number, isInitial?: boolean) => Promise<void>) | undefined>(undefined);
   const fetchMessagesRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const fetchSettingsRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const devTabRef = useRef(devTab);
+  devTabRef.current = devTab;
   const currentUserRef = useRef<User | null>(null);
   const isDeveloperRef = useRef(false);
   const initialLoadRef = useRef(true);
@@ -419,7 +421,7 @@ function App() {
         });
 
         socket.on('notification', (data: { event: string }) => {
-          if (data.event === 'settings-updated') fetchSettingsRef.current?.();
+          if (data.event === 'settings-updated' && devTabRef.current !== 'settings') fetchSettingsRef.current?.();
         });
 
         socket.on('online-count', (data: { count: number }) => {
@@ -893,9 +895,11 @@ function App() {
 
   // Fast settings polling every 5 seconds with efficient 304 support
   // Settings are lightweight (single DB row) so frequent polling is fine
+  // SKIP polling when developer is on the Settings tab to avoid overwriting unsaved form changes
   useEffect(() => {
     const interval = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
+      if (devTabRef.current === 'settings') return; // Don't overwrite user's unsaved edits
       fetchSettingsRef.current?.();
     }, 5000);
     return () => clearInterval(interval);
@@ -905,11 +909,20 @@ function App() {
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const handler = () => {
+      if (devTabRef.current === 'settings') return; // Don't overwrite user's unsaved edits
       if (!document.hidden) fetchSettingsRef.current?.();
     };
     document.addEventListener('visibilitychange', handler);
     return () => document.removeEventListener('visibilitychange', handler);
   }, []);
+
+  // Re-fetch settings when navigating away from Settings tab (to sync after edits)
+  useEffect(() => {
+    if (devTab !== 'settings') {
+      settingsLastUpdatedRef.current = null; // Force fresh fetch
+      fetchSettingsRef.current?.();
+    }
+  }, [devTab]);
 
   // Update settings
   const updateSettings = async (newSettings: Partial<typeof settings>) => {

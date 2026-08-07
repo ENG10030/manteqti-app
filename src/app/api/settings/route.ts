@@ -10,7 +10,6 @@ async function isDeveloper(request: Request): Promise<boolean> {
   const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
   const token = cookies.get("auth-token");
   if (!token) return false;
-
   try {
     const decoded = verify(token, JWT_SECRET!) as unknown as { userId: string; role?: string; identifier?: string };
     if (decoded.role === "DEVELOPER" || decoded.identifier === DEVELOPER_EMAIL) return true;
@@ -24,68 +23,35 @@ async function isDeveloper(request: Request): Promise<boolean> {
   }
 }
 
-function validateFee(value: unknown): number {
-  const num = parseInt(String(value));
-  if (isNaN(num) || num < 0) return 0;
-  return num;
+function toInt(v: unknown): number {
+  const n = parseInt(String(v));
+  return isNaN(n) || n < 0 ? 0 : n;
 }
 
-function validateCurrency(value: unknown): string {
-  if (typeof value !== 'string') return 'ج.م';
-  const sanitized = value.replace(/<[^>]*>/g, '').trim().slice(0, 10);
-  return sanitized || 'ج.م';
+function toCurrency(v: unknown): string {
+  if (typeof v !== 'string') return 'ج.م';
+  const s = v.replace(/<[^>]*>/g, '').trim().slice(0, 10);
+  return s || 'ج.م';
 }
 
-const DEFAULT_SETTINGS = {
-  contactFee: 50,
-  regularFee: 30,
-  featuredFee: 100,
-  premiumFee: 200,
-  vipFee: 300,
-  saleDisplayFee: 100,
-  rentDisplayFee: 75,
-  otherServicesFee: 50,
-  highlightFee: 150,
-  priorityListingFee: 200,
-  verifiedListingFee: 250,
-  currency: "ج.م",
-};
-
-// GET - جلب الإعدادات (public)
-// يدعم الـ polling الفعال عبر ?since=timestamp
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const since = searchParams.get('since');
 
     let settings;
-    try {
-      settings = await db.settings.findFirst();
-    } catch {
-      settings = null;
-    }
+    try { settings = await db.settings.findFirst(); } catch { settings = null; }
 
     if (!settings) {
       try {
-        settings = await db.settings.create({ data: DEFAULT_SETTINGS });
-      } catch {
-        return NextResponse.json({
-          settings: {
-            id: 'default',
-            ...DEFAULT_SETTINGS,
-            usdtTronAddress: null,
-            paymentAutoConfirm: false,
-            paymentSecurityPin: null,
-            walletMinCharge: 10,
-            walletMaxCharge: 50000,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }
+        settings = await db.settings.create({
+          data: { contactFee: 50, regularFee: 30, featuredFee: 100, premiumFee: 200, vipFee: 300, saleDisplayFee: 100, rentDisplayFee: 75, otherServicesFee: 50, highlightFee: 150, priorityListingFee: 200, verifiedListingFee: 250, currency: "ج.م" }
         });
+      } catch {
+        return NextResponse.json({ settings: { id: 'default', contactFee: 50, regularFee: 30, featuredFee: 100, premiumFee: 200, vipFee: 300, saleDisplayFee: 100, rentDisplayFee: 75, otherServicesFee: 50, highlightFee: 150, priorityListingFee: 200, verifiedListingFee: 250, currency: "ج.م", usdtTronAddress: null, paymentAutoConfirm: false, paymentSecurityPin: null, walletMinCharge: 10, walletMaxCharge: 50000, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
       }
     }
 
-    // 304: لو الإعدادات لم تتغير منذ آخر تحقق
     if (since) {
       const sinceDate = new Date(since);
       if (settings.updatedAt && !isNaN(sinceDate.getTime()) && settings.updatedAt <= sinceDate) {
@@ -93,22 +59,13 @@ export async function GET(request: Request) {
       }
     }
 
-    return NextResponse.json(
-      {
-        settings: {
-          ...settings,
-          updatedAt: settings.updatedAt?.toISOString() || new Date().toISOString(),
-        }
-      },
-      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate', 'Pragma': 'no-cache' } }
-    );
+    return NextResponse.json({ settings: { ...settings, updatedAt: settings.updatedAt?.toISOString() || new Date().toISOString() } }, { headers: { 'Cache-Control': 'no-store', 'Pragma': 'no-cache' } });
   } catch (error) {
     console.error("Get settings error:", error);
     return NextResponse.json({ error: "حدث خطأ أثناء جلب الإعدادات" }, { status: 500 });
   }
 }
 
-// PUT - تحديث الإعدادات (developer only)
 export async function PUT(request: Request) {
   try {
     if (!(await isDeveloper(request))) {
@@ -117,64 +74,36 @@ export async function PUT(request: Request) {
 
     const body = await request.json();
 
-    // التحقق من صحة القيم
-    const updateData: Record<string, unknown> = {
-      contactFee: validateFee(body.contactFee),
-      regularFee: validateFee(body.regularFee),
-      featuredFee: validateFee(body.featuredFee),
-      premiumFee: validateFee(body.premiumFee),
-      vipFee: validateFee(body.vipFee),
-      saleDisplayFee: validateFee(body.saleDisplayFee),
-      rentDisplayFee: validateFee(body.rentDisplayFee),
-      otherServicesFee: validateFee(body.otherServicesFee),
-      highlightFee: validateFee(body.highlightFee),
-      priorityListingFee: validateFee(body.priorityListingFee),
-      verifiedListingFee: validateFee(body.verifiedListingFee),
-      currency: validateCurrency(body.currency),
-    };
-
-    // تحديث أو إنشاء الإعدادات
     const existing = await db.settings.findFirst();
-
-    let settings;
     if (!existing) {
-      settings = await db.settings.create({ data: updateData });
-    } else {
-      settings = await db.settings.update({
-        where: { id: existing.id },
-        data: updateData,
-      });
+      return NextResponse.json({ error: "لا توجد إعدادات" }, { status: 404 });
     }
 
-    // تسجيل العملية (بدون تعطيل العملية لو فشل)
-    try {
-      const cookieHeader = request.headers.get("cookie");
-      const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
-      const token = cookies.get("auth-token");
-      let userId: string | null = null;
-      if (token) {
-        try {
-          const decoded = verify(token, JWT_SECRET!) as unknown as { userId: string };
-          userId = decoded.userId;
-        } catch {}
-      }
-      await db.operationLog.create({
-        data: {
-          action: 'UPDATE_SETTINGS',
-          entityType: 'Settings',
-          entityId: settings.id,
-          userId,
-          details: JSON.stringify(updateData),
-        },
-      });
-    } catch {
-      // ignore log errors
-    }
-
-    return NextResponse.json({
-      message: "تم تحديث الإعدادات بنجاح ✅",
-      settings,
+    const settings = await db.settings.update({
+      where: { id: existing.id },
+      data: {
+        contactFee: toInt(body.contactFee),
+        regularFee: toInt(body.regularFee),
+        featuredFee: toInt(body.featuredFee),
+        premiumFee: toInt(body.premiumFee),
+        vipFee: toInt(body.vipFee),
+        saleDisplayFee: toInt(body.saleDisplayFee),
+        rentDisplayFee: toInt(body.rentDisplayFee),
+        otherServicesFee: toInt(body.otherServicesFee),
+        highlightFee: toInt(body.highlightFee),
+        priorityListingFee: toInt(body.priorityListingFee),
+        verifiedListingFee: toInt(body.verifiedListingFee),
+        currency: toCurrency(body.currency),
+        // Wallet/payment settings
+        ...(body.usdtTronAddress !== undefined && { usdtTronAddress: typeof body.usdtTronAddress === 'string' ? body.usdtTronAddress.trim() || null : null }),
+        ...(body.paymentAutoConfirm !== undefined && { paymentAutoConfirm: !!body.paymentAutoConfirm }),
+        ...(body.paymentSecurityPin !== undefined && { paymentSecurityPin: typeof body.paymentSecurityPin === 'string' ? body.paymentSecurityPin.trim() || null : null }),
+        ...(body.walletMinCharge !== undefined && { walletMinCharge: toInt(body.walletMinCharge) || 10 }),
+        ...(body.walletMaxCharge !== undefined && { walletMaxCharge: toInt(body.walletMaxCharge) || 50000 }),
+      },
     });
+
+    return NextResponse.json({ message: "تم تحديث الإعدادات بنجاح ✅", settings });
   } catch (error) {
     console.error("Update settings error:", error);
     return NextResponse.json({ error: "حدث خطأ أثناء تحديث الإعدادات" }, { status: 500 });
