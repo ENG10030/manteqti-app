@@ -2457,7 +2457,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <h1 className="text-2xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent">منطقتي | Manteqti</h1>
                 <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لوحة الشقق الذكية</p>
                 <div className="mt-2 flex items-center justify-center">
-                  <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-black tracking-widest text-white bg-purple-700">ECG</span>
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-black tracking-widest text-white bg-purple-700">EIG</span>
                   <div className="mr-2 flex flex-col leading-tight">
                     <span className={`text-[10px] ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Developed by</span>
                     <span className={`text-[13px] font-bold tracking-wide ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>ENGINEERS Integrated GROUP</span>
@@ -2888,7 +2888,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
         <div className="max-w-7xl mx-auto px-4 text-center">
           <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>© 2026 منطقتي | Manteqti - جميع الحقوق محفوظة</p>
           <div className="mt-3 flex items-center justify-center">
-            <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-black tracking-widest text-white bg-purple-700">ECG</span>
+            <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-black tracking-widest text-white bg-purple-700">EIG</span>
             <div className="mr-2 flex flex-col leading-tight">
               <span className={`text-[10px] ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Developed by</span>
               <span className={`text-[13px] font-bold tracking-wide ${darkMode ? 'text-purple-300' : 'text-purple-700'}`}>ENGINEERS Integrated GROUP</span>
