@@ -74,27 +74,39 @@ export async function POST(request: Request) {
         }
       }
 
-      // 2. Ensure operation_logs table exists
+      // 2. Ensure OperationLog table exists (المطابق لما يتوقعه Prisma: @@map("OperationLog"))
       const opLogExists = await db.$queryRaw<Array<{ exists: boolean }>>`
-        SELECT EXISTS (SELECT FROM pg_tables WHERE tablename = 'operation_logs') as "exists"
+        SELECT EXISTS (SELECT FROM pg_tables WHERE tablename = 'OperationLog') as "exists"
       `;
       if (!opLogExists[0]?.exists) {
         await db.$executeRawUnsafe(`
-          CREATE TABLE "operation_logs" (
+          CREATE TABLE "OperationLog" (
             "id" TEXT NOT NULL PRIMARY KEY,
             "action" TEXT NOT NULL,
-            "entity_type" TEXT,
-            "entity_id" TEXT,
+            "entityType" TEXT,
+            "entityId" TEXT,
             "details" TEXT,
-            "user_id" TEXT,
-            "ip_address" TEXT,
-            "user_agent" TEXT,
-            "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+            "userId" TEXT,
+            "ipAddress" TEXT,
+            "userAgent" TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
           )
         `);
-        results.push('✅ تم إنشاء جدول سجلات العمليات');
+        results.push('✅ تم إنشاء جدول سجلات العمليات (OperationLog)');
       } else {
         results.push('✅ جدول سجلات العمليات: موجود');
+      }
+
+      // 2.5 إضافة عمود الأرشفة التلقائية لجدول العقارات (الأرشفة بعد 48 ساعة)
+      const apartmentCols = await db.$queryRaw<Array<{ column_name: string }>>`
+        SELECT column_name FROM information_schema.columns WHERE table_name = 'Apartment'
+      `;
+      const aptColNames = apartmentCols.map(c => c.column_name);
+      if (!aptColNames.includes('archivedAt')) {
+        await db.$executeRawUnsafe(`ALTER TABLE "Apartment" ADD COLUMN "archivedAt" TIMESTAMP(3)`);
+        results.push('✅ تم إضافة عمود الأرشفة: archivedAt');
+      } else {
+        results.push('✅ عمود الأرشفة (archivedAt): موجود');
       }
 
       // 3. Check settings has data

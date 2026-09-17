@@ -67,6 +67,7 @@ model Apartment {
   type             String    @default("rent")
   status           String    @default("pending")
   statusChangedAt  DateTime?
+  archivedAt       DateTime?
   paymentRef       String?
   createdBy        String?
   approvedBy       String?

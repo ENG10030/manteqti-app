@@ -13,7 +13,7 @@ import {
   ChevronLeft, ChevronRight, Plus, Trash2, ShieldCheck, Hourglass,
   Send, Bot, Home, Crown, Diamond, Ban, Brain, Search,
   VideoIcon, Activity, Wallet, Key, ArrowUp, Layers,
-  Download, Smartphone, Zap, Save,
+  Download, Smartphone, Zap, Save, Archive, ArchiveRestore,
   Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen,
   GitCompare, Trophy, ScrollText, ClipboardCheck, HardDrive, Upload, Database
 } from 'lucide-react';
@@ -43,7 +43,7 @@ interface Apartment {
   id: string; title: string; price: number; area: string; bedrooms: number; bathrooms: number; floor?: number | null; apartmentSize?: number | null;
   description: string; ownerPhone: string; mapLink: string; imageUrl?: string; images?: string[];
   videoUrl?: string; videos?: string[]; amenities?: string[]; isFeatured?: boolean; isVip?: boolean;
-  type: 'rent' | 'sale'; status: string; paymentRef?: string; createdBy?: string; views?: number; createdAt: string; statusChangedAt?: string | null;
+  type: 'rent' | 'sale'; status: string; paymentRef?: string; createdBy?: string; views?: number; createdAt: string; statusChangedAt?: string | null; archivedAt?: string | null;
 }
 
 interface Inquiry { id: string; apartmentId: string; userId?: string; name: string; email: string; phone: string; message: string; lifecycleStatus: string; createdAt: string; apartment?: { id: string; title: string; price: number; type: string } | null; payment?: { id: string; status: string; method: string } | null; }
@@ -222,11 +222,9 @@ function App() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
   const [devEmail, setDevEmail] = useState('');
-  const [showDownloadModal, setShowDownloadModal] = useState(false);
-  const [downloadFiles, setDownloadFiles] = useState<Record<string, string>>({});
-  const [downloadLoading, setDownloadLoading] = useState(false);
-  const [downloadTab, setDownloadTab] = useState(0);
-  const [copySuccess, setCopySuccess] = useState('');
+  const [archivedApartments, setArchivedApartments] = useState<Apartment[]>([]);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [archiveRunning, setArchiveRunning] = useState(false);
   const [devPassword, setDevPassword] = useState('');
   const [showDevPassword, setShowDevPassword] = useState(false);
   const [devLoading, setDevLoading] = useState(false);
@@ -295,7 +293,7 @@ function App() {
   });
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'favorites' | 'payments' | 'messages' | 'userApprovals' | 'users' | 'blocked' | 'settings' | 'logs' | 'editRequests' | 'userLogs' | 'commentManage' | 'backup'>('stats');
+  const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'favorites' | 'payments' | 'messages' | 'userApprovals' | 'users' | 'blocked' | 'settings' | 'logs' | 'editRequests' | 'userLogs' | 'commentManage' | 'backup' | 'archive'>('stats');
   const [likes, setLikes] = useState<Array<{ id: string; apartmentId: string; userId: string; user: { id: string; name: string }; apartment: { id: string; title: string } | null; createdAt: string }>>([]);
   const [comments, setComments] = useState<Array<{ id: string; apartmentId: string; userId: string; content: string; status: string; user: { id: string; name: string }; createdAt: string }>>([]);
   const [newComment, setNewComment] = useState('');
@@ -754,6 +752,55 @@ function App() {
   };
   useEffect(() => { fetchDevDataRef.current = fetchDevData; });
   useEffect(() => { fetchEditRequestsRef.current = fetchEditRequests; });
+
+  // الأرشيف التلقائي (بعد 48 ساعة في الحالات النهائية)
+  const fetchArchivedApartments = async () => {
+    if (!isDeveloper) return;
+    setArchiveLoading(true);
+    try {
+      const res = await fetch('/api/apartments?archived=true');
+      const data = await res.json();
+      setArchivedApartments(Array.isArray(data) ? data : []);
+    } catch {}
+    setArchiveLoading(false);
+  };
+
+  const handleRestoreArchived = async (id: string, title: string, confirmed: boolean = false) => {
+    if (!confirmed) {
+      setConfirmDialog({ isOpen: true, title: 'استعادة من الأرشيف', message: `هل تريد استعادة "${title}" وإعادته للعرض بحالة "متاح"؟`, confirmText: 'نعم، استعادة', cancelText: 'إلغاء', type: 'info', onConfirm: () => { setConfirmDialog({ ...confirmDialog, isOpen: false }); handleRestoreArchived(id, title, true); } });
+      return;
+    }
+    try {
+      const res = await fetch('/api/archive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'restore' }) });
+      const data = await res.json();
+      if (res.ok) {
+        addToast(data.message || 'تمت الاستعادة بنجاح', 'success');
+        setArchivedApartments(prev => prev.filter(a => a.id !== id));
+        fetchApartmentsRef.current?.();
+      } else {
+        addToast(data.error || 'فشلت الاستعادة', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الاتصال', 'error');
+    }
+  };
+
+  const runArchiveNow = async () => {
+    setArchiveRunning(true);
+    try {
+      const res = await fetch('/api/cron/auto-delete', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        addToast(`تم تشغيل الأرشفة — ${data.archivedCount || 0} عقار`, 'success');
+        fetchArchivedApartments();
+      } else {
+        addToast(data.error || 'فشل تشغيل الأرشفة', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الاتصال', 'error');
+    }
+    setArchiveRunning(false);
+  };
 
   const handleApproveUser = async (userId: string, userName: string, confirmed: boolean = false) => {
     if (!confirmed) {
@@ -1255,7 +1302,7 @@ function App() {
     }
     if (initialLoadRef.current) return;
     fetchSettings();
-    if (isDeveloper && currentUser) { fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchCommentActionLogs(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); }
+    if (isDeveloper && currentUser) { fetchDevData(); fetchAllLikes(); fetchAllComments(); fetchCommentActionLogs(); fetchMessages(); fetchBlockedUsers(); fetchAllUsers(); fetchOperationLogs(); fetchEditRequests(); fetchArchivedApartments(); }
     if (currentUser && !isDeveloper) { fetchUserPayments(); fetchMyPendingApartments(); fetchUserLikes(); }
   }, [isDeveloper, currentUser]);
 
@@ -1745,7 +1792,7 @@ function App() {
       const statusLabel = { sold: 'تم البيع', rented: 'تم التأجير', unavailable: 'غير متاح' }[editApartment.status];
       setConfirmDialog({ isOpen: true, title: `⚠️ تغيير حالة العقار - أرشفة تلقائية إلى "${statusLabel}"`, message: `⚠️ تحذير مهم!
 
-عند تغيير حالة العقار إلى "${statusLabel}" سيتم أرشفته تلقائياً وحذفه من العرض بعد 48 ساعة.
+عند تغيير حالة العقار إلى "${statusLabel}" سيتم أرشفته تلقائياً وإخفاؤه من العرض بعد 48 ساعة (يمكن استعادته من لوحة المطور).
 
 هل أنت متأكد من الحفظ؟`, confirmText: 'نعم، حفظ والتأكيد', cancelText: 'إلغاء', type: 'warning', onConfirm: () => { setConfirmDialog({ ...confirmDialog, isOpen: false }); doEditApartment(); } });
       return;
@@ -3600,7 +3647,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الدور</label><select value={editApartment.floor || ''} onChange={(e) => setEditApartment({ ...editApartment, floor: e.target.value ? parseInt(e.target.value) : undefined })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="">بدون تحديد</option>{['أرضي', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15+'].map(n => <option key={n} value={n === 'أرضي' ? '0' : n === '15+' ? '15' : n}>{n}</option>)}</select></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📏 مساحة الشقة (م²) <span className="text-red-500">*</span></label><input type="number" min="1" placeholder="مثال: 120" value={editApartment.apartmentSize || ''} onChange={(e) => setEditApartment({ ...editApartment, apartmentSize: e.target.value ? parseInt(e.target.value) : undefined })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الهاتف</label><input type="tel" value={editApartment.ownerPhone} onChange={(e) => setEditApartment({ ...editApartment, ownerPhone: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحالة</label><select value={editApartment.status} onChange={(e) => { const newStatus = e.target.value; if (['sold', 'rented', 'unavailable'].includes(newStatus) && !['sold', 'rented', 'unavailable'].includes(editApartment.status)) { setEditStatusWarning(newStatus); } setEditApartment({ ...editApartment, status: newStatus }); }} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="available">متاح</option><option value="reserved">محجوز</option><option value="unavailable">غير متاح</option><option value="sold">تم البيع</option><option value="rented">تم التأجير</option></select>{editStatusWarning && <p className="text-red-500 text-xs mt-1.5 flex items-center gap-1 font-bold"><AlertTriangle className="h-3 w-3" />⚠️ سيتم أرشفة العقار وحذفه من العرض بعد 48 ساعة من الحفظ</p>}</div>
+                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحالة</label><select value={editApartment.status} onChange={(e) => { const newStatus = e.target.value; if (['sold', 'rented', 'unavailable'].includes(newStatus) && !['sold', 'rented', 'unavailable'].includes(editApartment.status)) { setEditStatusWarning(newStatus); } setEditApartment({ ...editApartment, status: newStatus }); }} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="available">متاح</option><option value="reserved">محجوز</option><option value="unavailable">غير متاح</option><option value="sold">تم البيع</option><option value="rented">تم التأجير</option></select>{editStatusWarning && <p className="text-red-500 text-xs mt-1.5 flex items-center gap-1 font-bold"><AlertTriangle className="h-3 w-3" />⚠️ سيتم أرشفة العقار وإخفاؤه من العرض بعد 48 ساعة من الحفظ (يمكن الاستعادة من لوحة المطور)</p>}</div>
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الوصف</label><textarea value={editApartment.description} onChange={(e) => setEditApartment({ ...editApartment, description: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} rows={3} /></div>
               </div>
               <div className="flex gap-3 mt-6">
@@ -3654,7 +3701,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <button onClick={() => setShowDevPanel(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
               </div>
               <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
-                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل' }, { id: 'userApprovals', icon: ShieldCheck, label: 'تأكيد المستخدمين', count: pendingUsers.length }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'userLogs', icon: BookOpen, label: 'سجل المستخدمين', count: approvalLogs.length }, { id: 'editRequests', icon: FilePen, label: 'طلبات التعديل', count: editRequests.filter(e => e.status === 'pending').length }, { id: 'blocked', icon: Ban, label: 'محظورين' }, { id: 'commentManage', icon: ScrollText, label: 'إدارة التعليقات', count: comments.length }, { id: 'settings', icon: Settings, label: 'الإعدادات' }, { id: 'logs', icon: Activity, label: 'السجل' }, { id: 'backup', icon: Database, label: 'النسخ الاحتياطي' } ].map(tab => (
+                {[ { id: 'stats', icon: BarChart3, label: 'الإحصائيات' }, { id: 'pending', icon: Hourglass, label: 'قيد المراجعة', count: pendingApartments.length }, { id: 'apartments', icon: Building2, label: 'العقارات', count: allApartments.length }, { id: 'archive', icon: Archive, label: 'الأرشيف', count: archivedApartments.length }, { id: 'favorites', icon: Heart, label: 'المفضلة', count: likes.length }, { id: 'payments', icon: CreditCard, label: 'المدفوعات', count: payments.length }, { id: 'messages', icon: MessageCircle, label: 'الرسائل' }, { id: 'userApprovals', icon: ShieldCheck, label: 'تأكيد المستخدمين', count: pendingUsers.length }, { id: 'users', icon: User, label: 'المستخدمين', count: allUsers.length }, { id: 'userLogs', icon: BookOpen, label: 'سجل المستخدمين', count: approvalLogs.length }, { id: 'editRequests', icon: FilePen, label: 'طلبات التعديل', count: editRequests.filter(e => e.status === 'pending').length }, { id: 'blocked', icon: Ban, label: 'محظورين' }, { id: 'commentManage', icon: ScrollText, label: 'إدارة التعليقات', count: comments.length }, { id: 'settings', icon: Settings, label: 'الإعدادات' }, { id: 'logs', icon: Activity, label: 'السجل' }, { id: 'backup', icon: Database, label: 'النسخ الاحتياطي' } ].map(tab => (
                   <button key={tab.id} onClick={() => setDevTab(tab.id as any)} className={`flex items-center gap-2 px-4 py-2 rounded-xl whitespace-nowrap transition-all ${devTab === tab.id ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white' : darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                     <tab.icon className="h-4 w-4" />{tab.label}
                     {tab.count !== undefined && tab.count > 0 && <span className={`px-2 py-0.5 rounded-full text-xs ${devTab === tab.id ? 'bg-white/20' : 'bg-amber-500 text-white'}`}>{tab.count}</span>}
@@ -3663,6 +3710,52 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
+              {/* Archive Tab — الأرشفة التلقائية بعد 48 ساعة */}
+              {devTab === 'archive' && (
+                <div className="space-y-4">
+                  <div className={`rounded-2xl p-4 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                    <div className="flex items-center justify-between flex-wrap gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-500 to-slate-700 flex items-center justify-center"><Archive className="h-5 w-5 text-white" /></div>
+                        <div>
+                          <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>الأرشيف التلقائي (بعد 48 ساعة)</h3>
+                          <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>العقارات "تم البيع / تم التأجير / غير متاح" تُخفى تلقائياً بعد 48 ساعة — البيانات محفوظة ويمكن استعادتها</p>
+                        </div>
+                      </div>
+                      <button onClick={runArchiveNow} disabled={archiveRunning} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium text-sm disabled:opacity-50 transition-all">
+                        {archiveRunning ? <><Loader2 className="h-4 w-4 animate-spin" />جاري التشغيل...</> : <><RefreshCw className="h-4 w-4" />تشغيل الأرشفة الآن</>}
+                      </button>
+                    </div>
+                  </div>
+                  {archiveLoading ? (
+                    <div className="flex items-center justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-amber-500" /></div>
+                  ) : archivedApartments.length === 0 ? (
+                    <div className={`text-center py-16 rounded-2xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50'}`}>
+                      <Archive className={`h-12 w-12 mx-auto mb-3 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} />
+                      <p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>الأرشيف فارغ — لا توجد عقارات مؤرشفة ✅</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[55vh] overflow-y-auto">
+                      {archivedApartments.map(apt => (
+                        <div key={apt.id} className={`flex items-center justify-between gap-3 p-3 rounded-xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50'}`}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <img src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-14 h-11 object-cover rounded-lg flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
+                            <div className="min-w-0">
+                              <h4 className={`font-medium text-sm truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h4>
+                              <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.price.toLocaleString()} {settings.currency} • {apt.area} • {statusConfig[apt.status]?.label || apt.status} • {apt.views || 0} مشاهدة</p>
+                              {apt.archivedAt && <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>📦 أُرشف: {new Date(apt.archivedAt).toLocaleString('ar-EG')}</p>}
+                            </div>
+                          </div>
+                          <button onClick={() => handleRestoreArchived(apt.id, apt.title)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition-colors flex-shrink-0">
+                            <ArchiveRestore className="h-4 w-4" />استعادة
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Stats Tab */}
               {devTab === 'stats' && (
                 <div className="space-y-6">
@@ -3845,7 +3938,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                               setConfirmDialog({
                                 isOpen: true,
                                 title: '⚠️ تغيير حالة العقار - أرشفة تلقائية',
-                                message: `سيتم أرشفة العقار تلقائياً وحذفه من العرض بعد 48 ساعة من تغيير الحالة إلى "${statusLabel}"\n\nهل أنت متأكد؟`,
+                                message: `سيتم أرشفة العقار تلقائياً وإخفاؤه من العرض بعد 48 ساعة من تغيير الحالة إلى "${statusLabel}"\n\nيمكن استعادته لاحقاً من لوحة المطور - الأرشيف\n\nهل أنت متأكد؟`,
                                 confirmText: 'نعم، تأكيد',
                                 cancelText: 'إلغاء',
                                 onConfirm: () => {
@@ -3853,7 +3946,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                                   setAllApartments([...allApartments]);
                                   fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus, statusChangedAt: new Date().toISOString() }) });
                                   setConfirmDialog({ ...confirmDialog, isOpen: false });
-                                  addToast(`تم تغيير الحالة إلى "${statusLabel}" - سيتم الأرشفة والحذف بعد 48 ساعة`, 'success');
+                                  addToast(`تم تغيير الحالة إلى "${statusLabel}" - سيتم الأرشفة وإخفاؤه بعد 48 ساعة`, 'success');
                                 },
                                 type: 'warning'
                               });
@@ -5310,173 +5403,6 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
         </motion.div>
       )}</AnimatePresence>
 
-      {/* Floating Download Button */}
-      <div className="fixed bottom-6 left-6 z-[90] flex flex-col gap-2">
-        <button
-          onClick={async () => {
-            setShowDownloadModal(true);
-            setDownloadLoading(true);
-            try {
-              const res = await fetch('/api/download-fixes?format=json');
-              const data = await res.json();
-              setDownloadFiles(data.files || {});
-            } catch (e) {
-              console.error('Download fetch failed:', e);
-            }
-            setDownloadLoading(false);
-          }}
-          className="flex items-center gap-2 px-5 py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:shadow-emerald-500/40 hover:scale-105 transition-all animate-pulse"
-          title="تحميل الملفات المعدلة"
-        >
-          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          <span className="text-sm font-bold">⬇️ تحميل التعديلات</span>
-        </button>
-      </div>
-
-      {/* Download Modal */}
-      <AnimatePresence>{showDownloadModal && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[95] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowDownloadModal(false)}>
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-4xl max-h-[85vh] rounded-2xl overflow-hidden flex flex-col ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`}>
-            {/* Header */}
-            <div className={`flex items-center justify-between p-4 border-b ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 flex items-center justify-center">
-                  <svg className="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                </div>
-                <div>
-                  <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>الملفات المعدلة</h3>
-                  <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>EIG + إصلاح الإعدادات + أرشفة تلقائية + رسائل تحذير</p>
-                </div>
-              </div>
-              <button onClick={() => setShowDownloadModal(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>
-                <X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} />
-              </button>
-            </div>
-
-            {/* File Tabs */}
-            <div className={`flex border-b ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
-              {Object.keys(downloadFiles).map((fp, i) => (
-                <button
-                  key={fp}
-                  onClick={() => setDownloadTab(i)}
-                  className={`px-4 py-2.5 text-sm font-medium transition-colors ${downloadTab === i ? (darkMode ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-emerald-600 border-b-2 border-emerald-600') : (darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-700')}`}
-                >
-                  {fp.split('/').pop()}
-                </button>
-              ))}
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-auto p-4">
-              {downloadLoading ? (
-                <div className="flex items-center justify-center py-20">
-                  <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
-                </div>
-              ) : (
-                <>
-                  {Object.entries(downloadFiles).map(([fp, content], i) => (
-                    downloadTab === i && (
-                      <div key={fp} className="space-y-3">
-                        <div className={`flex items-center justify-between p-3 rounded-lg ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50'}`}>
-                          <div className="flex items-center gap-2">
-                            <svg className={`h-4 w-4 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                            <span className={`text-sm font-mono ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{fp}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={async () => {
-                                try {
-                                  await navigator.clipboard.writeText(content);
-                                  setCopySuccess(fp);
-                                  setTimeout(() => setCopySuccess(''), 2000);
-                                } catch (e) {
-                                  console.error('Copy failed:', e);
-                                }
-                              }}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
-                            >
-                              {copySuccess === fp ? (
-                                <><svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg> تم النسخ</>
-                              ) : (
-                                <><svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> نسخ</>
-                              )}
-                            </button>
-                            <button
-                              onClick={() => {
-                                const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-                                const url = URL.createObjectURL(blob);
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = fp.split('/').pop() || 'file.txt';
-                                document.body.appendChild(a);
-                                a.click();
-                                document.body.removeChild(a);
-                                URL.revokeObjectURL(url);
-                              }}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-violet-600 text-white hover:bg-violet-700 transition-colors"
-                            >
-                              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                              تحميل
-                            </button>
-                          </div>
-                        </div>
-                        <pre className={`p-4 rounded-xl text-xs font-mono overflow-auto max-h-[55vh] leading-relaxed ${darkMode ? 'bg-slate-900 text-emerald-300' : 'bg-slate-50 text-slate-700'}`} dir="ltr">{content}</pre>
-                      </div>
-                    )
-                  ))}
-                </>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className={`p-4 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'} space-y-3`}>
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                <a
-                  href="/api/download-fixes?format=txt"
-                  download="manteqti-fixes.txt"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-sm font-bold bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:from-emerald-600 hover:to-teal-700 transition-all shadow-md"
-                >
-                  ⬇️ تحميل مباشر (TXT)
-                </a>
-                <button
-                  onClick={async () => {
-                    try {
-                      const allContent = Object.entries(downloadFiles).map(([fp, content]) => `\n// ═══════════════════════════════════════════\n// FILE: ${fp}\n// ═══════════════════════════════════════════\n\n${content}`).join('\n\n');
-                      await navigator.clipboard.writeText(allContent);
-                      setCopySuccess('all');
-                      setTimeout(() => setCopySuccess(''), 2000);
-                    } catch (e) {
-                      console.error('Copy all failed:', e);
-                    }
-                  }}
-                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-medium bg-violet-600 text-white hover:bg-violet-700 transition-colors"
-                >
-                  {copySuccess === 'all' ? '✅ تم النسخ' : '📋 نسخ الكل'}
-                </button>
-                <a
-                  href="/api/download-fixes?file=apartments-route"
-                  download="route.ts"
-                  target="_blank"
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-slate-600 text-white hover:bg-slate-700 transition-colors"
-                >
-                  📄 route.ts
-                </a>
-                <a
-                  href="/api/download-fixes?file=page-tsx"
-                  download="page.tsx"
-                  target="_blank"
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-slate-600 text-white hover:bg-slate-700 transition-colors"
-                >
-                  📄 page.tsx
-                </a>
-              </div>
-              <p className={`text-center text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>اضغط "تحميل مباشر" لتحميل كل التعديلات كملف واحد</p>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}</AnimatePresence>
     </div>
   );
 }

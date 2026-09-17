@@ -22,11 +22,11 @@ export async function GET(request: NextRequest) {
       totalInquiries,
       totalFavorites,
     ] = await Promise.all([
-      db.apartment.count(),
+      db.apartment.count({ where: { archivedAt: null } }),
       db.user.count(),
-      db.apartment.count({ where: { status: 'pending' } }),
-      db.apartment.count({ where: { type: 'rent' } }),
-      db.apartment.count({ where: { type: 'sale' } }),
+      db.apartment.count({ where: { status: 'pending', archivedAt: null } }),
+      db.apartment.count({ where: { type: 'rent', archivedAt: null } }),
+      db.apartment.count({ where: { type: 'sale', archivedAt: null } }),
       db.inquiry.count(),
       db.like.count(),
     ]);
@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
     // Get apartments by area
     const apartmentsByAreaRaw = await db.apartment.groupBy({
       by: ['area'],
+      where: { archivedAt: null },
       _count: { id: true },
       orderBy: { _count: { id: 'desc' } },
     });

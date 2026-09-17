@@ -88,6 +88,29 @@ export async function PUT(
       delete body.status;
     }
 
+    // إدارة الأرشفة التلقائية (بعد 48 ساعة في الحالات النهائية)
+    const FINAL_STATUSES = ['sold', 'rented', 'unavailable'];
+    let statusChangedAtData: Date | null | undefined = undefined;
+    let archivedAtData: Date | null | undefined = undefined;
+
+    if (body.status !== undefined) {
+      if (FINAL_STATUSES.includes(body.status)) {
+        // انتقل لحالة نهائية: ابدأ عدّاد الـ 48 ساعة
+        statusChangedAtData = body.statusChangedAt ? new Date(body.statusChangedAt) : new Date();
+      } else {
+        // رجع لحالة نشطة: صفّر العدّاد واستعد من الأرشيف تلقائياً
+        statusChangedAtData = null;
+        archivedAtData = null;
+      }
+    } else if (body.statusChangedAt !== undefined) {
+      statusChangedAtData = body.statusChangedAt ? new Date(body.statusChangedAt) : null;
+    }
+
+    // استعادة صريحة من الأرشيف
+    if (body.archived === false) {
+      archivedAtData = null;
+    }
+
     const updatedApartment = await db.apartment.update({
       where: { id },
       data: {
@@ -104,7 +127,8 @@ export async function PUT(
         ownerPhone: body.ownerPhone,
         mapLink: body.mapLink,
         status: body.status,
-        statusChangedAt: body.statusChangedAt ? new Date(body.statusChangedAt) : (body.statusChangedAt === null ? null : undefined),
+        statusChangedAt: statusChangedAtData,
+        archivedAt: archivedAtData,
         isFeatured: body.isFeatured,
         isVip: body.isVip,
       },

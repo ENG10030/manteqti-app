@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { notifyApartmentsChanged } from "@/lib/realtime";
+import { maybeRunAutoArchive } from "@/lib/auto-archive";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
@@ -26,11 +27,15 @@ async function getCurrentUser(request: Request) {
 // GET - جلب العقارات
 export async function GET(request: Request) {
   try {
+    // أرشفة تلقائية بعد 48 ساعة (تعمل حتى بدون Vercel Cron - مقيّدة بـ throttle داخلي)
+    await maybeRunAutoArchive();
+
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const type = searchParams.get("type");
     const area = searchParams.get("area");
-    
+    const archivedParam = searchParams.get("archived");
+
     let user: Awaited<ReturnType<typeof getCurrentUser>> = null;
     try {
       user = await getCurrentUser(request);
@@ -40,6 +45,17 @@ export async function GET(request: Request) {
     const isDeveloper = user?.role === "DEVELOPER";
 
     const where: any = {};
+
+    // الأرشفة: افتراضياً لا تُرجع العقارات المؤرشفة لأحد
+    // المطور فقط يمكنه طلب archived=true لجلب المؤرشفين فقط
+    if (archivedParam === "true") {
+      if (!isDeveloper) {
+        return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
+      }
+      where.archivedAt = { not: null };
+    } else {
+      where.archivedAt = null;
+    }
 
     // المطور يرى جميع العقارات، المستخدم العادي يرى العقارات المتاحة والموافق عليها فقط
     if (status) {

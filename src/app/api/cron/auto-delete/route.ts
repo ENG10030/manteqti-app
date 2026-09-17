@@ -1,86 +1,64 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { verify } from 'jsonwebtoken';
+import { runAutoArchive } from '@/lib/auto-archive';
 
-// Cron job to auto-delete apartments after 48 hours in final status
-// This endpoint should be called by Vercel Cron or external scheduler
+// أرشفة تلقائية بعد 48 ساعة للحالات النهائية (تم البيع / تم التأجير / غير متاح)
+// يمكن استدعاؤه بـ:
+//   1) Vercel Cron (يُرسل Authorization: Bearer CRON_SECRET تلقائياً)
+//   2) أي جدولة خارجية بنفس الطريقة
+//   3) جلسة مطور مسجّل الدخول (زر "تشغيل الأرشفة الآن" في لوحة المطور)
 
-// Final statuses that trigger auto-delete after 48 hours
-const FINAL_STATUSES = ['sold', 'unavailable', 'rented'];
-const HOURS_UNTIL_DELETE = 48;
+const DEVELOPER_EMAIL = process.env.DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
 
-export async function GET(request: NextRequest) {
+async function isAuthorized(request: NextRequest): Promise<boolean> {
+  // 1) Cron secret (يفشل مغلقاً إذا لم يُضبط)
+  const cronSecret = process.env.CRON_SECRET;
+  const authHeader = request.headers.get('authorization');
+  if (cronSecret && authHeader === `Bearer ${cronSecret}`) return true;
+
+  // 2) جلسة مطور
   try {
-    // M-11 FIX: Require CRON_SECRET - fail closed
-    const authHeader = request.headers.get('authorization');
-    const cronSecret = process.env.CRON_SECRET;
-    
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    // Calculate the cutoff time (48 hours ago)
-    const cutoffTime = new Date();
-    cutoffTime.setHours(cutoffTime.getHours() - HOURS_UNTIL_DELETE);
-
-    // Find apartments that should be deleted
-    const apartmentsToDelete = await db.apartment.findMany({
-      where: {
-        status: { in: FINAL_STATUSES },
-        statusChangedAt: { lte: cutoffTime }
-      }
+    const cookieToken = request.cookies.get('auth-token')?.value;
+    if (!cookieToken || !process.env.JWT_SECRET) return false;
+    const decoded = verify(cookieToken, process.env.JWT_SECRET) as unknown as { userId: string; role?: string; identifier?: string };
+    if (decoded.role === 'DEVELOPER' || decoded.identifier === DEVELOPER_EMAIL) return true;
+    const user = await db.user.findUnique({
+      where: { id: decoded.userId },
+      select: { role: true, identifier: true },
     });
-
-    console.log(`Found ${apartmentsToDelete.length} apartments to delete`);
-
-    const deletedIds: string[] = [];
-    const errors: string[] = [];
-
-    // Delete each apartment
-    for (const apartment of apartmentsToDelete) {
-      try {
-        // Log the auto-delete operation
-        await db.operationLog.create({
-          data: {
-            action: 'auto_delete',
-            entityType: 'apartment',
-            entityId: apartment.id,
-            details: `Auto-deleted after 48 hours in status: ${apartment.status} - ${apartment.title}`
-          }
-        });
-
-        // Delete the apartment
-        await db.apartment.delete({
-          where: { id: apartment.id }
-        });
-
-        deletedIds.push(apartment.id);
-        console.log(`Deleted apartment: ${apartment.title} (${apartment.id})`);
-      } catch (error) {
-        console.error(`Failed to delete apartment ${apartment.id}:`, error);
-        errors.push(apartment.id);
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: `Auto-delete completed`,
-      deletedCount: deletedIds.length,
-      deletedIds,
-      errorsCount: errors.length,
-      errors,
-      checkedStatuses: FINAL_STATUSES,
-      hoursThreshold: HOURS_UNTIL_DELETE
-    });
-  } catch (error) {
-    console.error('Error in auto-delete cron:', error);
-    return NextResponse.json({ 
-      success: false, 
-      error: 'Failed to run auto-delete' 
-    }, { status: 500 });
+    return user?.role === 'DEVELOPER' || user?.identifier === DEVELOPER_EMAIL;
+  } catch {
+    return false;
   }
 }
 
-// Also support POST for manual triggering
+async function handle(request: NextRequest) {
+  try {
+    if (!(await isAuthorized(request))) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const result = await runAutoArchive();
+
+    return NextResponse.json({
+      success: true,
+      message: `تمت الأرشفة التلقائية - ${result.archivedCount} عقار`,
+      ...result,
+    });
+  } catch (error) {
+    console.error('Error in auto-archive cron:', error);
+    return NextResponse.json(
+      { success: false, error: 'فشل تشغيل الأرشفة التلقائية' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(request: NextRequest) {
+  return handle(request);
+}
+
 export async function POST(request: NextRequest) {
-  return GET(request);
+  return handle(request);
 }
