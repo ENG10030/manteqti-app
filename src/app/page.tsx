@@ -292,6 +292,8 @@ function App() {
     currency: 'ج.م'
   });
   const [settingsLoading, setSettingsLoading] = useState(false);
+  const [schemaSyncing, setSchemaSyncing] = useState(false);
+  const [schemaSyncResult, setSchemaSyncResult] = useState<string[] | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [devTab, setDevTab] = useState<'stats' | 'pending' | 'apartments' | 'favorites' | 'payments' | 'messages' | 'userApprovals' | 'users' | 'blocked' | 'settings' | 'logs' | 'editRequests' | 'userLogs' | 'commentManage' | 'backup' | 'archive'>('stats');
   const [likes, setLikes] = useState<Array<{ id: string; apartmentId: string; userId: string; user: { id: string; name: string }; apartment: { id: string; title: string } | null; createdAt: string }>>([]);
@@ -982,6 +984,27 @@ function App() {
       fetchSettingsRef.current?.();
     }
   }, [devTab]);
+
+  // فحص ومزامنة قاعدة البيانات (يصلح الجداول والأعمدة الناقصة بعد أي تحديث)
+  const runSchemaSync = async () => {
+    setSchemaSyncing(true);
+    setSchemaSyncResult(null);
+    try {
+      const res = await fetch('/api/sync-schema', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+      const data = await res.json();
+      if (res.ok) {
+        setSchemaSyncResult(Array.isArray(data.results) ? data.results : [data.message || 'تم']);
+        addToast('تم فحص ومزامنة قاعدة البيانات ✅', 'success');
+        fetchSettingsRef.current?.();
+      } else {
+        addToast(data.error || 'فشلت المزامنة', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الاتصال', 'error');
+    } finally {
+      setSchemaSyncing(false);
+    }
+  };
 
   // Update settings
   const updateSettings = async (newSettings: Partial<typeof settings>) => {
@@ -4659,6 +4682,17 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     </div>
                   </div>
                   <button onClick={() => updateSettings(settings)} disabled={settingsLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-600 text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2">{settingsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}حفظ الإعدادات</button>
+                  {/* Database Schema Sync — إصلاح الجداول والأعمدة الناقصة بنقرة واحدة */}
+                  <div className={`p-4 rounded-xl border-2 ${darkMode ? 'bg-slate-700 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200'}`}>
+                    <h3 className={`font-bold mb-2 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Database className="h-5 w-5 text-emerald-500" />صيانة قاعدة البيانات</h3>
+                    <p className={`text-xs mb-3 leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>لو ظهرت أخطاء بعد أي تحديث للموقع (زي فشل حفظ الإعدادات أو الرسوم أو المحفظة)، اضغط الزر ده — يفحص كل الجداول والأعمدة وينشئ الناقص تلقائياً بدون حذف أي بيانات.</p>
+                    <button onClick={runSchemaSync} disabled={schemaSyncing} className="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 transition-colors disabled:opacity-50 flex items-center gap-2">{schemaSyncing ? <><Loader2 className="h-4 w-4 animate-spin" />جاري الفحص والمزامنة...</> : <><Database className="h-4 w-4" />فحص ومزامنة قاعدة البيانات</>}</button>
+                    {schemaSyncResult && (
+                      <div className={`mt-3 p-3 rounded-lg max-h-48 overflow-y-auto text-xs font-mono space-y-1 ${darkMode ? 'bg-slate-800 text-slate-300' : 'bg-white text-slate-700'}`}>
+                        {schemaSyncResult.map((line, i) => <div key={i} className={line.includes('🆕') || line.includes('تم إضافة') ? 'text-emerald-500 font-bold' : ''}>{line}</div>)}
+                      </div>
+                    )}
+                  </div>
                   {/* Developer Password Change */}
                   <div className={`p-4 rounded-xl border-2 ${darkMode ? 'bg-slate-700 border-amber-500/30' : 'bg-amber-50 border-amber-200'}`}>
                     <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Key className="h-5 w-5 text-amber-500" />تغيير كلمة مرور المطور</h3>

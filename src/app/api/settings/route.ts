@@ -106,6 +106,15 @@ export async function PUT(request: Request) {
     return NextResponse.json({ message: "تم تحديث الإعدادات بنجاح ✅", settings });
   } catch (error) {
     console.error("Update settings error:", error);
+    // تشخيص أوضح: لو السبب عمود/جدول ناقص في قاعدة البيانات (drift بعد تحديث الكود)
+    const err = error as { code?: string; message?: string };
+    const msg = String(err?.message || '');
+    if (err?.code === 'P2022' || err?.code === 'P2021' || msg.includes('does not exist in the current database') || msg.includes('Unknown argument')) {
+      return NextResponse.json(
+        { error: "قاعدة البيانات ناقصة أعمدة أو جداول — افتح لوحة المطور → الإعدادات → اضغط (فحص ومزامنة قاعدة البيانات)" },
+        { status: 500 }
+      );
+    }
     return NextResponse.json({ error: "حدث خطأ أثناء تحديث الإعدادات" }, { status: 500 });
   }
 }
