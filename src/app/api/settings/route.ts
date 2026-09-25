@@ -79,28 +79,31 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "لا توجد إعدادات" }, { status: 404 });
     }
 
+    const buildUpdateData = () => ({
+      contactFee: toInt(body.contactFee),
+      regularFee: toInt(body.regularFee),
+      featuredFee: toInt(body.featuredFee),
+      premiumFee: toInt(body.premiumFee),
+      vipFee: toInt(body.vipFee),
+      saleDisplayFee: toInt(body.saleDisplayFee),
+      rentDisplayFee: toInt(body.rentDisplayFee),
+      otherServicesFee: toInt(body.otherServicesFee),
+      highlightFee: toInt(body.highlightFee),
+      priorityListingFee: toInt(body.priorityListingFee),
+      verifiedListingFee: toInt(body.verifiedListingFee),
+      currency: toCurrency(body.currency),
+      // Wallet/payment settings
+      ...(body.usdtTronAddress !== undefined && { usdtTronAddress: typeof body.usdtTronAddress === 'string' ? body.usdtTronAddress.trim() || null : null }),
+      ...(body.paymentAutoConfirm !== undefined && { paymentAutoConfirm: !!body.paymentAutoConfirm }),
+      ...(body.paymentSecurityPin !== undefined && { paymentSecurityPin: typeof body.paymentSecurityPin === 'string' ? body.paymentSecurityPin.trim() || null : null }),
+      ...(body.walletMinCharge !== undefined && { walletMinCharge: toInt(body.walletMinCharge) || 10 }),
+      ...(body.walletMaxCharge !== undefined && { walletMaxCharge: toInt(body.walletMaxCharge) || 50000 }),
+    });
+
+    // الإصلاح الذاتي للـ schema drift بيتعمل تلقائياً في src/lib/db.ts
     const settings = await db.settings.update({
       where: { id: existing.id },
-      data: {
-        contactFee: toInt(body.contactFee),
-        regularFee: toInt(body.regularFee),
-        featuredFee: toInt(body.featuredFee),
-        premiumFee: toInt(body.premiumFee),
-        vipFee: toInt(body.vipFee),
-        saleDisplayFee: toInt(body.saleDisplayFee),
-        rentDisplayFee: toInt(body.rentDisplayFee),
-        otherServicesFee: toInt(body.otherServicesFee),
-        highlightFee: toInt(body.highlightFee),
-        priorityListingFee: toInt(body.priorityListingFee),
-        verifiedListingFee: toInt(body.verifiedListingFee),
-        currency: toCurrency(body.currency),
-        // Wallet/payment settings
-        ...(body.usdtTronAddress !== undefined && { usdtTronAddress: typeof body.usdtTronAddress === 'string' ? body.usdtTronAddress.trim() || null : null }),
-        ...(body.paymentAutoConfirm !== undefined && { paymentAutoConfirm: !!body.paymentAutoConfirm }),
-        ...(body.paymentSecurityPin !== undefined && { paymentSecurityPin: typeof body.paymentSecurityPin === 'string' ? body.paymentSecurityPin.trim() || null : null }),
-        ...(body.walletMinCharge !== undefined && { walletMinCharge: toInt(body.walletMinCharge) || 10 }),
-        ...(body.walletMaxCharge !== undefined && { walletMaxCharge: toInt(body.walletMaxCharge) || 50000 }),
-      },
+      data: buildUpdateData(),
     });
 
     return NextResponse.json({ message: "تم تحديث الإعدادات بنجاح ✅", settings });

@@ -155,6 +155,8 @@ export async function GET(
       description: apartment.description,
       // PII: only show ownerPhone if user can see contact
       ownerPhone: canSeeOwnerContact ? apartment.ownerPhone : '',
+      // PII: رقم واتساب الناشر — نفس شروط إظهار الهاتف
+      ownerWhatsapp: canSeeOwnerContact ? (apartment.ownerWhatsapp || '') : '',
       // PII: only show mapLink if user can see contact
       mapLink: canSeeOwnerContact ? (apartment.mapLink || '') : '',
       imageUrl: apartment.imageUrl,

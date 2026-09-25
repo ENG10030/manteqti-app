@@ -23,6 +23,32 @@ import { FileUpload } from '@/components/file-upload';
 // Developer credentials
 const DEVELOPER_EMAIL = process.env.NEXT_PUBLIC_DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
 
+// معرّف OAuth من جوجل — لو مش موجود، زر جوجل مش هيظهر خالص
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+
+// روابط واتساب: تطبيع الرقم المصري (01xxxxxxx → 20 1xxxxxxxxx) + رسالة جاهزة
+function buildWhatsappLink(number: string, apartmentTitle: string): string {
+  let digits = (number || '').replace(/\D/g, '');
+  if (digits.startsWith('00')) digits = digits.slice(2);
+  if (digits.startsWith('0')) digits = '20' + digits.slice(1);
+  const msg = encodeURIComponent(`مرحباً، أنا مهتم بالعقار "${apartmentTitle}" اللي شفته على موقع منطقتي 🏠`);
+  return `https://wa.me/${digits}?text=${msg}`;
+}
+
+// أيقونة واتساب الرسمية (لوسيد مفيهوش شعارات العلامات التجارية)
+function WhatsAppIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+  );
+}
+
+// شعار جوجل الرسمي
+function GoogleIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+  );
+}
+
 // Contact fee now comes from settings (dynamic)
 
 // Status configuration
@@ -41,7 +67,7 @@ const statusConfig: Record<string, { label: string; color: string; bgColor: stri
 // Interfaces
 interface Apartment {
   id: string; title: string; price: number; area: string; bedrooms: number; bathrooms: number; floor?: number | null; apartmentSize?: number | null;
-  description: string; ownerPhone: string; mapLink: string; imageUrl?: string; images?: string[];
+  description: string; ownerPhone: string; ownerWhatsapp?: string | null; mapLink: string; imageUrl?: string; images?: string[];
   videoUrl?: string; videos?: string[]; amenities?: string[]; isFeatured?: boolean; isVip?: boolean;
   type: 'rent' | 'sale'; status: string; paymentRef?: string; createdBy?: string; views?: number; createdAt: string; statusChangedAt?: string | null; archivedAt?: string | null;
 }
@@ -201,6 +227,7 @@ function App() {
 
   // Form states
   const [authStep, setAuthStep] = useState<'login' | 'register'>('login');
+  const [authError, setAuthError] = useState('');
   const [authIdentifier, setAuthIdentifier] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authPhone, setAuthPhone] = useState('');
@@ -228,7 +255,7 @@ function App() {
   const [devPassword, setDevPassword] = useState('');
   const [showDevPassword, setShowDevPassword] = useState(false);
   const [devLoading, setDevLoading] = useState(false);
-  const [aptForm, setAptForm] = useState({ title: '', price: '', area: '', bedrooms: '1', bathrooms: '1', floor: '', apartmentSize: '', description: '', ownerPhone: '', mapLink: '', type: 'rent' as 'rent' | 'sale', listingType: 'regular' as 'regular' | 'featured' | 'vip' });
+  const [aptForm, setAptForm] = useState({ title: '', price: '', area: '', bedrooms: '1', bathrooms: '1', floor: '', apartmentSize: '', description: '', ownerPhone: '', ownerWhatsapp: '', mapLink: '', type: 'rent' as 'rent' | 'sale', listingType: 'regular' as 'regular' | 'featured' | 'vip' });
   const [aptSubmitting, setAptSubmitting] = useState(false);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
@@ -243,7 +270,7 @@ function App() {
   const [pendingUsers, setPendingUsers] = useState<Array<{ id: string; name: string; identifier: string; email: string; phone: string | null; isApproved: boolean; createdAt: string }>>([]);
   const [devMessageTo, setDevMessageTo] = useState<{ userId: string; userName: string } | null>(null);
   const [devMessageText, setDevMessageText] = useState('');
-  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
+  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; results?: Array<{ id: string; title: string; area: string; price: number; type: string; bedrooms: number; bathrooms: number; apartmentSize: number | null; imageUrl: string | null }> }>>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [aiDescLoading, setAiDescLoading] = useState(false);
@@ -450,7 +477,9 @@ function App() {
   }, []); // Empty deps = connect only ONCE on mount
 
   // ========== REAL-TIME CHANGES POLLING (بدون socket.io) ==========
-  // بيشتغل على Vercel - كل 3 ثواني بيشوف في تغييرات جديدة
+  // بيشتغل على Vercel — كل 15 ثانية بيشوف في تغييرات جديدة
+  // (كان 3 ثواني وده كان استهلاك مبالغ فيه — اتظبط لـ 15 ثانية
+  //  + تحديث فوري أول ما التاب يرجع مفتوح عبر visibilitychange)
   useEffect(() => {
     if (typeof window === 'undefined') return;
     let lastCheckTime = new Date().toISOString();
@@ -495,7 +524,7 @@ function App() {
 
     const interval = setInterval(() => {
       if (!document.hidden) pollChanges();
-    }, 3000);
+    }, 15000);
 
     // لما التاب يرجع focuses، جيب التغييرات فوراً
     const handleVisibility = () => {
@@ -954,15 +983,15 @@ function App() {
   };
   useEffect(() => { fetchSettingsRef.current = fetchSettings; });
 
-  // Fast settings polling every 5 seconds with efficient 304 support
-  // Settings are lightweight (single DB row) so frequent polling is fine
+  // Settings polling كل 60 ثانية (كانت 5 ثواني وده استهلاك مبالغ فيه)
+  // الـ endpoint نفسه خفيف (صف واحد + دعم 304) — و60 ثانية كفاية جداً للمزامنة
   // SKIP polling when developer is on the Settings tab to avoid overwriting unsaved form changes
   useEffect(() => {
     const interval = setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
       if (devTabRef.current === 'settings') return; // Don't overwrite user's unsaved edits
       fetchSettingsRef.current?.();
-    }, 5000);
+    }, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -1539,6 +1568,7 @@ function App() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
+    setAuthError('');
     try {
       const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), password: authPassword }) });
       const data = await res.json();
@@ -1551,10 +1581,12 @@ function App() {
         setAuthPassword('');
       } else if (data.errorCode === 'USER_NOT_FOUND') {
         // الحساب غير موجود - يوجه للتسجيل
+        setAuthError(data.error || 'بيانات الدخول غير صحيحة');
         addToast(data.error, 'error');
         setAuthStep('register');
-      } else if (data.errorCode === 'WRONG_PASSWORD') {
-        // كلمة المرور غير صحيحة
+      } else if (data.errorCode === 'WRONG_PASSWORD' || data.errorCode === 'INVALID_CREDENTIALS') {
+        // كلمة المرور غير صحيحة / بيانات غلط — رسالة ظاهرة داخل النافذة نفسها
+        setAuthError(data.error || 'بيانات الدخول غير صحيحة');
         addToast(data.error, 'error');
       } else if (data.errorCode === 'EMAIL_NOT_VERIFIED') {
         // البريد غير مؤكد - يعيد إرسال OTP تلقائياً ويفتح نافذة التحقق
@@ -1564,11 +1596,14 @@ function App() {
         addToast(data.autoOtpSent ? 'تم إعادة إرسال رمز التحقق تلقائياً ✅' : data.error, 'info');
       } else if (data.errorCode === 'ACCOUNT_BLOCKED') {
         // حساب محظور
+        setAuthError(data.blockReason ? `${data.error}\nالسبب: ${data.blockReason}` : (data.error || 'حسابك محظور'));
         addToast(data.blockReason ? `${data.error}\nالسبب: ${data.blockReason}` : data.error, 'error');
       } else if (data.errorCode === 'ACCOUNT_PENDING') {
         // حساب قيد المراجعة
+        setAuthError(data.error || 'حسابك قيد المراجعة');
         addToast(data.error, 'info');
       } else if (data.errorCode === 'TOO_MANY_REQUESTS') {
+        setAuthError(data.error || 'طلبات كثيرة، حاول بعد شوية');
         addToast(data.error, 'error');
       } else if (data.requiresVerification) {
         // fallback للإصدارات القديمة من الـ API
@@ -1576,14 +1611,15 @@ function App() {
         setShowOtpVerification(true);
         setOtpEmail(data.email || authIdentifier.trim().toLowerCase());
         addToast('يجب تأكيد البريد الإلكتروني أولاً!', 'info');
-      } else addToast(data.error || 'خطأ في تسجيل الدخول', 'error');
-    } catch { addToast('حدث خطأ في الاتصال', 'error'); }
+      } else { const msg = data.error || 'بيانات الدخول غير صحيحة'; setAuthError(msg); addToast(msg, 'error'); }
+    } catch { setAuthError('حدث خطأ في الاتصال بالخادم. تأكد من الإنترنت وحاول تاني'); addToast('حدث خطأ في الاتصال', 'error'); }
     finally { setAuthLoading(false); }
   };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
+    setAuthError('');
     try {
       const res = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: authIdentifier.trim().toLowerCase(), name: authName.trim(), password: authPassword, phone: authPhone.trim() || undefined }) });
       const data = await res.json();
@@ -1607,10 +1643,75 @@ function App() {
           }
         }
       }
-      else addToast(data.error || 'خطأ في التسجيل', 'error');
-    } catch { addToast('حدث خطأ في الاتصال', 'error'); }
+      else { const msg = data.error || 'خطأ في التسجيل'; setAuthError(msg); addToast(msg, 'error'); }
+    } catch { setAuthError('حدث خطأ في الاتصال بالخادم. تأكد من الإنترنت وحاول تاني'); addToast('حدث خطأ في الاتصال', 'error'); }
     finally { setAuthLoading(false); }
   };
+
+  // ===== تسجيل الدخول / إنشاء حساب عبر جوجل =====
+  const handleGoogleSuccess = async (resp: { credential?: string }) => {
+    if (!resp.credential) return;
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      const res = await fetch('/api/auth/google', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ credential: resp.credential }) });
+      const data = await res.json();
+      if (res.ok && data.user) {
+        setCurrentUser(data.user); setShowAuth(false);
+        if (data.user.identifier === DEVELOPER_EMAIL) setIsDeveloper(true);
+        addToast(`مرحباً ${data.user.name}!`, 'success');
+      } else {
+        const msg = data.error || 'فشل تسجيل الدخول بجوجل';
+        setAuthError(msg); addToast(msg, 'error');
+      }
+    } catch {
+      const msg = 'حدث خطأ في الاتصال بالخادم';
+      setAuthError(msg); addToast(msg, 'error');
+    }
+    finally { setAuthLoading(false); }
+  };
+
+  // تحميل زر جوجل الرسمي (Google Identity Services) عند فتح نافذة الدخول
+  const googleScriptLoadingRef = useRef<Promise<void> | null>(null);
+  const googleBtnRef = useRef<HTMLDivElement | null>(null);
+  const loadGoogleScript = (): Promise<void> => {
+    if ((window as any).google?.accounts?.id) return Promise.resolve();
+    if (googleScriptLoadingRef.current) return googleScriptLoadingRef.current;
+    googleScriptLoadingRef.current = new Promise<void>((resolve, reject) => {
+      const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+      if (existing) { existing.addEventListener('load', () => resolve()); existing.addEventListener('error', () => reject(new Error('gsi failed'))); return; }
+      const s = document.createElement('script');
+      s.src = 'https://accounts.google.com/gsi/client';
+      s.async = true; s.defer = true;
+      s.onload = () => resolve();
+      s.onerror = () => { googleScriptLoadingRef.current = null; reject(new Error('gsi failed')); };
+      document.head.appendChild(s);
+    });
+    return googleScriptLoadingRef.current;
+  };
+  // مسح أي رسالة خطأ قديمة أول ما نافذة الدخول تفتح
+  useEffect(() => { if (showAuth) setAuthError(''); }, [showAuth]);
+  useEffect(() => {
+    if (!showAuth || !GOOGLE_CLIENT_ID) return;
+    let cancelled = false;
+    (async () => {
+      try { await loadGoogleScript(); } catch { return; }
+      if (cancelled || !googleBtnRef.current) return;
+      const google = (window as any).google;
+      if (!google?.accounts?.id) return;
+      try {
+        google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: (resp: { credential?: string }) => handleGoogleSuccess(resp),
+        });
+        google.accounts.id.renderButton(googleBtnRef.current, {
+          type: 'standard', theme: 'outline', size: 'large', shape: 'pill',
+          text: 'continue_with', logo_alignment: 'center', locale: 'ar', width: 300,
+        });
+      } catch { /* زر جوجل اختياري — تجاهل أخطاء التهيئة */ }
+    })();
+    return () => { cancelled = true; };
+  }, [showAuth]);
 
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1726,6 +1827,7 @@ function App() {
           floor: aptForm.floor ? parseInt(aptForm.floor) : null,
           apartmentSize: aptForm.apartmentSize ? parseInt(aptForm.apartmentSize) : null,
           ownerPhone: aptForm.ownerPhone,
+          ownerWhatsapp: aptForm.ownerWhatsapp.trim() || null,
           mapLink: aptForm.mapLink || null,
           type: aptForm.type,
           images: Array.isArray(imageUrls) && imageUrls.length > 0 ? JSON.stringify(imageUrls) : null, 
@@ -1745,7 +1847,7 @@ function App() {
       if (res.ok) { 
         fetchApartments(); 
         setShowAddModal(false); 
-        setAptForm({ title: '', price: '', area: '', bedrooms: '1', bathrooms: '1', floor: '', apartmentSize: '', description: '', ownerPhone: '', mapLink: '', type: 'rent', listingType: 'regular' }); 
+        setAptForm({ title: '', price: '', area: '', bedrooms: '1', bathrooms: '1', floor: '', apartmentSize: '', description: '', ownerPhone: '', ownerWhatsapp: '', mapLink: '', type: 'rent', listingType: 'regular' }); 
         setImageUrls([]); 
         setVideoUrls([]); 
         addToast(isDeveloper ? 'تم نشر الشقة بنجاح!' : 'تم إرسال الشقة للمراجعة!', 'success'); 
@@ -1857,6 +1959,7 @@ function App() {
         floor: editApartment.floor ?? null,
         apartmentSize: editApartment.apartmentSize ?? null,
         ownerPhone: editApartment.ownerPhone,
+        ownerWhatsapp: editApartment.ownerWhatsapp || null,
         mapLink: editApartment.mapLink || null,
         type: editApartment.type,
         status: editApartment.status,
@@ -2213,9 +2316,21 @@ function App() {
     try {
       const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: currentUser?.id || 'guest', message: userMessage }) });
       const data = await res.json();
-      if (data.success) setChatMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
-    } catch { addToast('حدث خطأ', 'error'); }
+      if (data.success) setChatMessages(prev => [...prev, { role: 'assistant', content: data.response, results: Array.isArray(data.results) ? data.results : [] }]);
+      else setChatMessages(prev => [...prev, { role: 'assistant', content: 'عذراً، حصلت مشكلة في البحث. جرّب تاني 🙏' }]);
+    } catch { setChatMessages(prev => [...prev, { role: 'assistant', content: 'حدث خطأ في الاتصال. تأكد من الإنترنت وحاول تاني.' }]); }
     finally { setChatLoading(false); }
+  };
+
+  // فتح عقار جاي من نتائج المساعد الذكي
+  const openChatApartment = (r: { id: string; title: string; area: string; price: number; type: string; bedrooms: number; bathrooms: number; apartmentSize: number | null; imageUrl: string | null }) => {
+    const existing = apartments.find(a => a.id === r.id) || allApartments.find(a => a.id === r.id);
+    const base: Apartment = existing || { id: r.id, title: r.title, price: r.price, area: r.area, bedrooms: r.bedrooms, bathrooms: r.bathrooms, apartmentSize: r.apartmentSize, description: '', ownerPhone: '', mapLink: '', imageUrl: r.imageUrl || undefined, images: [], type: (r.type as 'rent' | 'sale'), status: 'available', createdAt: new Date().toISOString() };
+    setSelectedApartment(base);
+    setCurrentImageIndex(0);
+    setShowChat(false);
+    setChatMessages([]);
+    fetchComments(base.id);
   };
 
   const sendMessage = async () => {
@@ -2795,7 +2910,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       </div>
                     </div>
                     <div className="flex gap-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                      <button onClick={() => { setSelectedApartment(apartment); fetchComments(apartment.id); setCurrentImageIndex(0); fetch(`/api/apartments/${apartment.id}/details`, { method: 'GET' }).catch(() => {}); }} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-violet-700 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:scale-[1.02] transition-all duration-300 group relative overflow-hidden">
+                      <button onClick={() => { setSelectedApartment(apartment); fetchComments(apartment.id); setCurrentImageIndex(0); fetch(`/api/apartments/${apartment.id}/details`).then(r => r.json()).then((d) => { if (d && d.id === apartment.id) setSelectedApartment(prev => (prev && prev.id === apartment.id) ? { ...prev, ownerPhone: d.ownerPhone || prev.ownerPhone, ownerWhatsapp: d.ownerWhatsapp || prev.ownerWhatsapp, mapLink: d.mapLink || prev.mapLink } : prev); }).catch(() => {}); }} className="flex-1 py-3 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-violet-700 text-white font-medium text-sm flex items-center justify-center gap-2 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 hover:scale-[1.02] transition-all duration-300 group relative overflow-hidden">
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
                         <Eye className="h-4 w-4 group-hover:scale-110 transition-transform" />
                         <span>عرض التفاصيل</span>
@@ -3196,7 +3311,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     </div>
                   </div>
                   <div className="flex flex-col gap-2 shrink-0">
-                    <button onClick={() => { setSelectedApartment(apt); fetchComments(apt.id); setCurrentImageIndex(0); setShowFavorites(false); fetch(`/api/apartments/${apt.id}/details`, { method: 'GET' }).catch(() => {}); }} className="px-3 py-2 rounded-lg bg-violet-500 text-white text-xs hover:bg-violet-600 transition-colors"><Eye className="h-4 w-4" /></button>
+                    <button onClick={() => { setSelectedApartment(apt); fetchComments(apt.id); setCurrentImageIndex(0); setShowFavorites(false); fetch(`/api/apartments/${apt.id}/details`).then(r => r.json()).then((d) => { if (d && d.id === apt.id) setSelectedApartment(prev => (prev && prev.id === apt.id) ? { ...prev, ownerPhone: d.ownerPhone || prev.ownerPhone, ownerWhatsapp: d.ownerWhatsapp || prev.ownerWhatsapp, mapLink: d.mapLink || prev.mapLink } : prev); }).catch(() => {}); }} className="px-3 py-2 rounded-lg bg-violet-500 text-white text-xs hover:bg-violet-600 transition-colors"><Eye className="h-4 w-4" /></button>
                     <button onClick={() => toggleFavorite(apt.id)} className="px-3 py-2 rounded-lg bg-red-500/10 text-red-500 text-xs hover:bg-red-500/20 transition-colors"><Trash2 className="h-4 w-4" /></button>
                   </div>
                 </div>
@@ -3487,12 +3602,30 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <div className="flex items-center gap-2"><input type="checkbox" id="rememberMe" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="w-4 h-4 rounded accent-violet-500" /><label htmlFor="rememberMe" className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>تذكرني</label></div>
                     {authStep === 'login' && <button type="button" onClick={() => { setShowAuth(false); setShowForgotPassword(true); }} className={`text-xs ${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-violet-600 hover:text-violet-500'} transition-colors`}>نسيت كلمة المرور؟</button>}
                   </div>
+                  {/* رسالة الخطأ داخل النافذة — عشان المستخدم يعرف ليه فشل الدخول */}
+                  {authError && (
+                    <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} role="alert" className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 dark:bg-red-900/30 dark:border-red-800 dark:text-red-300">
+                      <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+                      <p className="text-sm font-medium whitespace-pre-line">{authError}</p>
+                    </motion.div>
+                  )}
                   <button type="submit" disabled={authLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-semibold shadow-lg shadow-violet-500/30 hover:shadow-violet-500/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2">
                     {authLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : authStep === 'login' ? <><span>تسجيل الدخول</span><span className='text-lg'>🔑</span></> : <><span>إنشاء حساب</span><Plus className="h-4 w-4" /></>}
                   </button>
+                  {/* الفاصل وزر جوجل — يظهر فقط لو NEXT_PUBLIC_GOOGLE_CLIENT_ID مضبوط */}
+                  {GOOGLE_CLIENT_ID && (
+                    <>
+                      <div className="flex items-center gap-3 py-1">
+                        <div className={`flex-1 h-px ${darkMode ? 'bg-slate-600' : 'bg-slate-200'}`} />
+                        <span className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>أو</span>
+                        <div className={`flex-1 h-px ${darkMode ? 'bg-slate-600' : 'bg-slate-200'}`} />
+                      </div>
+                      <div ref={googleBtnRef} className="flex justify-center min-h-[44px]" />
+                    </>
+                  )}
                 </form>
                 <div className="mt-4 text-center">
-                  <button onClick={() => setAuthStep(authStep === 'login' ? 'register' : 'login')} className={`text-sm ${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-violet-600 hover:text-violet-500'} transition-colors`}>{authStep === 'login' ? <>ليس لديك حساب؟ <span className={darkMode ? 'text-cyan-400 font-semibold' : 'text-cyan-600 font-semibold'}>سجل الآن</span></> : 'لديك حساب؟ سجل دخولك'}</button>
+                  <button onClick={() => { setAuthStep(authStep === 'login' ? 'register' : 'login'); setAuthError(''); }} className={`text-sm ${darkMode ? 'text-violet-400 hover:text-violet-300' : 'text-violet-600 hover:text-violet-500'} transition-colors`}>{authStep === 'login' ? <>ليس لديك حساب؟ <span className={darkMode ? 'text-cyan-400 font-semibold' : 'text-cyan-600 font-semibold'}>سجل الآن</span></> : 'لديك حساب؟ سجل دخولك'}</button>
                 </div>
               </div>
             </div>
@@ -3588,6 +3721,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                   </div>
                 </div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رقم الهاتف *</label><input type="tel" value={aptForm.ownerPhone} onChange={(e) => setAptForm({ ...aptForm, ownerPhone: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
+                <div><label className={`block text-sm font-medium mb-2 flex items-center gap-1.5 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}><WhatsAppIcon className="h-4 w-4 text-emerald-500" />رقم واتساب (اختياري)</label><input type="tel" dir="ltr" value={aptForm.ownerWhatsapp} onChange={(e) => setAptForm({ ...aptForm, ownerWhatsapp: e.target.value })} placeholder="01xxxxxxxxx" className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /><p className={`text-xs mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لو حطيته، المشتري يقدر يكلّمك على واتساب بضغطة واحدة من صفحة العقار</p></div>
                 <div className="col-span-2"><div className="flex items-center justify-between mb-2"><label className={`block text-sm font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الوصف *</label><button type="button" onClick={generateAIDescription} disabled={aiDescLoading} className="flex items-center gap-1 px-3 py-1 rounded-lg bg-gradient-to-r from-violet-500 to-purple-600 text-white text-xs font-medium disabled:opacity-50 hover:from-violet-600 hover:to-purple-700 transition-all">{aiDescLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}إنشاء بالذكاء الاصطناعي</button></div><textarea value={aptForm.description} onChange={(e) => setAptForm({ ...aptForm, description: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} rows={3} required /></div>
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رابط الخريطة (اختياري)</label><input type="url" value={aptForm.mapLink} onChange={(e) => setAptForm({ ...aptForm, mapLink: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}><ImageIcon className="h-4 w-4 inline ml-1" />صور الشقة</label><FileUpload type="image" value={imageUrls} onChange={setImageUrls} maxFiles={10} /></div>
@@ -3637,7 +3771,13 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
                   <h3 className={`font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>بيانات التواصل</h3>
                   <div className="flex items-center gap-2"><Phone className="h-5 w-5 text-emerald-500" /><a href={`tel:${selectedApartment.ownerPhone}`} className="text-emerald-600 font-medium hover:underline">{selectedApartment.ownerPhone}</a></div>
-                  {selectedApartment.mapLink && <a href={selectedApartment.mapLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-2 text-violet-600 hover:underline"><ExternalLink className="h-4 w-4" />عرض على الخريطة</a>}
+                  {selectedApartment.ownerWhatsapp && (
+                    <a href={buildWhatsappLink(selectedApartment.ownerWhatsapp, selectedApartment.title)} target="_blank" rel="noopener noreferrer" aria-label="تواصل واتساب" className="mt-3 inline-flex items-center justify-center gap-2 w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 text-white font-medium shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all">
+                      <WhatsAppIcon className="h-5 w-5" />
+                      تواصل واتساب مباشرة
+                    </a>
+                  )}
+                  {selectedApartment.mapLink && <a href={selectedApartment.mapLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 mt-2 mr-3 text-violet-600 hover:underline"><ExternalLink className="h-4 w-4" />عرض على الخريطة</a>}
                 </div>
               ) : (
                 <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-amber-900/20 border border-amber-700' : 'bg-amber-50 border border-amber-200'}`}>
@@ -3738,6 +3878,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الدور</label><select value={editApartment.floor || ''} onChange={(e) => setEditApartment({ ...editApartment, floor: e.target.value ? parseInt(e.target.value) : undefined })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="">بدون تحديد</option>{['أرضي', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15+'].map(n => <option key={n} value={n === 'أرضي' ? '0' : n === '15+' ? '15' : n}>{n}</option>)}</select></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📏 مساحة الشقة (م²) <span className="text-red-500">*</span></label><input type="number" min="1" placeholder="مثال: 120" value={editApartment.apartmentSize || ''} onChange={(e) => setEditApartment({ ...editApartment, apartmentSize: e.target.value ? parseInt(e.target.value) : undefined })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الهاتف</label><input type="tel" value={editApartment.ownerPhone} onChange={(e) => setEditApartment({ ...editApartment, ownerPhone: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                <div><label className={`block text-sm font-medium mb-2 flex items-center gap-1.5 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}><WhatsAppIcon className="h-4 w-4 text-emerald-500" />رقم واتساب (اختياري)</label><input type="tel" dir="ltr" value={editApartment.ownerWhatsapp || ''} onChange={(e) => setEditApartment({ ...editApartment, ownerWhatsapp: e.target.value })} placeholder="01xxxxxxxxx" className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /><p className={`text-xs mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>يظهر مع بيانات التواصل — والعميل يفتح محادثة واتساب مباشرة</p></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحالة</label><select value={editApartment.status} onChange={(e) => { const newStatus = e.target.value; if (['sold', 'rented', 'unavailable'].includes(newStatus) && !['sold', 'rented', 'unavailable'].includes(editApartment.status)) { setEditStatusWarning(newStatus); } setEditApartment({ ...editApartment, status: newStatus }); }} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="available">متاح</option><option value="reserved">محجوز</option><option value="unavailable">غير متاح</option><option value="sold">تم البيع</option><option value="rented">تم التأجير</option></select>{editStatusWarning && <p className="text-red-500 text-xs mt-1.5 flex items-center gap-1 font-bold"><AlertTriangle className="h-3 w-3" />⚠️ سيتم أرشفة العقار وإخفاؤه من العرض بعد 48 ساعة من الحفظ (يمكن الاستعادة من لوحة المطور)</p>}</div>
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الوصف</label><textarea value={editApartment.description} onChange={(e) => setEditApartment({ ...editApartment, description: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} rows={3} /></div>
               </div>
@@ -3764,10 +3905,27 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {chatMessages.length === 0 && <div className="text-center py-8"><Brain className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>مرحباً! كيف يمكنني مساعدتك؟</p></div>}
+              {chatMessages.length === 0 && <div className="text-center py-8"><Brain className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={`font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>مرحباً! أنا ببحث لك في العقارات الحقيقية المتاحة 🏠</p><p className={`text-sm ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>جرب: "عايز شقة 3 غرف في المعادي للإيجار" أو "شقق للبيع في التجمع بميزانية 2 مليون"</p></div>}
               {chatMessages.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === 'user' ? 'justify-start' : 'justify-end'}`}>
-                  <div className={`max-w-[80%] p-3 rounded-2xl ${msg.role === 'user' ? 'bg-violet-600 text-white rounded-tr-none' : darkMode ? 'bg-slate-700 text-white rounded-tl-none' : 'bg-slate-100 text-slate-900 rounded-tl-none'}`}><p className="whitespace-pre-wrap">{msg.content}</p></div>
+                  <div className="max-w-[85%] space-y-2">
+                    <div className={`p-3 rounded-2xl ${msg.role === 'user' ? 'bg-violet-600 text-white rounded-tr-none' : darkMode ? 'bg-slate-700 text-white rounded-tl-none' : 'bg-slate-100 text-slate-900 rounded-tl-none'}`}><p className="whitespace-pre-wrap">{msg.content}</p></div>
+                    {msg.results && msg.results.length > 0 && (
+                      <div className="grid grid-cols-1 gap-2">
+                        {msg.results.map((r) => (
+                          <button key={r.id} onClick={() => openChatApartment(r)} aria-label={`عرض ${r.title}`} className={`flex items-center gap-3 p-2.5 rounded-xl border text-right transition-all hover:scale-[1.01] hover:shadow-md ${darkMode ? 'bg-slate-900/60 border-slate-600 hover:border-violet-500' : 'bg-white border-slate-200 hover:border-violet-400'}`}>
+                            <img src={r.imageUrl || '/logo.svg'} alt={r.title} className="w-14 h-14 rounded-lg object-cover shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
+                            <div className="min-w-0 flex-1">
+                              <p className={`text-sm font-bold truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{r.title}</p>
+                              <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>📍 {r.area} • 🛏️ {r.bedrooms} غرف</p>
+                              <p className="text-sm font-bold text-violet-600">{r.price === 0 ? 'مجاني ✨' : `${r.price.toLocaleString()} ${settings.currency}${r.type === 'rent' ? '/شهر' : ''}`}</p>
+                            </div>
+                            <Eye className={`h-4 w-4 shrink-0 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`} />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
               {chatLoading && <div className="flex justify-end"><div className={`p-3 rounded-2xl ${darkMode ? 'bg-slate-700' : 'bg-slate-100'} rounded-tl-none`}><Loader2 className="h-5 w-5 animate-spin text-violet-500" /></div></div>}

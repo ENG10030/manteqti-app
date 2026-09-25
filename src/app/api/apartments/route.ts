@@ -104,9 +104,9 @@ export async function GET(request: Request) {
       ],
     });
 
-    // ⛔ SECURITY: Remove ownerPhone from public response
+    // ⛔ SECURITY: Remove ownerPhone + ownerWhatsapp from public response
     const sanitizedApartments = apartments.map(apt => {
-      const { ownerPhone, ...safeApt } = apt;
+      const { ownerPhone, ownerWhatsapp, ...safeApt } = apt;
       return safeApt;
     });
 
@@ -170,9 +170,10 @@ export async function POST(request: Request) {
       type,
       images,
       videos,
+      ownerWhatsapp,
     } = body;
 
-    if (!title || !price || !area || !ownerPhone) {
+    if (!title || price === undefined || price === null || price === "" || !area || !ownerPhone) {
       return NextResponse.json(
         { error: "البيانات الأساسية مطلوبة" },
         { status: 400 }
@@ -182,33 +183,44 @@ export async function POST(request: Request) {
     // المطور ينشر مباشرة، المستخدم العادي يرسل للمراجعة
     const status = user.role === "DEVELOPER" ? "available" : "pending";
 
+    // تحويل آمن للسعر (يقبل 0 = عقار مجاني)
+    const parsedPrice = parseInt(String(price), 10);
+    if (isNaN(parsedPrice) || parsedPrice < 0) {
+      return NextResponse.json({ error: "السعر غير صالح" }, { status: 400 });
+    }
+
     // Sanitize text inputs to prevent XSS in stored data
     const sanitize = (s: string) => s.replace(/<[^>]*>/g, '').trim().slice(0, 500);
     const sanitizedTitle = sanitize(String(title));
     const sanitizedDescription = sanitize(String(description || ""));
     const sanitizedArea = sanitize(String(area));
 
-    const apartment = await db.apartment.create({
-      data: {
-        title: sanitizedTitle,
-        description: sanitizedDescription,
-        price: parseInt(price),
-        area: sanitizedArea,
-        bedrooms: parseInt(bedrooms) || 1,
-        bathrooms: parseInt(bathrooms) || 1,
-        floor: floor ? parseInt(floor) : null,
-        apartmentSize: apartmentSize ? parseInt(apartmentSize) : null,
-        ownerPhone,
-        mapLink: mapLink || null,
-        type: type || "rent",
-        status,
-        images: images || null,
-        videos: videos || null,
-        createdBy: user.id,
-        isFeatured: false,
-        isVip: false,
-      },
+    const buildData = () => ({
+      title: sanitizedTitle,
+      description: sanitizedDescription,
+      price: parsedPrice,
+      area: sanitizedArea,
+      bedrooms: parseInt(bedrooms) || 1,
+      bathrooms: parseInt(bathrooms) || 1,
+      floor: floor ? parseInt(floor) : null,
+      apartmentSize: apartmentSize ? parseInt(apartmentSize) : null,
+      ownerPhone,
+      // رقم واتساب اختياري للناشر — يظهر مع بيانات التواصل بعد الدفع
+      ownerWhatsapp: typeof ownerWhatsapp === "string" && ownerWhatsapp.trim()
+        ? ownerWhatsapp.replace(/<[^>]*>/g, "").trim().slice(0, 30)
+        : null,
+      mapLink: mapLink || null,
+      type: type || "rent",
+      status,
+      images: images || null,
+      videos: videos || null,
+      createdBy: user.id,
+      isFeatured: false,
+      isVip: false,
     });
+
+    // الإصلاح الذاتي للـ schema drift بيتعمل تلقائياً في src/lib/db.ts
+    const apartment = await db.apartment.create({ data: buildData() });
 
     // Notify all connected clients
     notifyApartmentsChanged('created', apartment.id);

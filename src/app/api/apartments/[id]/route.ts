@@ -24,6 +24,34 @@ async function getCurrentUser(request: Request) {
   }
 }
 
+// ===== تحويلات آمنة =====
+// ⚠️ Bug fix سابق: `body.price ? parseFloat(body.price) : undefined`
+// كان يمنع حفظ السعر 0 (عقار مجاني) لأن 0 falsy، وأيضاً parseInt('') = NaN
+// كان يفشل التحديث كله. هذه الدوال تفرق بين "لم يُرسل" و"فارغ" و"0".
+
+// لحقول مطلوبة (Int) — ترجع undefined لو لم تُرسل/فارغة/غير صالحة (يتجاهلها Prisma)
+function toNumUpdate(v: unknown): number | undefined {
+  if (v === undefined || v === null || v === '') return undefined;
+  const n = typeof v === 'number' ? v : parseFloat(String(v));
+  return isNaN(n) ? undefined : n;
+}
+
+// لحقول Int القابلة لـ null (floor/apartmentSize) — فارغ أو غير صالح → null (مسح القيمة)
+function toNullableIntUpdate(v: unknown): number | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null || v === '') return null;
+  const n = typeof v === 'number' ? Math.trunc(v) : parseInt(String(v), 10);
+  return isNaN(n) ? null : n;
+}
+
+// لحقول نصية قابلة لـ null (ownerWhatsapp) — فارغ → null (مسح الرقم)
+function toNullableTextUpdate(v: unknown): string | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  const s = String(v).replace(/<[^>]*>/g, '').trim().slice(0, 30);
+  return s || null;
+}
+
 // GET - جلب عقار واحد
 export async function GET(
   request: Request,
@@ -111,28 +139,32 @@ export async function PUT(
       archivedAtData = null;
     }
 
-    const updatedApartment = await db.apartment.update({
-      where: { id },
-      data: {
-        title: body.title,
-        description: body.description,
-        price: body.price ? parseFloat(body.price) : undefined,
-        area: body.area,
-        bedrooms: body.bedrooms ? parseInt(body.bedrooms) : undefined,
-        bathrooms: body.bathrooms ? parseInt(body.bathrooms) : undefined,
-        floor: body.floor !== undefined && body.floor !== null ? parseInt(body.floor) : null,
-        apartmentSize: body.apartmentSize !== undefined && body.apartmentSize !== null ? parseInt(body.apartmentSize) : null,
-        type: body.type,
-        images: body.images,
-        ownerPhone: body.ownerPhone,
-        mapLink: body.mapLink,
-        status: body.status,
-        statusChangedAt: statusChangedAtData,
-        archivedAt: archivedAtData,
-        isFeatured: body.isFeatured,
-        isVip: body.isVip,
-      },
+    const buildUpdateData = () => ({
+      title: body.title,
+      description: body.description,
+      // ✅ يقبل 0 (عقار مجاني) — الفرق بين "لم يُرسل" و"صفر"
+      price: toNumUpdate(body.price),
+      area: body.area,
+      bedrooms: toNumUpdate(body.bedrooms),
+      bathrooms: toNumUpdate(body.bathrooms),
+      floor: toNullableIntUpdate(body.floor),
+      apartmentSize: toNullableIntUpdate(body.apartmentSize),
+      type: body.type,
+      images: body.images,
+      videos: body.videos,
+      ownerPhone: body.ownerPhone,
+      // رقم واتساب اختياري — فارغ يعني مسح الرقم
+      ownerWhatsapp: toNullableTextUpdate(body.ownerWhatsapp),
+      mapLink: body.mapLink,
+      status: body.status,
+      statusChangedAt: statusChangedAtData,
+      archivedAt: archivedAtData,
+      isFeatured: body.isFeatured,
+      isVip: body.isVip,
     });
+
+    // الإصلاح الذاتي للـ schema drift بيتعمل تلقائياً في src/lib/db.ts
+    const updatedApartment = await db.apartment.update({ where: { id }, data: buildUpdateData() });
 
     // Notify all connected clients
     notifyApartmentsChanged('updated', id);
@@ -143,6 +175,14 @@ export async function PUT(
     });
   } catch (error) {
     console.error("Update apartment error:", error);
+    const err = error as { code?: string; message?: string };
+    const msg = String(err?.message || '');
+    if (err?.code === 'P2022' || err?.code === 'P2021' || msg.includes('does not exist in the current database') || msg.includes('Unknown argument')) {
+      return NextResponse.json(
+        { error: "قاعدة البيانات ناقصة أعمدة — افتح لوحة المطور → الإعدادات → اضغط (فحص ومزامنة قاعدة البيانات)" },
+        { status: 500 }
+      );
+    }
     return NextResponse.json(
       { error: "حدث خطأ أثناء تحديث العقار" },
       { status: 500 }

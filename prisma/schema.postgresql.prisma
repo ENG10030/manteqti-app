@@ -31,6 +31,7 @@ model Apartment {
   bathrooms       Int
   description     String
   ownerPhone      String
+  ownerWhatsapp    String?
   mapLink         String
   imageUrl        String?
   images          String?     // JSON array of image URLs
