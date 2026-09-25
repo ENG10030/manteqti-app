@@ -34,6 +34,20 @@ function toCurrency(v: unknown): string {
   return s || 'ج.م';
 }
 
+// أرقام حسابات الدفع / عناوين المحافظ — نص نظيف بدون رموز HTML
+function toAccount(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const s = v.replace(/<[^>]*>/g, '').trim().slice(0, 64);
+  return s || null;
+}
+
+// نصوص البنك (اسم البنك / اسم صاحب الحساب)
+function toBankText(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const s = v.replace(/<[^>]*>/g, '').trim().slice(0, 100);
+  return s || null;
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -59,7 +73,10 @@ export async function GET(request: Request) {
       }
     }
 
-    return NextResponse.json({ settings: { ...settings, updatedAt: settings.updatedAt?.toISOString() || new Date().toISOString() } }, { headers: { 'Cache-Control': 'no-store', 'Pragma': 'no-cache' } });
+    // حماية أمنية: لا ترجع رقم الـ PIN السري للعملاء أبداً (المطور فقط يحتاجه ولا يُعرض)
+    const { paymentSecurityPin: _pin, ...publicSettings } = settings as Record<string, unknown>;
+    void _pin;
+    return NextResponse.json({ settings: { ...publicSettings, updatedAt: settings.updatedAt?.toISOString() || new Date().toISOString() } }, { headers: { 'Cache-Control': 'no-store', 'Pragma': 'no-cache' } });
   } catch (error) {
     console.error("Get settings error:", error);
     return NextResponse.json({ error: "حدث خطأ أثناء جلب الإعدادات" }, { status: 500 });
@@ -98,6 +115,15 @@ export async function PUT(request: Request) {
       ...(body.paymentSecurityPin !== undefined && { paymentSecurityPin: typeof body.paymentSecurityPin === 'string' ? body.paymentSecurityPin.trim() || null : null }),
       ...(body.walletMinCharge !== undefined && { walletMinCharge: toInt(body.walletMinCharge) || 10 }),
       ...(body.walletMaxCharge !== undefined && { walletMaxCharge: toInt(body.walletMaxCharge) || 50000 }),
+      // حسابات استلام الأموال (يدخلها المطور)
+      ...(body.vodafoneCashNumber !== undefined && { vodafoneCashNumber: toAccount(body.vodafoneCashNumber) }),
+      ...(body.orangeCashNumber !== undefined && { orangeCashNumber: toAccount(body.orangeCashNumber) }),
+      ...(body.etisalatCashNumber !== undefined && { etisalatCashNumber: toAccount(body.etisalatCashNumber) }),
+      ...(body.instapayAccount !== undefined && { instapayAccount: toAccount(body.instapayAccount) }),
+      ...(body.bankName !== undefined && { bankName: toBankText(body.bankName) }),
+      ...(body.bankAccountName !== undefined && { bankAccountName: toBankText(body.bankAccountName) }),
+      ...(body.bankAccountNumber !== undefined && { bankAccountNumber: toAccount(body.bankAccountNumber) }),
+      ...(body.visaEnabled !== undefined && { visaEnabled: !!body.visaEnabled }),
     });
 
     // الإصلاح الذاتي للـ schema drift بيتعمل تلقائياً في src/lib/db.ts

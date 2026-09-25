@@ -117,6 +117,20 @@ model Settings {
   verifiedListingFee   Int      @default(250) // رسوم التحقق من العقار
   
   currency             String   @default("ج.م")
+  usdtTronAddress      String?
+  paymentAutoConfirm   Boolean  @default(false)
+  paymentSecurityPin   String?
+  walletMinCharge      Int      @default(10)
+  walletMaxCharge      Int      @default(50000)
+  // بيانات حسابات استلام الأموال — يدخلها المطور من لوحة الإعدادات
+  vodafoneCashNumber   String?
+  orangeCashNumber     String?
+  etisalatCashNumber   String?
+  instapayAccount      String?
+  bankName             String?
+  bankAccountName      String?
+  bankAccountNumber    String?
+  visaEnabled          Boolean  @default(false)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 }

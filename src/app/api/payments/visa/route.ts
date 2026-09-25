@@ -201,8 +201,9 @@ export async function POST(request: NextRequest) {
     const settings = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
     // Cast to access dynamic fields not in schema
     const s = settings as unknown as Record<string, any> | null;
-    const minAmt = s?.minRechargeAmount ?? 10;
-    const maxAmt = s?.maxRechargeAmount ?? 50000;
+    // الحدود من الإعدادات (walletMinCharge/walletMaxCharge هما الحقلان الرسميان)
+    const minAmt = Number(s?.walletMinCharge) > 0 ? Number(s?.walletMinCharge) : (Number(s?.minRechargeAmount) > 0 ? Number(s?.minRechargeAmount) : 10);
+    const maxAmt = Number(s?.walletMaxCharge) > 0 ? Number(s?.walletMaxCharge) : (Number(s?.maxRechargeAmount) > 0 ? Number(s?.maxRechargeAmount) : 50000);
 
     if (amount < minAmt) {
       return NextResponse.json(

@@ -304,6 +304,19 @@ function App() {
     priorityListingFee: number;
     verifiedListingFee: number;
     currency: string;
+    // حسابات استلام الأموال + إعدادات المحفظة
+    vodafoneCashNumber: string;
+    orangeCashNumber: string;
+    etisalatCashNumber: string;
+    instapayAccount: string;
+    bankName: string;
+    bankAccountName: string;
+    bankAccountNumber: string;
+    usdtTronAddress: string;
+    visaEnabled: boolean;
+    paymentAutoConfirm: boolean;
+    walletMinCharge: number;
+    walletMaxCharge: number;
   }>({ 
     contactFee: 50, 
     regularFee: 30,
@@ -316,7 +329,19 @@ function App() {
     highlightFee: 150,
     priorityListingFee: 200,
     verifiedListingFee: 250,
-    currency: 'ج.م'
+    currency: 'ج.م',
+    vodafoneCashNumber: '',
+    orangeCashNumber: '',
+    etisalatCashNumber: '',
+    instapayAccount: '',
+    bankName: '',
+    bankAccountName: '',
+    bankAccountNumber: '',
+    usdtTronAddress: '',
+    visaEnabled: false,
+    paymentAutoConfirm: false,
+    walletMinCharge: 10,
+    walletMaxCharge: 50000
   });
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [schemaSyncing, setSchemaSyncing] = useState(false);
@@ -668,23 +693,30 @@ function App() {
     }
     setIsProcessingPayment(true);
     try {
-      const res = await fetch('/api/wallet/charge', {
+      // فيزا لها واجهة خاصة بها (/api/payments/visa) — باقي الطرق عبر /api/wallet
+      const isVisa = selectedPaymentMethod === 'visa';
+      const res = await fetch(isVisa ? '/api/payments/visa' : '/api/wallet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify(isVisa ? {
+          amount,
+          action: 'process',
+          cardNumber,
+          cardExpiry,
+          cardCvv,
+          cardHolderName: currentUser?.name || 'صاحب البطاقة'
+        } : {
           amount,
           method: selectedPaymentMethod,
-          cardNumber: selectedPaymentMethod === 'visa' ? cardNumber : undefined,
-          cardExpiry: selectedPaymentMethod === 'visa' ? cardExpiry : undefined,
-          cardCvv: selectedPaymentMethod === 'visa' ? cardCvv : undefined,
         })
       });
       const data = await res.json();
       if (res.ok) {
-        // تحديث رصيد المستخدم الحالي
-        if (data.balance !== undefined) {
-          setCurrentUser(prev => prev ? { ...prev, walletBalance: data.balance } : null);
-          currentUserRef.current = currentUserRef.current ? { ...currentUserRef.current, walletBalance: data.balance } : null;
+        // تحديث رصيد المستخدم الحالي (visa يرجع الرصيد داخل transaction.balance)
+        const newBalance = data.balance ?? data.transaction?.balance;
+        if (newBalance !== undefined) {
+          setCurrentUser(prev => prev ? { ...prev, walletBalance: newBalance } : null);
+          currentUserRef.current = currentUserRef.current ? { ...currentUserRef.current, walletBalance: newBalance } : null;
         }
         setShowPaymentSuccess(true);
         setShowConfetti(true);
@@ -976,7 +1008,19 @@ function App() {
           highlightFee: s.highlightFee ?? 150,
           priorityListingFee: s.priorityListingFee ?? 200,
           verifiedListingFee: s.verifiedListingFee ?? 250,
-          currency: s.currency ?? 'ج.م'
+          currency: s.currency ?? 'ج.م',
+          vodafoneCashNumber: s.vodafoneCashNumber ?? '',
+          orangeCashNumber: s.orangeCashNumber ?? '',
+          etisalatCashNumber: s.etisalatCashNumber ?? '',
+          instapayAccount: s.instapayAccount ?? '',
+          bankName: s.bankName ?? '',
+          bankAccountName: s.bankAccountName ?? '',
+          bankAccountNumber: s.bankAccountNumber ?? '',
+          usdtTronAddress: s.usdtTronAddress ?? '',
+          visaEnabled: s.visaEnabled === true,
+          paymentAutoConfirm: s.paymentAutoConfirm === true,
+          walletMinCharge: s.walletMinCharge ?? 10,
+          walletMaxCharge: s.walletMaxCharge ?? 50000
         });
       }
     } catch {}
@@ -4902,74 +4946,118 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
                   {/* ========== إعدادات المحفظة والدفع ========== */}
                   <div className={`p-4 rounded-xl border-2 ${darkMode ? 'bg-slate-700 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200'}`}>
-                    <h3 className={`font-bold mb-4 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Wallet className="h-5 w-5 text-emerald-500" />إعدادات المحفظة والدفع</h3>
+                    <h3 className={`font-bold mb-1 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Wallet className="h-5 w-5 text-emerald-500" />إعدادات المحفظة والدفع</h3>
+                    <p className={`text-xs mb-4 leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>أدخل أرقام حسابات استلام الأموال الحقيقية — بعد الحفظ تظهر للمستخدمين فوراً في نافذة شحن المحفظة. أي طريقة تتركها فارغة لا تظهر للمستخدمين إطلاقاً.</p>
 
-                    {/* تصنيف: محافظ جوال */}
-                    <p className={`text-xs font-bold tracking-wider uppercase mb-2 ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>📱 محافظ جوال</p>
+                    {/* تصنيف: محافظ هاتف */}
+                    <p className={`text-xs font-bold tracking-wider uppercase mb-2 ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>📱 محافظ هاتف</p>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 mb-4">
-                      {[
-                        { name: 'فودافون كاش', short: 'VF', color: 'border-r-orange-500', iconBg: 'bg-orange-100 text-orange-600', account: '01012345678', num: '0101 234 5678' },
-                        { name: 'أورانج ماني', short: 'OR', color: 'border-r-blue-500', iconBg: 'bg-blue-100 text-blue-600', account: '01234567890', num: '0123 456 7890' },
-                        { name: 'إتصالات كاش', short: 'ET', color: 'border-r-yellow-500', iconBg: 'bg-yellow-100 text-yellow-600', account: '01555555555', num: '0155 555 5555' },
-                      ].map(m => (
-                        <div key={m.name} className={`flex items-center gap-2.5 p-2.5 rounded-xl border-r-4 ${m.color} ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm`}>
-                          <div className={`w-8 h-8 rounded-lg ${m.iconBg} flex items-center justify-center shrink-0 text-[10px] font-black`}>{m.short}</div>
-                          <div className="flex-1 min-w-0">
-                            <p className={`text-xs font-bold truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{m.name}</p>
-                            <p className={`text-[10px] font-mono ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{m.num}</p>
+                      {([
+                        { key: 'vodafoneCashNumber', name: 'فودافون كاش', short: 'VF', color: 'border-r-orange-500', iconBg: 'bg-orange-100 text-orange-600' },
+                        { key: 'orangeCashNumber', name: 'أورانج ماني', short: 'OR', color: 'border-r-blue-500', iconBg: 'bg-blue-100 text-blue-600' },
+                        { key: 'etisalatCashNumber', name: 'إتصالات كاش', short: 'ET', color: 'border-r-yellow-500', iconBg: 'bg-yellow-100 text-yellow-600' },
+                      ] as const).map(m => {
+                        const val = settings[m.key];
+                        const formatted = /^\d{11}$/.test(val) ? val.replace(/(\d{4})(\d{3})(\d{4})/, '$1 $2 $3') : val;
+                        return (
+                          <div key={m.key} className={`p-2.5 rounded-xl border-r-4 ${m.color} ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm`}>
+                            <div className="flex items-center gap-2.5 mb-2">
+                              <div className={`w-8 h-8 rounded-lg ${m.iconBg} flex items-center justify-center shrink-0 text-[10px] font-black`}>{m.short}</div>
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-xs font-bold truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{m.name}</p>
+                                <p className={`text-[10px] font-mono truncate ${formatted ? (darkMode ? 'text-slate-300' : 'text-slate-500') : 'text-amber-500'}`}>{formatted || 'لم يُضف رقم بعد'}</p>
+                              </div>
+                              <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 2, repeat: Infinity }} className={`w-2.5 h-2.5 rounded-full shrink-0 ${val ? 'bg-emerald-400' : darkMode ? 'bg-slate-500' : 'bg-slate-300'}`} style={val ? { boxShadow: '0 0 10px rgba(52,211,153,0.8)' } : {}} />
+                            </div>
+                            <input type="tel" dir="ltr" inputMode="tel" maxLength={20} placeholder="01xxxxxxxxx" value={val} onChange={(e) => setSettings({ ...settings, [m.key]: e.target.value.replace(/[^\d+]/g, '').slice(0, 20) } as typeof settings)} className={`w-full px-3 py-2 rounded-lg border text-sm font-mono text-left ${darkMode ? 'bg-slate-700 border-slate-500 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 placeholder-slate-400'}`} />
                           </div>
-                          <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 2, repeat: Infinity }} className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" style={{ boxShadow: '0 0 10px rgba(52,211,153,0.8)' }} />
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
 
                     {/* تصنيف: إنستاباي */}
                     <p className={`text-xs font-bold tracking-wider uppercase mb-2 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>⚡ إنستاباي</p>
-                    <div className={`flex items-center gap-2.5 p-2.5 rounded-xl border-r-4 border-r-purple-500 ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm mb-4`}>
-                      <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center shrink-0 text-[10px] font-black">IP</div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>إنستاباي</p>
-                        <p className={`text-[10px] font-mono ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>@manteqti</p>
+                    <div className={`p-2.5 rounded-xl border-r-4 border-r-purple-500 ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm mb-4`}>
+                      <div className="flex items-center gap-2.5 mb-2">
+                        <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center shrink-0 text-[10px] font-black">IP</div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>إنستاباي</p>
+                          <p className={`text-[10px] font-mono truncate ${settings.instapayAccount ? (darkMode ? 'text-slate-300' : 'text-slate-500') : 'text-amber-500'}`}>{settings.instapayAccount || 'لم يُضف حساب بعد (مثال: manteqti@instapay)'}</p>
+                        </div>
+                        <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 2, repeat: Infinity, delay: 0.3 }} className={`w-2.5 h-2.5 rounded-full shrink-0 ${settings.instapayAccount ? 'bg-emerald-400' : darkMode ? 'bg-slate-500' : 'bg-slate-300'}`} style={settings.instapayAccount ? { boxShadow: '0 0 10px rgba(52,211,153,0.8)' } : {}} />
                       </div>
-                      <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 2, repeat: Infinity, delay: 0.3 }} className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" style={{ boxShadow: '0 0 10px rgba(52,211,153,0.8)' }} />
+                      <input type="text" dir="ltr" maxLength={64} placeholder="manteqti@instapay" value={settings.instapayAccount} onChange={(e) => setSettings({ ...settings, instapayAccount: e.target.value.replace(/<[^>]*>/g, '').trim().slice(0, 64) })} className={`w-full px-3 py-2 rounded-lg border text-sm font-mono text-left ${darkMode ? 'bg-slate-700 border-slate-500 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 placeholder-slate-400'}`} />
                     </div>
 
                     {/* تصنيف: تحويل بنكي */}
                     <p className={`text-xs font-bold tracking-wider uppercase mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>🏦 تحويل بنكي</p>
-                    <div className={`flex items-center gap-2.5 p-2.5 rounded-xl border-r-4 border-r-slate-500 ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm mb-4`}>
-                      <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 text-[10px] font-black">BK</div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>مصر فيروز</p>
-                        <p className={`text-[10px] font-mono ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>123456</p>
+                    <div className={`p-2.5 rounded-xl border-r-4 border-r-slate-500 ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm mb-4`}>
+                      <div className="flex items-center gap-2.5 mb-2">
+                        <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 text-[10px] font-black">BK</div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>بيانات الحساب البنكي</p>
+                          <p className={`text-[10px] truncate ${settings.bankName && settings.bankAccountNumber ? (darkMode ? 'text-slate-300' : 'text-slate-500') : 'text-amber-500'}`}>{settings.bankName && settings.bankAccountNumber ? `${settings.bankName} — ${settings.bankAccountNumber}` : 'أكمل اسم البنك ورقم الحساب لتفعيل الطريقة'}</p>
+                        </div>
+                        <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 2, repeat: Infinity, delay: 0.6 }} className={`w-2.5 h-2.5 rounded-full shrink-0 ${settings.bankName && settings.bankAccountNumber ? 'bg-emerald-400' : darkMode ? 'bg-slate-500' : 'bg-slate-300'}`} style={settings.bankName && settings.bankAccountNumber ? { boxShadow: '0 0 10px rgba(52,211,153,0.8)' } : {}} />
                       </div>
-                      <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 2, repeat: Infinity, delay: 0.6 }} className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" style={{ boxShadow: '0 0 10px rgba(52,211,153,0.8)' }} />
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <input type="text" maxLength={100} placeholder="اسم البنك (مثال: البنك الأهلي)" value={settings.bankName} onChange={(e) => setSettings({ ...settings, bankName: e.target.value.replace(/<[^>]*>/g, '').trim().slice(0, 100) })} className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-slate-700 border-slate-500 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 placeholder-slate-400'}`} />
+                        <input type="text" maxLength={100} placeholder="اسم صاحب الحساب" value={settings.bankAccountName} onChange={(e) => setSettings({ ...settings, bankAccountName: e.target.value.replace(/<[^>]*>/g, '').trim().slice(0, 100) })} className={`w-full px-3 py-2 rounded-lg border text-sm ${darkMode ? 'bg-slate-700 border-slate-500 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 placeholder-slate-400'}`} />
+                        <input type="text" dir="ltr" inputMode="numeric" maxLength={64} placeholder="رقم الحساب / IBAN" value={settings.bankAccountNumber} onChange={(e) => setSettings({ ...settings, bankAccountNumber: e.target.value.replace(/<[^>]*>/g, '').trim().slice(0, 64) })} className={`w-full px-3 py-2 rounded-lg border text-sm font-mono text-left ${darkMode ? 'bg-slate-700 border-slate-500 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 placeholder-slate-400'}`} />
+                      </div>
                     </div>
 
                     {/* تصنيف: بطاقات */}
                     <p className={`text-xs font-bold tracking-wider uppercase mb-2 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>💳 بطاقات</p>
-                    <div className={`flex items-center gap-2.5 p-2.5 rounded-xl border-r-4 border-r-indigo-500 ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm mb-4`}>
+                    <div className={`flex items-center gap-2.5 p-2.5 rounded-xl border-r-4 border-r-indigo-500 ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm mb-2`}>
                       <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0"><CreditCard className="h-4 w-4" /></div>
                       <div className="flex-1 min-w-0">
                         <p className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>بطاقة فيزا / ماستركارد</p>
-                        <p className={`text-[10px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>دفع مباشر بالبطاقة</p>
+                        <p className={`text-[10px] ${settings.visaEnabled ? 'text-emerald-500' : (darkMode ? 'text-slate-400' : 'text-slate-500')}`}>{settings.visaEnabled ? 'دفع مباشر بالبطاقة — مفعّل ✅' : 'غير مفعّل — لن تظهر البطاقة للمستخدمين'}</p>
                       </div>
-                      <motion.button whileTap={{ scale: 0.9 }} onClick={() => {}} className={`w-11 h-6 rounded-full relative cursor-pointer transition-colors duration-300 ${true ? 'bg-emerald-500' : darkMode ? 'bg-slate-500' : 'bg-slate-300'}`}>
-                        <motion.div animate={true ? { x: 20 } : { x: 2 }} transition={{ type: 'spring', stiffness: 500, damping: 30 }} className="absolute top-1 w-4 h-4 rounded-full bg-white shadow-lg" />
+                      <motion.button whileTap={{ scale: 0.9 }} onClick={() => setSettings({ ...settings, visaEnabled: !settings.visaEnabled })} aria-label="تفعيل الدفع بالبطاقة" className={`w-11 h-6 rounded-full relative cursor-pointer transition-colors duration-300 ${settings.visaEnabled ? 'bg-emerald-500' : darkMode ? 'bg-slate-500' : 'bg-slate-300'}`}>
+                        <motion.div animate={settings.visaEnabled ? { x: 20 } : { x: 2 }} transition={{ type: 'spring', stiffness: 500, damping: 30 }} className="absolute top-1 w-4 h-4 rounded-full bg-white shadow-lg" />
                       </motion.button>
+                    </div>
+
+                    {/* تأكيد الشحنات تلقائياً */}
+                    <div className={`flex items-center gap-2.5 p-2.5 rounded-xl ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm mb-4`}>
+                      <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0"><ShieldCheck className="h-4 w-4" /></div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>تأكيد الشحنات تلقائياً</p>
+                        <p className={`text-[10px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>⚠️ عند التفعيل يُضاف الرصيد فوراً بدون مراجعتك — فعّلها فقط لو واثق من طرق الدفع</p>
+                      </div>
+                      <motion.button whileTap={{ scale: 0.9 }} onClick={() => setSettings({ ...settings, paymentAutoConfirm: !settings.paymentAutoConfirm })} aria-label="تأكيد الشحنات تلقائياً" className={`w-11 h-6 rounded-full relative cursor-pointer transition-colors duration-300 ${settings.paymentAutoConfirm ? 'bg-emerald-500' : darkMode ? 'bg-slate-500' : 'bg-slate-300'}`}>
+                        <motion.div animate={settings.paymentAutoConfirm ? { x: 20 } : { x: 2 }} transition={{ type: 'spring', stiffness: 500, damping: 30 }} className="absolute top-1 w-4 h-4 rounded-full bg-white shadow-lg" />
+                      </motion.button>
+                    </div>
+
+                    {/* USDT (TRC20) */}
+                    <div className={`p-2.5 rounded-xl ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm mb-4`}>
+                      <div className="flex items-center gap-2.5 mb-2">
+                        <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 text-[10px] font-black">₮</div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>USDT (شبكة TRC20) — اختياري</p>
+                          <p className={`text-[10px] font-mono truncate ${settings.usdtTronAddress ? (darkMode ? 'text-slate-300' : 'text-slate-500') : 'text-amber-500'}`}>{settings.usdtTronAddress || 'لم يُضف عنوان بعد'}</p>
+                        </div>
+                      </div>
+                      <input type="text" dir="ltr" maxLength={64} placeholder="Tron (TRC20) Address" value={settings.usdtTronAddress} onChange={(e) => setSettings({ ...settings, usdtTronAddress: e.target.value.replace(/<[^>]*>/g, '').trim().slice(0, 64) })} className={`w-full px-3 py-2 rounded-lg border text-sm font-mono text-left ${darkMode ? 'bg-slate-700 border-slate-500 text-white placeholder-slate-500' : 'bg-slate-50 border-slate-200 placeholder-slate-400'}`} />
                     </div>
 
                     {/* تصنيف: حدود */}
                     <p className={`text-xs font-bold tracking-wider uppercase mb-2 ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>📊 حدود الشحن</p>
-                    <div className="grid grid-cols-2 gap-2.5">
+                    <div className="grid grid-cols-2 gap-2.5 mb-4">
                       <div className={`p-3 rounded-xl ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm border ${darkMode ? 'border-slate-500' : 'border-slate-200'}`}>
-                        <p className={`text-[10px] mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>حد أدنى</p>
-                        <p className="text-xl font-bold text-emerald-500">10 <span className="text-xs font-normal">ج.م</span></p>
+                        <p className={`text-[10px] mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>حد أدنى (ج.م)</p>
+                        <input type="number" min="1" value={settings.walletMinCharge} onChange={(e) => setSettings({ ...settings, walletMinCharge: Math.max(1, parseInt(e.target.value) || 1) })} className={`w-full px-3 py-1.5 rounded-lg border text-lg font-bold text-emerald-500 ${darkMode ? 'bg-slate-700 border-slate-500 text-white' : 'bg-slate-50 border-slate-200'}`} />
                       </div>
                       <div className={`p-3 rounded-xl ${darkMode ? 'bg-slate-600' : 'bg-white'} shadow-sm border ${darkMode ? 'border-slate-500' : 'border-slate-200'}`}>
-                        <p className={`text-[10px] mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>حد أقصى</p>
-                        <p className="text-xl font-bold text-amber-500">50,000 <span className="text-xs font-normal">ج.م</span></p>
+                        <p className={`text-[10px] mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>حد أقصى (ج.م)</p>
+                        <input type="number" min="10" value={settings.walletMaxCharge} onChange={(e) => setSettings({ ...settings, walletMaxCharge: Math.max(10, parseInt(e.target.value) || 50000) })} className={`w-full px-3 py-1.5 rounded-lg border text-lg font-bold text-amber-500 ${darkMode ? 'bg-slate-700 border-slate-500 text-white' : 'bg-slate-50 border-slate-200'}`} />
                       </div>
                     </div>
+
+                    <button onClick={() => updateSettings(settings)} disabled={settingsLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2">{settingsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}حفظ بيانات الدفع</button>
                   </div>
                 </div>
               )}
@@ -5391,37 +5479,52 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                         {/* === طرق الدفع === */}
                         <div>
                           <p className={`text-sm font-medium mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>طريقة الدفع</p>
-                          <div className="grid grid-cols-2 gap-3">
-                            {[
-                              { id: 'vodafone_cash', name: 'فودافون كاش', icon: Smartphone, color: 'from-orange-500 to-red-500', ring: 'ring-orange-500' },
-                              { id: 'orange_money', name: 'أورانج ماني', icon: Smartphone, color: 'from-blue-500 to-blue-600', ring: 'ring-blue-500' },
-                              { id: 'etisalat_cash', name: 'إتصالات كاش', icon: Smartphone, color: 'from-yellow-400 to-amber-500', ring: 'ring-yellow-500' },
-                              { id: 'instapay', name: 'إنستاباي', icon: Zap, color: 'from-purple-500 to-violet-600', ring: 'ring-purple-500' },
-                              { id: 'bank_transfer', name: 'تحويل بنكي', icon: Building2, color: 'from-slate-500 to-slate-600', ring: 'ring-slate-500' },
-                              { id: 'visa', name: 'بطاقة فيزا', icon: CreditCard, color: 'from-indigo-500 to-blue-600', ring: 'ring-indigo-500' },
-                            ].map(method => (
-                              <motion.button key={method.id} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => { setSelectedPaymentMethod(method.id); if (method.id !== 'visa') { setCardNumber(''); setCardExpiry(''); setCardCvv(''); setCardType(null); } }} className={`relative p-4 rounded-xl border-2 text-right transition-all ${selectedPaymentMethod === method.id ? `border-emerald-500 ${darkMode ? 'bg-emerald-900/20' : 'bg-emerald-50'} ring-2 ring-emerald-500/30` : darkMode ? 'border-slate-700 bg-slate-700/50 hover:border-slate-600' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                                <div className="flex items-center gap-2 mb-1">
-                                  <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${method.color} flex items-center justify-center`}><method.icon className="h-4 w-4 text-white" /></div>
-                                  <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{method.name}</span>
+                          {(() => {
+                            // الطرق المتاحة فقط — المطور يتحكم فيها من إعدادات الدفع (الطرق الفارغة لا تظهر)
+                            const availableMethods = [
+                              { id: 'vodafone_cash', name: 'فودافون كاش', icon: Smartphone, color: 'from-orange-500 to-red-500', ring: 'ring-orange-500', active: !!settings.vodafoneCashNumber },
+                              { id: 'orange_cash', name: 'أورانج ماني', icon: Smartphone, color: 'from-blue-500 to-blue-600', ring: 'ring-blue-500', active: !!settings.orangeCashNumber },
+                              { id: 'etisalat_cash', name: 'إتصالات كاش', icon: Smartphone, color: 'from-yellow-400 to-amber-500', ring: 'ring-yellow-500', active: !!settings.etisalatCashNumber },
+                              { id: 'instapay', name: 'إنستاباي', icon: Zap, color: 'from-purple-500 to-violet-600', ring: 'ring-purple-500', active: !!settings.instapayAccount },
+                              { id: 'bank_transfer', name: 'تحويل بنكي', icon: Building2, color: 'from-slate-500 to-slate-600', ring: 'ring-slate-500', active: !!(settings.bankName && settings.bankAccountNumber) },
+                              { id: 'visa', name: 'بطاقة فيزا', icon: CreditCard, color: 'from-indigo-500 to-blue-600', ring: 'ring-indigo-500', active: settings.visaEnabled },
+                            ].filter(m => m.active);
+                            if (selectedPaymentMethod && !availableMethods.some(m => m.id === selectedPaymentMethod)) setSelectedPaymentMethod('');
+                            if (availableMethods.length === 0) {
+                              return (
+                                <div className={`p-4 rounded-xl border-2 border-dashed text-center ${darkMode ? 'border-slate-600 text-slate-400' : 'border-slate-300 text-slate-500'}`}>
+                                  <p className="text-sm font-medium">لا توجد طرق دفع متاحة حالياً</p>
+                                  <p className="text-xs mt-1">تواصل مع المطور لإضافة حسابات الدفع</p>
                                 </div>
-                                {selectedPaymentMethod === method.id && <div className="absolute top-2 left-2 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center"><Check className="h-3 w-3 text-white" /></div>}
-                              </motion.button>
-                            ))}
-                          </div>
+                              );
+                            }
+                            return (
+                              <div className="grid grid-cols-2 gap-3">
+                                {availableMethods.map(method => (
+                                  <motion.button key={method.id} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => { setSelectedPaymentMethod(method.id); if (method.id !== 'visa') { setCardNumber(''); setCardExpiry(''); setCardCvv(''); setCardType(null); } }} className={`relative p-4 rounded-xl border-2 text-right transition-all ${selectedPaymentMethod === method.id ? `border-emerald-500 ${darkMode ? 'bg-emerald-900/20' : 'bg-emerald-50'} ring-2 ring-emerald-500/30` : darkMode ? 'border-slate-700 bg-slate-700/50 hover:border-slate-600' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${method.color} flex items-center justify-center`}><method.icon className="h-4 w-4 text-white" /></div>
+                                      <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-slate-900'}`}>{method.name}</span>
+                                    </div>
+                                    {selectedPaymentMethod === method.id && <div className="absolute top-2 left-2 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center"><Check className="h-3 w-3 text-white" /></div>}
+                                  </motion.button>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         </div>
 
-                        {/* === تعليمات طريقة الدفع === */}
+                        {/* === تعليمات طريقة الدفع (بالأرقام الحقيقية من إعدادات المطور) === */}
                         <AnimatePresence>
                           {selectedPaymentMethod && selectedPaymentMethod !== 'visa' && (
                             <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                               <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
                                 <p className={`text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📋 تعليمات الدفع:</p>
-                                {selectedPaymentMethod === 'vodafone_cash' && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>📱 أرسل المبلغ إلى رقم فودافون كاش الخاص بالمنصة، ثم اضغط تأكيد الشحن وسيتم مراجعة العملية.</p>}
-                                {selectedPaymentMethod === 'orange_money' && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>📱 أرسل المبلغ إلى رقم أورانج ماني الخاص بالمنصة، ثم اضغط تأكيد الشحن وسيتم مراجعة العملية.</p>}
-                                {selectedPaymentMethod === 'etisalat_cash' && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>📱 أرسل المبلغ إلى رقم إتصالات كاش الخاص بالمنصة، ثم اضغط تأكيد الشحن وسيتم مراجعة العملية.</p>}
-                                {selectedPaymentMethod === 'instapay' && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>⚡ أرسل المبلغ عبر إنستاباي إلى حساب المنصة، ثم اضغط تأكيد الشحن وسيتم مراجعة العملية.</p>}
-                                {selectedPaymentMethod === 'bank_transfer' && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>🏦 قم بتحويل المبلغ إلى الحساب البنكي الخاص بالمنصة، ثم اضغط تأكيد الشحن وسيتم مراجعة العملية.</p>}
+                                {selectedPaymentMethod === 'vodafone_cash' && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>📱 أرسل المبلغ إلى رقم فودافون كاش: <span dir="ltr" className="font-mono font-bold text-emerald-500">{settings.vodafoneCashNumber}</span>، ثم اضغط تأكيد الشحن وسيتم مراجعة العملية.</p>}
+                                {selectedPaymentMethod === 'orange_cash' && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>📱 أرسل المبلغ إلى رقم أورانج ماني: <span dir="ltr" className="font-mono font-bold text-emerald-500">{settings.orangeCashNumber}</span>، ثم اضغط تأكيد الشحن وسيتم مراجعة العملية.</p>}
+                                {selectedPaymentMethod === 'etisalat_cash' && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>📱 أرسل المبلغ إلى رقم إتصالات كاش: <span dir="ltr" className="font-mono font-bold text-emerald-500">{settings.etisalatCashNumber}</span>، ثم اضغط تأكيد الشحن وسيتم مراجعة العملية.</p>}
+                                {selectedPaymentMethod === 'instapay' && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>⚡ أرسل المبلغ عبر إنستاباي إلى: <span dir="ltr" className="font-mono font-bold text-emerald-500">{settings.instapayAccount}</span>، ثم اضغط تأكيد الشحن وسيتم مراجعة العملية.</p>}
+                                {selectedPaymentMethod === 'bank_transfer' && <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>🏦 حوّل المبلغ إلى بنك <span className="font-bold">{settings.bankName}</span> — رقم الحساب: <span dir="ltr" className="font-mono font-bold text-emerald-500">{settings.bankAccountNumber}</span>{settings.bankAccountName ? <> باسم: <span className="font-bold">{settings.bankAccountName}</span></> : null}، ثم اضغط تأكيد الشحن وسيتم مراجعة العملية.</p>}
                               </div>
                             </motion.div>
                           )}
