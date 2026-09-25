@@ -28,8 +28,9 @@ export function middleware(request: NextRequest) {
 
   // 3. Sliding session — refresh cookie maxAge without verifying JWT
   // Just extend the expiry; let API routes handle actual verification
+  // ⚠️ لا نجدّد الكوكي عند تسجيل الخروج — وإلا يلغي تحديد الـ logout (Bug: تسجيل الخروج لا يعمل)
   const authCookie = request.cookies.get("auth-token");
-  if (authCookie) {
+  if (authCookie && pathname !== "/api/auth/logout") {
     response.cookies.set("auth-token", authCookie.value, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

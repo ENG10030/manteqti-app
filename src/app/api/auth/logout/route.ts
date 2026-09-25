@@ -6,7 +6,8 @@ export async function POST() {
   response.cookies.set("auth-token", "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    // same بنفس خصائص الكوكي الأصلية (lax) عشان المتصفح يعتبرها نفس الكوكي ويمسحها فعلاً
+    sameSite: "lax",
     maxAge: 0,
     path: "/",
   });
