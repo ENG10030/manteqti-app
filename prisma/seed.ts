@@ -25,7 +25,7 @@ async function main() {
       name: 'المطور',
       identifier: developerEmail,
       password: hashedPassword,
-      role: 'developer',
+      role: 'DEVELOPER',
       isBlocked: false
     }
   })

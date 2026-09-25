@@ -810,8 +810,10 @@ function App() {
     setConfirmDialog(prev => ({ ...prev, loading: true }));
     try {
       const res = await fetch(`/api/users/${userId}/approve`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'approve' }) });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) { fetchDevData(); fetchAllUsers(); addToast('تم تأكيد التسجيل ✅', 'success'); }
-    } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+      else { addToast(data.error || 'فشل تأكيد التسجيل', 'error'); }
+    } catch { addToast('حدث خطأ في الاتصال', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
   };
 
   const handleRejectUser = async (userId: string, userName: string, confirmed: boolean = false) => {
@@ -822,8 +824,10 @@ function App() {
     setConfirmDialog(prev => ({ ...prev, loading: true }));
     try {
       const res = await fetch(`/api/users/${userId}/approve`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reject' }) });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) { fetchDevData(); fetchAllUsers(); addToast('تم رفض التسجيل وحذف الحساب', 'success'); }
-    } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+      else { addToast(data.error || 'فشل رفض التسجيل', 'error'); }
+    } catch { addToast('حدث خطأ في الاتصال', 'error'); } finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
   };
 
   const handleDeleteUser = async (userId: string, userName: string, confirmed: boolean = false) => {
@@ -1735,14 +1739,26 @@ function App() {
   const handleApproveApartment = async (id: string, confirmed: boolean = false) => {
     if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'الموافقة على الشقة', message: 'هل أنت متأكد من الموافقة على نشر هذه الشقة؟', confirmText: 'موافقة', cancelText: 'إلغاء', onConfirm: () => handleApproveApartment(id, true), type: 'info' }); return; }
     setConfirmDialog(prev => ({ ...prev, loading: true }));
-    try { await fetch(`/api/apartments/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'approve' }) }); fetchApartments(); addToast('تمت الموافقة على الشقة', 'success'); }
+    try {
+      // ⚠️ PATCH وليس PUT — منطق approve/reject موجود في PATCH فقط (PUT كان يتجاهله ويترك العقار قيد المراجعة)
+      const res = await fetch(`/api/apartments/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'approve' }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) { fetchApartments(); addToast('تمت الموافقة على الشقة', 'success'); }
+      else { addToast(data.error || 'فشلت الموافقة على الشقة', 'error'); }
+    } catch { addToast('حدث خطأ في الاتصال', 'error'); }
     finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
   };
 
   const handleRejectApartment = async (id: string, confirmed: boolean = false) => {
     if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'رفض الشقة', message: 'هل أنت متأكد من رفض هذه الشقة؟', confirmText: 'رفض', cancelText: 'إلغاء', onConfirm: () => handleRejectApartment(id, true), type: 'danger' }); return; }
     setConfirmDialog(prev => ({ ...prev, loading: true }));
-    try { await fetch(`/api/apartments/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reject' }) }); fetchApartments(); addToast('تم رفض الشقة', 'success'); }
+    try {
+      // ⚠️ PATCH وليس PUT — نفس السبب أعلاه
+      const res = await fetch(`/api/apartments/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reject' }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) { fetchApartments(); addToast('تم رفض الشقة', 'success'); }
+      else { addToast(data.error || 'فشل رفض الشقة', 'error'); }
+    } catch { addToast('حدث خطأ في الاتصال', 'error'); }
     finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
   };
 
@@ -1851,8 +1867,57 @@ function App() {
   const handleUpdateStatus = async (id: string, newStatus: string, confirmed: boolean = false) => {
     if (!confirmed) { setConfirmDialog({ isOpen: true, title: 'تغيير حالة العقار', message: `هل تريد تغيير الحالة؟`, confirmText: 'نعم، تأكيد', cancelText: 'إلغاء', onConfirm: () => handleUpdateStatus(id, newStatus, true), type: 'warning' }); return; }
     setConfirmDialog(prev => ({ ...prev, loading: true }));
-    try { await fetch(`/api/apartments/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) }); fetchApartments(); addToast('تم تغيير حالة العقار', 'success'); }
+    try {
+      const res = await fetch(`/api/apartments/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) { fetchApartments(); addToast('تم تغيير حالة العقار', 'success'); }
+      else { addToast(data.error || 'فشل تغيير حالة العقار', 'error'); }
+    } catch { addToast('حدث خطأ في الاتصال', 'error'); }
     finally { setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+  };
+
+  // تغيير حالة عقار من تبويب العقارات: تحديث فوري + تراجع ورسالة خطأ لو السيرفر فشل
+  const changeApartmentStatusOptimistic = async (apt: Apartment, newStatus: string, statusChangedAt: string | null, successMsg?: string) => {
+    const prevStatus = apt.status;
+    const prevChangedAt = apt.statusChangedAt ?? null;
+    apt.status = newStatus;
+    apt.statusChangedAt = statusChangedAt;
+    setAllApartments([...allApartments]);
+    try {
+      const res = await fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus, statusChangedAt }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) { if (successMsg) addToast(successMsg, 'success'); }
+      else {
+        apt.status = prevStatus; apt.statusChangedAt = prevChangedAt;
+        setAllApartments([...allApartments]);
+        addToast(data.error || 'فشل تغيير حالة العقار', 'error');
+      }
+    } catch {
+      apt.status = prevStatus; apt.statusChangedAt = prevChangedAt;
+      setAllApartments([...allApartments]);
+      addToast('حدث خطأ في الاتصال', 'error');
+    }
+  };
+
+  // تبديل VIP/مميز: تحديث فوري + تراجع ورسالة خطأ لو السيرفر فشل
+  const toggleApartmentFlag = async (apt: Apartment, field: 'isVip' | 'isFeatured') => {
+    const prev = apt[field] ?? false;
+    apt[field] = !prev;
+    setAllApartments([...allApartments]);
+    try {
+      const res = await fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: apt[field] }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) { addToast(apt[field] ? (field === 'isVip' ? 'تم إضافة VIP+' : 'تم إضافة مميز') : (field === 'isVip' ? 'تم إزالة VIP+' : 'تم إزالة مميز'), 'success'); }
+      else {
+        apt[field] = prev;
+        setAllApartments([...allApartments]);
+        addToast(data.error || 'فشل تحديث العقار', 'error');
+      }
+    } catch {
+      apt[field] = prev;
+      setAllApartments([...allApartments]);
+      addToast('حدث خطأ في الاتصال', 'error');
+    }
   };
 
   const handleAddInquiry = async (e: React.FormEvent) => {
@@ -1923,8 +1988,11 @@ function App() {
       if (res.ok) {
         fetchDevData();
         addToast('تم رفض الدفع', 'success');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        addToast(data.error || 'فشل رفض الدفع', 'error');
       }
-    } finally {
+    } catch { addToast('حدث خطأ في الاتصال', 'error'); } finally {
       setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' });
     }
   };
@@ -2287,11 +2355,11 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
   };
 
   const approveComment = async (commentId: string) => {
-    try { await fetch(`/api/comments/${commentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'approved' }) }); fetchAllComments(); fetchCommentActionLogs(); addToast('تمت الموافقة على التعليق ✅', 'success'); } catch { addToast('حدث خطأ', 'error'); }
+    try { const res = await fetch(`/api/comments/${commentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'approved' }) }); if (res.ok) { fetchAllComments(); fetchCommentActionLogs(); addToast('تمت الموافقة على التعليق ✅', 'success'); } else { addToast('فشلت الموافقة على التعليق', 'error'); } } catch { addToast('حدث خطأ', 'error'); }
   };
 
   const rejectComment = async (commentId: string) => {
-    try { await fetch(`/api/comments/${commentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'rejected' }) }); fetchAllComments(); fetchCommentActionLogs(); addToast('تم رفض التعليق', 'info'); } catch { addToast('حدث خطأ', 'error'); }
+    try { const res = await fetch(`/api/comments/${commentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'rejected' }) }); if (res.ok) { fetchAllComments(); fetchCommentActionLogs(); addToast('تم رفض التعليق', 'info'); } else { addToast('فشل رفض التعليق', 'error'); } } catch { addToast('حدث خطأ', 'error'); }
   };
 
   // حذف التعليق (soft delete) - ينقل للسلة -> يظهر في فلتر المحذوفة
@@ -2339,11 +2407,11 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
   };
 
   const restoreComment = async (commentId: string) => {
-    try { await fetch(`/api/comments/${commentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'approved' }) }); fetchAllComments(); fetchCommentActionLogs(); addToast('تم استعادة التعليق ✅', 'success'); } catch { addToast('حدث خطأ', 'error'); }
+    try { const res = await fetch(`/api/comments/${commentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'approved' }) }); if (res.ok) { fetchAllComments(); fetchCommentActionLogs(); addToast('تم استعادة التعليق ✅', 'success'); } else { addToast('فشلت استعادة التعليق', 'error'); } } catch { addToast('حدث خطأ', 'error'); }
   };
 
   const returnToPending = async (commentId: string) => {
-    try { await fetch(`/api/comments/${commentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'pending' }) }); fetchAllComments(); fetchCommentActionLogs(); addToast('تم إرجاع التعليق للمراجعة ↩️', 'info'); } catch { addToast('حدث خطأ', 'error'); }
+    try { const res = await fetch(`/api/comments/${commentId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'pending' }) }); if (res.ok) { fetchAllComments(); fetchCommentActionLogs(); addToast('تم إرجاع التعليق للمراجعة ↩️', 'info'); } else { addToast('فشل إرجاع التعليق', 'error'); } } catch { addToast('حدث خطأ', 'error'); }
   };
 
   // Loading state
@@ -3942,23 +4010,18 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                                 confirmText: 'نعم، تأكيد',
                                 cancelText: 'إلغاء',
                                 onConfirm: () => {
-                                  apt.status = newStatus;
-                                  setAllApartments([...allApartments]);
-                                  fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus, statusChangedAt: new Date().toISOString() }) });
                                   setConfirmDialog({ ...confirmDialog, isOpen: false });
-                                  addToast(`تم تغيير الحالة إلى "${statusLabel}" - سيتم الأرشفة وإخفاؤه بعد 48 ساعة`, 'success');
+                                  changeApartmentStatusOptimistic(apt, newStatus, new Date().toISOString(), `تم تغيير الحالة إلى "${statusLabel}" - سيتم الأرشفة وإخفاؤه بعد 48 ساعة`);
                                 },
                                 type: 'warning'
                               });
                             } else {
-                              apt.status = newStatus;
-                              setAllApartments([...allApartments]);
-                              fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus, statusChangedAt: null }) });
+                              changeApartmentStatusOptimistic(apt, newStatus, null);
                             }
                           }} className={`px-3 py-1 rounded-lg text-sm ${darkMode ? 'bg-slate-600 text-white' : 'bg-white border'}`}><option value="available">متاح</option><option value="preview">في معاينة</option><option value="reserved">محجوز</option><option value="sold">تم البيع</option><option value="rented">تم التأجير</option><option value="unavailable">غير متاح</option></select>
                           <div className="flex gap-1">
-                            <button onClick={() => { apt.isVip = !apt.isVip; setAllApartments([...allApartments]); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isVip: apt.isVip }) }); addToast(apt.isVip ? 'تم إضافة VIP+' : 'تم إزالة VIP+', 'success'); }} className={`p-1 rounded ${apt.isVip ? 'bg-purple-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-200 text-slate-600'}`} title="VIP+"><Diamond className="h-4 w-4" /></button>
-                            <button onClick={() => { apt.isFeatured = !apt.isFeatured; setAllApartments([...allApartments]); fetch(`/api/apartments/${apt.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isFeatured: apt.isFeatured }) }); addToast(apt.isFeatured ? 'تم إضافة مميز' : 'تم إزالة مميز', 'success'); }} className={`p-1 rounded ${apt.isFeatured && !apt.isVip ? 'bg-amber-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-200 text-slate-600'}`} title="مميز"><Star className="h-4 w-4" /></button>
+                            <button onClick={() => toggleApartmentFlag(apt, 'isVip')} className={`p-1 rounded ${apt.isVip ? 'bg-purple-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-200 text-slate-600'}`} title="VIP+"><Diamond className="h-4 w-4" /></button>
+                            <button onClick={() => toggleApartmentFlag(apt, 'isFeatured')} className={`p-1 rounded ${apt.isFeatured && !apt.isVip ? 'bg-amber-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-200 text-slate-600'}`} title="مميز"><Star className="h-4 w-4" /></button>
                             <button onClick={() => handleDeleteApartment(apt.id)} className="p-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20"><Trash2 className="h-4 w-4" /></button>
                           </div>
                         </div>
