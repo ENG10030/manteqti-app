@@ -85,3 +85,50 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'حدث خطأ أثناء الاستعادة' }, { status: 500 });
   }
 }
+
+// DELETE: حذف نهائي لعقار من الأرشيف { id } — المطور فقط
+// الحذف نهائي ولا رجعة فيه — يشمل تلقائياً: الاستفسارات/الإعجابات/التعليقات/طلبات التعديل/المدفوعات المرتبطة (Cascade)
+export async function DELETE(request: NextRequest) {
+  try {
+    const { auth, errorResponse } = await requireDeveloper(request);
+    if (errorResponse) return errorResponse;
+
+    const body = await request.json();
+    const { id } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: 'معرف العقار مطلوب' }, { status: 400 });
+    }
+
+    const apartment = await db.apartment.findUnique({ where: { id } });
+    if (!apartment) {
+      return NextResponse.json({ error: 'العقار غير موجود' }, { status: 404 });
+    }
+
+    if (!apartment.archivedAt) {
+      return NextResponse.json(
+        { error: 'الحذف النهائي مسموح من الأرشيف فقط — العقار ليس في الأرشيف' },
+        { status: 400 }
+      );
+    }
+
+    await db.apartment.delete({ where: { id } });
+
+    await db.operationLog.create({
+      data: {
+        action: 'archive_delete',
+        entityType: 'apartment',
+        entityId: id,
+        userId: auth.userId,
+        details: `حذف نهائي من الأرشيف: ${apartment.title}`,
+      },
+    });
+
+    return NextResponse.json({
+      message: `تم حذف "${apartment.title}" نهائياً من الأرشيف ✅`,
+    });
+  } catch (error) {
+    console.error('Delete archived apartment error:', error);
+    return NextResponse.json({ error: 'حدث خطأ أثناء الحذف النهائي' }, { status: 500 });
+  }
+}

@@ -919,7 +919,9 @@ function App() {
       const res = await fetch('/api/cron/auto-delete', { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
-        addToast(`تم تشغيل الأرشفة — ${data.archivedCount || 0} عقار`, 'success');
+        let msg = `تم تشغيل الأرشفة — ${data.archivedCount || 0} عقار`;
+        if ((data.deletedCount || 0) > 0) msg += ` — وتم الحذف النهائي لـ ${data.deletedCount} عقار مضى على أرشفته 48 ساعة`;
+        addToast(msg, 'success');
         fetchArchivedApartments();
       } else {
         addToast(data.error || 'فشل تشغيل الأرشفة', 'error');
@@ -928,6 +930,26 @@ function App() {
       addToast('حدث خطأ في الاتصال', 'error');
     }
     setArchiveRunning(false);
+  };
+
+  // حذف نهائي لعقار من الأرشيف (v8) — بلا رجعة
+  const handleDeleteArchived = async (id: string, title: string, confirmed: boolean = false) => {
+    if (!confirmed) {
+      setConfirmDialog({ isOpen: true, title: 'حذف نهائي من الأرشيف', message: `سيتم حذف "${title}" نهائياً مع كل استفساراته وتعليقاته ومدفوعاته — لا يمكن التراجع!\n\n(ملاحظة: العقارات تُحذف تلقائياً بعد 48 ساعة من أرشفتها)`, confirmText: 'نعم، حذف نهائي', cancelText: 'إلغاء', type: 'danger', onConfirm: () => { setConfirmDialog({ ...confirmDialog, isOpen: false }); handleDeleteArchived(id, title, true); } });
+      return;
+    }
+    try {
+      const res = await fetch('/api/archive', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+      const data = await res.json();
+      if (res.ok) {
+        addToast(data.message || 'تم الحذف النهائي ✅', 'success');
+        setArchivedApartments(prev => prev.filter(a => a.id !== id));
+      } else {
+        addToast(data.error || 'فشل الحذف النهائي', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الاتصال', 'error');
+    }
   };
 
   const handleApproveUser = async (userId: string, userName: string, confirmed: boolean = false) => {
@@ -4100,7 +4122,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-500 to-slate-700 flex items-center justify-center"><Archive className="h-5 w-5 text-white" /></div>
                         <div>
                           <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>الأرشيف التلقائي (بعد 48 ساعة)</h3>
-                          <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>العقارات "تم البيع / تم التأجير / غير متاح" تُخفى تلقائياً بعد 48 ساعة — البيانات محفوظة ويمكن استعادتها</p>
+                          <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>العقارات "تم البيع / تم التأجير / غير متاح" تُخفى تلقائياً بعد 48 ساعة ويمكن استعادتها — <span className="text-red-500 font-medium">وتُحذف نهائياً تلقائياً بعد 48 ساعة في الأرشيف</span></p>
                         </div>
                       </div>
                       <button onClick={runArchiveNow} disabled={archiveRunning} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium text-sm disabled:opacity-50 transition-all">
@@ -4124,12 +4146,17 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                             <div className="min-w-0">
                               <h4 className={`font-medium text-sm truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h4>
                               <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.price.toLocaleString()} {settings.currency} • {apt.area} • {statusConfig[apt.status]?.label || apt.status} • {apt.views || 0} مشاهدة</p>
-                              {apt.archivedAt && <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>📦 أُرشف: {new Date(apt.archivedAt).toLocaleString('ar-EG')}</p>}
+                              {apt.archivedAt && <p className={`text-xs ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>📦 أُرشف: {new Date(apt.archivedAt).toLocaleString('ar-EG')} • <span className="text-red-400">🗑 حذف تلقائي: {new Date(new Date(apt.archivedAt).getTime() + 48 * 60 * 60 * 1000).toLocaleString('ar-EG')}</span></p>}
                             </div>
                           </div>
-                          <button onClick={() => handleRestoreArchived(apt.id, apt.title)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition-colors flex-shrink-0">
-                            <ArchiveRestore className="h-4 w-4" />استعادة
-                          </button>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button onClick={() => handleRestoreArchived(apt.id, apt.title)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition-colors">
+                              <ArchiveRestore className="h-4 w-4" />استعادة
+                            </button>
+                            <button onClick={() => handleDeleteArchived(apt.id, apt.title)} title="حذف نهائي" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors">
+                              <Trash2 className="h-4 w-4" />حذف
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -4319,7 +4346,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                               setConfirmDialog({
                                 isOpen: true,
                                 title: '⚠️ تغيير حالة العقار - أرشفة تلقائية',
-                                message: `سيتم أرشفة العقار تلقائياً وإخفاؤه من العرض بعد 48 ساعة من تغيير الحالة إلى "${statusLabel}"\n\nيمكن استعادته لاحقاً من لوحة المطور - الأرشيف\n\nهل أنت متأكد؟`,
+                                message: `سيتم أرشفة العقار تلقائياً وإخفاؤه من العرض بعد 48 ساعة من تغيير الحالة إلى "${statusLabel}"\n\nيمكن استعادته لاحقاً من لوحة المطور - الأرشيف\n⚠️ ملاحظة: يُحذف نهائياً تلقائياً بعد 48 ساعة في الأرشيف\n\nهل أنت متأكد؟`,
                                 confirmText: 'نعم، تأكيد',
                                 cancelText: 'إلغاء',
                                 onConfirm: () => {

@@ -41,9 +41,14 @@ async function handle(request: NextRequest) {
 
     const result = await runAutoArchive();
 
+    const parts: string[] = [`تمت أرشفة ${result.archivedCount} عقار`];
+    if (result.deletedCount > 0) {
+      parts.push(`وتم الحذف النهائي التلقائي لـ ${result.deletedCount} عقار مضى على أرشفته 48 ساعة`);
+    }
+
     return NextResponse.json({
       success: true,
-      message: `تمت الأرشفة التلقائية - ${result.archivedCount} عقار`,
+      message: parts.join(' — '),
       ...result,
     });
   } catch (error) {
