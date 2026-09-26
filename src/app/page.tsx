@@ -464,6 +464,8 @@ function App() {
   const tabButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const fetchUserPaymentsRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const recheckAuthRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const fetchMyPendingRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const fetchWalletTxRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
   // Keep refs in sync with state (no re-renders, just ref updates)
   useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
@@ -538,38 +540,55 @@ function App() {
   }, []); // Empty deps = connect only ONCE on mount
 
   // ========== REAL-TIME CHANGES POLLING (بدون socket.io) ==========
-  // بيشتغل على Vercel — كل 15 ثانية بيشوف في تغييرات جديدة
-  // (كان 3 ثواني وده كان استهلاك مبالغ فيه — اتظبط لـ 15 ثانية
-  //  + تحديث فوري أول ما التاب يرجع مفتوح عبر visibilitychange)
+  // بيشتغل على Vercel — كل 15 ثانية بيسأل السيرفر: "في حاجة اتغيرت من آخر مرة؟"
+  //
+  // إصلاحات v7 (كانت دي أسباب إن المستخدم يضطر يعمل refresh يدوي):
+  // 1) نقطة الزمن كانت بتتظبط من ساعة جهاز المستخدم — أي فرق بين ساعة الجهاز
+  //    وساعة السيرفر كان بيخلي التغييرات متتكشفش. دلوقتي: أول مزامنة فورية
+  //    بتجيب وقت السيرفر نفسه وكل المقارنات بتتم بوقت السيرفر.
+  // 2) نقطة الزمن كانت بتتجمد لو مفيش تغييرات (early return قبل تحديثها)
+  //    — دلوقتي بتتقدم دايماً بعد كل رد ناجح.
+  // 3) تغطية أوسع: حالة شقتك (اعتماد/رفض) + المحفظة + طلبات التعديل + الإعجابات
+  //    والتعليقات (لبيانات لوحة المطور).
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    let lastCheckTime = new Date().toISOString();
+    let lastCheckTime: string | null = null; // null = لسه منزلتش مزامنة وقت السيرفر
     let cancelled = false;
 
     const pollChanges = async () => {
       if (cancelled) return;
       try {
-        const res = await fetch(`/api/changes?since=${encodeURIComponent(lastCheckTime)}`);
+        const url = lastCheckTime
+          ? `/api/changes?since=${encodeURIComponent(lastCheckTime)}`
+          : '/api/changes'; // أول مزامنة: جيب وقت السيرفر بس
+        const res = await fetch(url);
         if (!res.ok || cancelled) return;
         const { changes, serverTime } = await res.json();
-        if (!changes || changes.length === 0) return;
 
-        // تحديث الوقت للـ poll الجاية
-        if (serverTime) lastCheckTime = serverTime;
+        // نقطة الزمن بتتقدم دايماً بوقت السيرفر — حتى لو مفيش تغييرات
+        const hadAnchor = Boolean(lastCheckTime);
+        lastCheckTime = serverTime || new Date().toISOString();
+
+        // أول مزامنة بتعلم الساعة بس — التغييرات هتتكشف في الـ poll الجاي
+        if (!hadAnchor) return;
+        if (!changes || changes.length === 0) return;
 
         // أنواع التغييرات وتحديث الداتا المناسبة
         const types = new Set(changes.map((c: { type: string }) => c.type));
-        
+
         if (types.has('settings')) {
           fetchSettingsRef.current?.();
         }
         if (types.has('apartments')) {
           fetchApartmentsRef.current?.(0, false);
+          // اعتماد/رفض شقة للمستخدم الحالي — العداد والقائمة يتحدثوا بدون refresh
+          if (currentUserRef.current) fetchMyPendingRef.current?.();
         }
         if (types.has('messages')) {
           fetchMessagesRef.current?.();
         }
-        if (types.has('inquiries') || types.has('payments') || types.has('users')) {
+        if (types.has('inquiries') || types.has('payments') || types.has('users') ||
+            types.has('edit-requests') || types.has('likes') || types.has('comments')) {
           fetchDevDataRef.current?.();
         }
         if (types.has('payments')) {
@@ -578,10 +597,16 @@ function App() {
         if (types.has('users')) {
           recheckAuthRef.current?.();
         }
+        if (types.has('wallet')) {
+          fetchWalletTxRef.current?.();
+        }
       } catch {
         // silent - next poll will retry
       }
     };
+
+    // أول مزامنة فورية عند فتح الصفحة (بتظبط الزمن على ساعة السيرفر)
+    pollChanges();
 
     const interval = setInterval(() => {
       if (!document.hidden) pollChanges();
@@ -602,6 +627,8 @@ function App() {
 
   useEffect(() => { fetchUserPaymentsRef.current = fetchUserPayments; });
   useEffect(() => { recheckAuthRef.current = recheckAuth; });
+  useEffect(() => { fetchMyPendingRef.current = fetchMyPendingApartments; });
+  useEffect(() => { fetchWalletTxRef.current = fetchWalletTransactions; });
 
   // ========== fetchApartments (stable function, ref updated each render) ==========
   const fetchApartments = async (retryCount = 0, isInitial = false) => {
@@ -705,10 +732,12 @@ function App() {
   const fetchWalletTransactions = async () => {
     setWalletTransactionsLoading(true);
     try {
-      const res = await fetch('/api/wallet/transactions');
+      // إصلاح v7: الرابط الصحيح هو /api/wallet — الرابط القديم /api/wallet/transactions
+      // كان بيوصل لروت [id] الخاص بالمطور ويرجع 403، فالقائمة كانت فاضية دايماً
+      const res = await fetch('/api/wallet');
       const data = await res.json();
-      if (Array.isArray(data)) {
-        setWalletTransactions(data);
+      if (Array.isArray(data?.transactions)) {
+        setWalletTransactions(data.transactions);
       }
     } catch {
       // سنتعامل مع الأخطاء بصمت

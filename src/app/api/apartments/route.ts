@@ -110,7 +110,10 @@ export async function GET(request: Request) {
       return safeApt;
     });
 
-    return NextResponse.json(sanitizedApartments);
+    // no-store: التحديثات الحية تعتمد على إن كل جلب يرجّع أحدث داتا
+    return NextResponse.json(sanitizedApartments, {
+      headers: { 'Cache-Control': 'no-store', 'Pragma': 'no-cache' },
+    });
   } catch (error: any) {
     console.error("Get apartments error:", error);
     return NextResponse.json(

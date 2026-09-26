@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     const token = cookies.get("auth-token");
 
     if (!token) {
-      return NextResponse.json({ user: null });
+      return NextResponse.json({ user: null }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
     const decoded = verify(token, JWT_SECRET!) as unknown as { userId: string };
@@ -27,6 +27,7 @@ export async function GET(request: Request) {
         isBlocked: true,
         identifier: true,
         emailVerified: true,
+        walletBalance: true, // إصلاح v7: كان ناقص — فرصيد المحفظة كان بيظهر صفر دايماً
         createdAt: true,
         _count: {
           select: { apartments: true },
@@ -35,16 +36,16 @@ export async function GET(request: Request) {
     });
 
     if (!user) {
-      return NextResponse.json({ user: null });
+      return NextResponse.json({ user: null }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
     // Return null for blocked users (security)
     if (user.isBlocked) {
-      return NextResponse.json({ user: null });
+      return NextResponse.json({ user: null }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
-    return NextResponse.json({ user });
+    return NextResponse.json({ user }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
-    return NextResponse.json({ user: null });
+    return NextResponse.json({ user: null }, { headers: { 'Cache-Control': 'no-store' } });
   }
 }
