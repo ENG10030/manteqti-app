@@ -17,11 +17,13 @@ export function middleware(request: NextRequest) {
   response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
   response.headers.set("Content-Security-Policy", 
     "default-src 'self'; " +
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+    // accounts.google.com مطلوب لزر الدخول بجوجل (سكريبت Google Identity Services + iframe الزر)
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com; " +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
     "font-src 'self' https://fonts.gstatic.com; " +
-    "img-src 'self' data: blob: https://res.cloudinary.com https://images.unsplash.com https://*.googleapis.com; " +
-    "connect-src 'self' https://api.resend.com; " +
+    "img-src 'self' data: blob: https://res.cloudinary.com https://images.unsplash.com https://*.googleapis.com https://lh3.googleusercontent.com; " +
+    "connect-src 'self' https://api.resend.com https://accounts.google.com; " +
+    "frame-src https://accounts.google.com; " +
     "frame-ancestors 'none'; " +
     "base-uri 'self'; " +
     "form-action 'self'"

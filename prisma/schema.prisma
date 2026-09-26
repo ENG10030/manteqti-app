@@ -40,8 +40,29 @@ model User {
   editRequests  PropertyEditRequest[]
   blockedUsers     BlockedUser[]  @relation("BlockedUserRelation")
   walletTransactions WalletTransaction[]
+  webauthnCredentials WebAuthnCredential[]
 
   @@map("User")
+}
+
+// بيانات الدخول بالبصمة (WebAuthn / Passkeys)
+// كل بصمة مربوطة بجهاز واحد وتتحفظ عامة فقط (public key) — الخصوصية محفوظة
+model WebAuthnCredential {
+  id           String    @id @default(cuid())
+  userId       String
+  credentialId String    @unique
+  publicKey    String
+  counter      Int       @default(0)
+  transports   String?
+  deviceType   String?
+  backedUp     Boolean   @default(false)
+  name         String?
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("WebAuthnCredential")
 }
 
 model Apartment {

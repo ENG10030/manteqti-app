@@ -15,8 +15,10 @@ import {
   VideoIcon, Activity, Wallet, Key, ArrowUp, Layers,
   Download, Smartphone, Zap, Save, Archive, ArchiveRestore,
   Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen, SunMoon,
-  GitCompare, Trophy, ScrollText, ClipboardCheck, HardDrive, Upload, Database
+  GitCompare, Trophy, ScrollText, ClipboardCheck, HardDrive, Upload, Database,
+  Fingerprint
 } from 'lucide-react';
+import { browserSupportsWebAuthn, startRegistration, startAuthentication } from '@simplewebauthn/browser';
 import { FileUpload } from '@/components/file-upload';
 // socket.io-client imported dynamically in useEffect to prevent Vercel SSR/hydration issues
 
@@ -1828,6 +1830,140 @@ function App() {
   // تحميل زر جوجل الرسمي (Google Identity Services) عند فتح نافذة الدخول
   const googleScriptLoadingRef = useRef<Promise<void> | null>(null);
   const googleBtnRef = useRef<HTMLDivElement | null>(null);
+
+  // ===== الدخول بالبصمة (WebAuthn / Passkeys) — v9 =====
+  const [webAuthnSupported, setWebAuthnSupported] = useState(false);
+  const [passkeyLoading, setPasskeyLoading] = useState(false); // أثناء الدخول بالبصمة
+  const [passkeyBusy, setPasskeyBusy] = useState(false); // أثناء تسجيل/حذف بصمة من المودال
+  const [showPasskeyModal, setShowPasskeyModal] = useState(false);
+  interface PasskeyInfo { id: string; name?: string | null; deviceType?: string | null; backedUp?: boolean; createdAt: string; lastUsedAt?: string | null; }
+  const [passkeyList, setPasskeyList] = useState<PasskeyInfo[]>([]);
+  const [passkeyListLoading, setPasskeyListLoading] = useState(false);
+
+  useEffect(() => {
+    // فحص دعم المتصفح للبصمة (Chrome/Android، Safari/iOS، ...)
+    setWebAuthnSupported(browserSupportsWebAuthn());
+  }, []);
+
+  const detectDeviceLabel = (): string => {
+    if (typeof navigator === 'undefined') return 'جهاز';
+    const ua = navigator.userAgent;
+    if (/iPhone/i.test(ua)) return 'آيفون';
+    if (/iPad/i.test(ua)) return 'آيباد';
+    if (/Android/i.test(ua)) return 'أندرويد';
+    if (/Macintosh|Mac OS X/i.test(ua)) return 'ماك';
+    if (/Windows/i.test(ua)) return 'ويندوز';
+    if (/Linux/i.test(ua)) return 'لينكس';
+    return 'جهاز';
+  };
+
+  // تسجيل الدخول بالبصمة من نافذة الدخول (بدون كلمة مرور)
+  const handlePasskeyLogin = async () => {
+    if (passkeyLoading) return;
+    setPasskeyLoading(true);
+    setAuthError('');
+    try {
+      const ident = authIdentifier.trim().toLowerCase();
+      const optRes = await fetch('/api/auth/webauthn/login-options', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: ident || undefined }) });
+      const optData = await optRes.json();
+      if (!optRes.ok) { const msg = optData.error || 'فشل بدء الدخول بالبصمة'; setAuthError(msg); addToast(msg, 'error'); return; }
+      if (optData.available === false) {
+        const msg = 'مفيش بصمة مسجلة للحساب ده — سجل دخولك بكلمة المرور وفعّل البصمة من زر البصمة في الأعلى';
+        setAuthError(msg); addToast(msg, 'info'); return;
+      }
+      let assertion;
+      try {
+        assertion = await startAuthentication({ optionsJSON: optData.options });
+      } catch (err: unknown) {
+        const errName = (err as { name?: string })?.name || '';
+        if (errName === 'NotAllowedError') { addToast('تم إلغاء الدخول بالبصمة أو انتهت المدة', 'info'); }
+        else if (errName === 'SecurityError') { const msg = 'الدخول بالبصمة مربوط بنطاق الموقع — افتح الموقع من نفس الرابط المسجل'; setAuthError(msg); addToast(msg, 'error'); }
+        else { const msg = 'فشل الدخول بالبصمة. حاول مرة أخرى'; setAuthError(msg); addToast(msg, 'error'); }
+        return;
+      }
+      const verifyRes = await fetch('/api/auth/webauthn/login-verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ response: assertion }) });
+      const verifyData = await verifyRes.json();
+      if (verifyRes.ok && verifyData.user) {
+        setCurrentUser(verifyData.user);
+        setIsDeveloper(verifyData.user.role === 'DEVELOPER' || verifyData.user.identifier === DEVELOPER_EMAIL);
+        setShowAuth(false);
+        setAuthPassword('');
+        addToast(verifyData.message || 'تم تسجيل الدخول بالبصمة ✅', 'success');
+      } else {
+        const msg = verifyData.error || 'فشل التحقق من البصمة';
+        setAuthError(msg); addToast(msg, verifyData.errorCode === 'ACCOUNT_BLOCKED' ? 'error' : 'info');
+      }
+    } catch {
+      const msg = 'حدث خطأ في الاتصال';
+      setAuthError(msg); addToast(msg, 'error');
+    } finally { setPasskeyLoading(false); }
+  };
+
+  // جلب قائمة البصمات المسجلة لحسابي
+  const fetchPasskeyList = async () => {
+    setPasskeyListLoading(true);
+    try {
+      const res = await fetch('/api/auth/webauthn/credentials');
+      const data = await res.json();
+      if (res.ok) setPasskeyList(Array.isArray(data.credentials) ? data.credentials : []);
+    } catch { /* صامت */ }
+    finally { setPasskeyListLoading(false); }
+  };
+
+  const openPasskeyModal = () => {
+    setShowPasskeyModal(true);
+    fetchPasskeyList();
+  };
+
+  // تسجيل بصمة جديدة للجهاز الحالي (يتطلب جلسة مسجلة)
+  const handleRegisterPasskey = async () => {
+    if (passkeyBusy) return;
+    setPasskeyBusy(true);
+    try {
+      const optRes = await fetch('/api/auth/webauthn/register-options', { method: 'POST' });
+      const optData = await optRes.json();
+      if (!optRes.ok) { addToast(optData.error || 'فشل تجهيز تسجيل البصمة', 'error'); return; }
+      const deviceName = detectDeviceLabel();
+      let attestation;
+      try {
+        attestation = await startRegistration({ optionsJSON: optData });
+      } catch (err: unknown) {
+        const errName = (err as { name?: string })?.name || '';
+        if (errName === 'NotAllowedError') addToast('تم إلغاء تسجيل البصمة', 'info');
+        else if (errName === 'InvalidStateError') addToast('البصمة دي مسجلة على الحساب قبل كده', 'info');
+        else addToast('فشل تسجيل البصمة. تأكد أن جهازك يدعم البصمة', 'error');
+        return;
+      }
+      const verifyRes = await fetch('/api/auth/webauthn/register-verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ response: attestation, name: `${deviceName} — بصمة` }) });
+      const verifyData = await verifyRes.json();
+      if (verifyRes.ok) {
+        addToast(verifyData.message || 'تم تفعيل الدخول بالبصمة ✅', 'success');
+        fetchPasskeyList();
+      } else {
+        addToast(verifyData.error || 'فشل تسجيل البصمة', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الاتصال', 'error');
+    } finally { setPasskeyBusy(false); }
+  };
+
+  // حذف بصمة مسجلة
+  const handleDeletePasskey = async (id: string, name: string) => {
+    setPasskeyBusy(true);
+    try {
+      const res = await fetch('/api/auth/webauthn/credentials', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+      const data = await res.json();
+      if (res.ok) {
+        addToast(data.message || 'تم حذف البصمة', 'success');
+        setPasskeyList(prev => prev.filter(p => p.id !== id));
+      } else {
+        addToast(data.error || 'فشل حذف البصمة', 'error');
+      }
+    } catch {
+      addToast('حدث خطأ في الاتصال', 'error');
+    } finally { setPasskeyBusy(false); }
+  };
+
   const loadGoogleScript = (): Promise<void> => {
     if ((window as any).google?.accounts?.id) return Promise.resolve();
     if (googleScriptLoadingRef.current) return googleScriptLoadingRef.current;
@@ -2948,6 +3084,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <ShieldCheck className="h-5 w-5" /><span>لوحة المطور</span>
                     {pendingApartments.length > 0 && <span className="absolute -top-2 -left-2 w-6 h-6 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">{pendingApartments.length}</span>}
                   </motion.button>
+                  <button onClick={openPasskeyModal} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-100 hover:bg-slate-200'} transition-all`} title="الدخول بالبصمة"><Fingerprint className="h-4 w-4" /></button>
                   <button onClick={handleLogout} className="p-3 rounded-xl bg-rose-500/10 text-rose-500"><LogOut className="h-5 w-5" /></button>
                 </div>
               ) : currentUser ? (
@@ -2957,6 +3094,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     {myPendingApartments.length > 0 && <span className="absolute -top-1 -left-1 w-5 h-5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center">{myPendingApartments.length}</span>}
                   </button>
                   <button onClick={() => { fetchUserPayments(); setShowMyPayments(true); }} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-100 hover:bg-slate-200'} transition-all`} title="المدفوعات"><CreditCard className="h-4 w-4" /></button>
+                  <button onClick={openPasskeyModal} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800 hover:bg-slate-700' : 'bg-slate-100 hover:bg-slate-200'} transition-all`} title="الدخول بالبصمة"><Fingerprint className="h-4 w-4" /></button>
                   <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { fetchWalletTransactions(); setShowWallet(true); }} className="p-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/20" title="المحفظة"><Wallet className="h-4 w-4" /></motion.button>
                   <button onClick={handleLogout} className="p-3 rounded-xl bg-rose-500/10 text-rose-500"><LogOut className="h-5 w-5" /></button>
                 </div>
@@ -3418,6 +3556,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                   <>
         <button onClick={() => { setShowDevPanel(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white"><ShieldCheck className="h-5 w-5" />لوحة المطور{pendingApartments.length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-white/20 text-xs">{pendingApartments.length}</span>}</button>
     <button onClick={() => { setShowMessages(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'} relative`}><MessageCircle className="h-5 w-5" />الرسائل{messages.filter(m => !m.isRead).length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-red-500 text-white text-xs">{messages.filter(m => !m.isRead).length}</span>}</button>
+    <button onClick={() => { openPasskeyModal(); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><Fingerprint className="h-5 w-5" />الدخول بالبصمة</button>
     <button onClick={() => { handleLogout(); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-red-400' : 'bg-slate-100 text-red-500'}`}><LogOut className="h-5 w-5" />تسجيل الخروج</button>
   </>
 ) : currentUser ? (
@@ -3425,6 +3564,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     <button onClick={() => { fetchMyPendingApartments(); setShowMyPending(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><User className="h-5 w-5" />حسابي{myPendingApartments.length > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-amber-500 text-white text-xs">{myPendingApartments.length}</span>}</button>
     <button onClick={() => { fetchUserPayments(); setShowMyPayments(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><CreditCard className="h-5 w-5" />المدفوعات</button>
     <button onClick={() => { fetchWalletTransactions(); setShowWallet(true); setShowMobileMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white"><Wallet className="h-5 w-5" />المحفظة{currentUser?.walletBalance !== undefined && currentUser.walletBalance > 0 && <span className="mr-auto px-2 py-0.5 rounded-full bg-white/20 text-xs">{currentUser.walletBalance.toLocaleString()} ج.م</span>}</button>
+    <button onClick={() => { openPasskeyModal(); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700'}`}><Fingerprint className="h-5 w-5" />الدخول بالبصمة</button>
     <button onClick={() => { handleLogout(); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-red-400' : 'bg-slate-100 text-red-500'}`}><LogOut className="h-5 w-5" />تسجيل الخروج</button>
   </>
 ) : (
@@ -3695,6 +3835,55 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
         </motion.div>
       )}</AnimatePresence>
 
+      {/* Passkey (بصمة) Management Modal — v9 */}
+      <AnimatePresence>{showPasskeyModal && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowPasskeyModal(false)}>
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} transition={{ type: 'spring', duration: 0.5 }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-3xl overflow-hidden ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`} dir="rtl">
+            <div className="relative bg-gradient-to-br from-violet-600 via-purple-600 to-fuchsia-700 px-6 pt-7 pb-9">
+              <button onClick={() => setShowPasskeyModal(false)} className="absolute top-4 left-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors"><X className="h-5 w-5 text-white" /></button>
+              <div className="text-center">
+                <div className="mx-auto w-14 h-14 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center mb-2 border border-white/20">
+                  <Fingerprint className="h-7 w-7 text-white" />
+                </div>
+                <h2 className="text-xl font-bold text-white">الدخول بالبصمة 🔐</h2>
+                <p className="text-xs text-white/80 mt-1">بصمتك أو Face ID للدخول بدون كلمة مرور — البيانات محفوظة على جهازك فقط</p>
+              </div>
+            </div>
+            <div className="px-5 pb-5 -mt-4">
+              <div className={`rounded-2xl p-4 ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50/80'} border ${darkMode ? 'border-slate-600/50' : 'border-slate-100'}`}>
+                <button onClick={handleRegisterPasskey} disabled={passkeyBusy || !webAuthnSupported} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-semibold shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2">
+                  {passkeyBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <><Plus className="h-5 w-5" /><span>تسجيل بصمة لهذا الجهاز</span></>}
+                </button>
+                {!webAuthnSupported && <p className="text-xs text-amber-500 mt-2 text-center">⚠️ متصفحك أو وضع التصفح الحالي لا يدعم البصمة — استخدم Chrome أو Safari العادي</p>}
+                <div className="mt-4">
+                  <p className={`text-xs font-semibold mb-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>البصمات المسجلة ({passkeyList.length}):</p>
+                  {passkeyListLoading ? (
+                    <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin text-violet-500" /></div>
+                  ) : passkeyList.length === 0 ? (
+                    <p className={`text-xs text-center py-3 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>مفيش بصمات مسجلة — سجل بصمة لجهازك للدخول السريع</p>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {passkeyList.map(pk => (
+                        <div key={pk.id} className={`flex items-center justify-between gap-2 p-3 rounded-xl ${darkMode ? 'bg-slate-800/70' : 'bg-white'} border ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                          <div className="min-w-0">
+                            <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-slate-800'}`}>{pk.name || 'بصمة مسجلة'}</p>
+                            <p className={`text-[11px] ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>سُجلت: {new Date(pk.createdAt).toLocaleDateString('ar-EG')}{pk.lastUsedAt ? ` • آخر استخدام: ${new Date(pk.lastUsedAt).toLocaleDateString('ar-EG')}` : ''}</p>
+                          </div>
+                          <button onClick={() => handleDeletePasskey(pk.id, pk.name || 'البصمة')} disabled={passkeyBusy} className={`p-2 rounded-lg transition-colors flex-shrink-0 ${darkMode ? 'text-rose-400 hover:bg-rose-500/10' : 'text-rose-500 hover:bg-rose-50'}`} title="حذف البصمة"><Trash2 className="h-4 w-4" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <p className={`text-[11px] mt-3 leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                  🔒 البصمة شغالة على Chrome أندرويد (بصمة الإصبع) و Safari آيفون (Touch ID / Face ID). البيانات الحيوية لا تغادر جهازك أبداً — الموقع يحفظ مفتاحاً عاماً فقط.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}</AnimatePresence>
+
       {/* Auth Modal */}
       <AnimatePresence>{showAuth && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowAuth(false)}>
@@ -3766,6 +3955,12 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                   <button type="submit" disabled={authLoading} className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 text-white font-semibold shadow-lg shadow-violet-500/30 hover:shadow-violet-500/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2">
                     {authLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : authStep === 'login' ? <><span>تسجيل الدخول</span><span className='text-lg'>🔑</span></> : <><span>إنشاء حساب</span><Plus className="h-4 w-4" /></>}
                   </button>
+                  {/* الدخول بالبصمة (WebAuthn) — يظهر لو المتصفح يدعم (أندرويد/آيفون/ويندوز هيلو) */}
+                  {authStep === 'login' && webAuthnSupported && (
+                    <button type="button" onClick={handlePasskeyLogin} disabled={passkeyLoading} className={`w-full py-3 rounded-xl border-2 font-semibold transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2 ${darkMode ? 'border-slate-600 bg-slate-800/50 text-slate-200 hover:border-violet-500 hover:text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-violet-500 hover:text-violet-700'}`}>
+                      {passkeyLoading ? <><Loader2 className="h-5 w-5 animate-spin" /><span>في انتظار البصمة...</span></> : <><Fingerprint className="h-5 w-5" /><span>الدخول بالبصمة</span></>}
+                    </button>
+                  )}
                   {/* الفاصل وزر جوجل — يظهر فقط لو NEXT_PUBLIC_GOOGLE_CLIENT_ID مضبوط */}
                   {GOOGLE_CLIENT_ID && (
                     <>
