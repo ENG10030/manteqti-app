@@ -14,7 +14,7 @@ import {
   Send, Bot, Home, Crown, Diamond, Ban, Brain, Search,
   VideoIcon, Activity, Wallet, Key, ArrowUp, Layers,
   Download, Smartphone, Zap, Save, Archive, ArchiveRestore,
-  Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen,
+  Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen, SunMoon,
   GitCompare, Trophy, ScrollText, ClipboardCheck, HardDrive, Upload, Database
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
@@ -184,23 +184,38 @@ function App() {
   const [initialLoad, setInitialLoad] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [darkMode, setDarkMode] = useState(false);
+  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'auto'>('auto');
 
-  // نظام الثيم: استرجاع الوضع المحفوظ (أو تفضيل النظام) قبل أول رسم
+  // نظام الثيم (نهاري / ليلي / تلقائي حسب الجهاز): استرجاع الاختيار المحفوظ قبل أول رسم
   useIsomorphicLayoutEffect(() => {
     try {
       const saved = localStorage.getItem('manteqti-theme');
-      if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) setDarkMode(true);
+      const mode = saved === 'dark' || saved === 'light' ? saved : 'auto';
+      setThemeMode(mode);
+      setDarkMode(mode === 'dark' || (mode === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches));
     } catch { /* تجاهل */ }
   }, []);
-  // مزامنة حالة الوضع مع html.dark + حفظ الاختيار + لون شريط المتصفح
+  // تطبيق الوضع + تتبّع حي لتغيّر إعداد الجهاز أثناء الوضع التلقائي
+  useEffect(() => {
+    try {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      const apply = () => setDarkMode(themeMode === 'dark' || (themeMode === 'auto' && mq.matches));
+      apply();
+      mq.addEventListener('change', apply);
+      return () => mq.removeEventListener('change', apply);
+    } catch { /* تجاهل */ }
+  }, [themeMode]);
+  // مزامنة html.dark + حفظ الاختيار + لون شريط المتصفح
   useEffect(() => {
     try {
       document.documentElement.classList.toggle('dark', darkMode);
-      localStorage.setItem('manteqti-theme', darkMode ? 'dark' : 'light');
+      localStorage.setItem('manteqti-theme', themeMode);
       const meta = document.querySelector('meta[name="theme-color"]');
       if (meta) meta.setAttribute('content', darkMode ? '#0f172a' : '#7c3aed');
     } catch { /* تجاهل */ }
-  }, [darkMode]);
+  }, [darkMode, themeMode]);
+  // زر التبديل: نهاري ← ليلي ← تلقائي ← نهاري
+  const cycleTheme = () => setThemeMode((m) => (m === 'light' ? 'dark' : m === 'dark' ? 'auto' : 'light'));
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'rent' | 'sale'>('all');
   const [areaFilter, setAreaFilter] = useState<string>('all');
@@ -444,6 +459,7 @@ function App() {
   const initialLoadRef = useRef(true);
   const fetchDevDataRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const fetchEditRequestsRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const refreshDevPanelRef = useRef<(() => Promise<void>) | undefined>(undefined);
   const tabScrollRef = useRef<HTMLDivElement>(null);
   const tabButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const fetchUserPaymentsRef = useRef<(() => Promise<void>) | undefined>(undefined);
@@ -1442,6 +1458,20 @@ function App() {
     return () => clearInterval(interval);
   }, []); // Empty deps — uses refs, never re-creates
 
+  // تحديث تلقائي لبيانات لوحة المطور (سجل المستخدمين والمستخدمين والسجلات وغيرها):
+  // فوري عند فتح اللوحة + كل 60 ثانية واللوحة مفتوحة + فوري عند رجوع التاب للظهور
+  useEffect(() => {
+    if (!showDevPanel || !isDeveloper) return;
+    refreshDevPanelRef.current?.();
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      refreshDevPanelRef.current?.();
+    }, 60000);
+    const onVisible = () => { if (typeof document !== 'undefined' && !document.hidden) refreshDevPanelRef.current?.(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
+  }, [showDevPanel, isDeveloper]);
+
   // Fetch likes
   const fetchUserLikes = async () => {
     if (!currentUser) return;
@@ -1526,6 +1556,15 @@ function App() {
       setAllUsers(Array.isArray(users) ? users : []);
     } catch {}
   };
+
+  // تحديث شامل لكل بيانات لوحة المطور (يُستدعى عند فتح اللوحة وعبر الـ polling)
+  const refreshDevPanelData = async () => {
+    await Promise.allSettled([
+      fetchDevData(), fetchAllLikes(), fetchAllComments(), fetchCommentActionLogs(),
+      fetchBlockedUsers(), fetchAllUsers(), fetchOperationLogs(), fetchEditRequests(), fetchArchivedApartments(),
+    ]);
+  };
+  useEffect(() => { refreshDevPanelRef.current = refreshDevPanelData; });
 
   const fetchUserDetail = async (userId: string) => {
     setUserDetailLoading(true);
@@ -2829,8 +2868,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
             </div>
 
             <div className="hidden md:flex items-center gap-3">
-              <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => setDarkMode(!darkMode)} className={`p-3 rounded-xl ${darkMode ? 'bg-slate-800 text-amber-400' : 'bg-slate-100 text-slate-600'}`}>
-                {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={cycleTheme} title={themeMode === 'auto' ? 'تلقائي حسب إعداد الجهاز — اضغط للوضع النهاري' : themeMode === 'dark' ? 'الوضع الليلي — اضغط للتلقائي' : 'الوضع النهاري — اضغط للوضع الليلي'} aria-label="تبديل وضع العرض" className={`p-3 rounded-xl ${themeMode === 'auto' ? (darkMode ? 'bg-slate-800 text-violet-400' : 'bg-slate-100 text-violet-600') : darkMode ? 'bg-slate-800 text-amber-400' : 'bg-slate-100 text-slate-600'}`}>
+                {themeMode === 'auto' ? <SunMoon className="h-5 w-5" /> : darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </motion.button>
 
               <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setShowAddModal(true)} className="flex items-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium shadow-lg shadow-emerald-500/30">
@@ -3343,7 +3382,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     <button onClick={() => { setShowDevLogin(true); setShowMobileMenu(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-amber-900/30 text-amber-400' : 'bg-amber-50 text-amber-600'}`}><Lock className="h-5 w-5" />دخول المطور</button>
   </>
 )}
-                <button onClick={() => setDarkMode(!darkMode)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${darkMode ? 'bg-slate-700 text-amber-400' : 'bg-slate-100 text-slate-700'}`}>{darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}{darkMode ? 'الوضع النهاري' : 'الوضع الليلي'}</button>
+                <button onClick={cycleTheme} title="اضغط للتبديل: نهاري ← ليلي ← تلقائي" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl ${themeMode === 'auto' ? (darkMode ? 'bg-slate-700 text-violet-400' : 'bg-violet-100 text-violet-700') : darkMode ? 'bg-slate-700 text-amber-400' : 'bg-slate-100 text-slate-700'}`}>{themeMode === 'auto' ? <SunMoon className="h-5 w-5" /> : darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}{themeMode === 'auto' ? 'تلقائي (حسب الجهاز)' : darkMode ? 'الوضع النهاري' : 'الوضع الليلي'}</button>
               </div>
             </div>
           </motion.div>
