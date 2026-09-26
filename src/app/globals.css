@@ -122,228 +122,37 @@
 }
 
 /* ============================================================
-   iOS 27 "Liquid Glass" Design System — نهاري + ليلي
-   نفس درجة شفافية iOS: زجاج مصنفر + تشبع لوني + حواف مضيئة
+   iOS 27 Liquid Glass — طبقة شفافية موحدة فقط
+   التصميم والألوان والتخطيط كما هي تماماً؛ الأسطح الصلبة فقط
+   (bg-white / bg-slate-50 / bg-slate-100 / bg-slate-800 / bg-slate-700)
+   تصبح زجاجاً بنفس درجة شفافية زجاج الموقع الأصلي (80%) — نهاري = ليلي.
+   الخلفيات الجذرية (min-h-screen) والحاوية bg-slate-900 لا تُمس أبداً
+   حتى يبقى هناك ما يُشفَّر خلف الزجاج، والمتصفحات بدون دعم
+   backdrop-filter تبقى على الشكل الأصلي المعتم دون أي ضرر.
    ============================================================ */
-
-:root {
-  --glass-blur: 28px;
-  --glass-blur-soft: 20px;
-  --glass-sat: 180%;
-  --glass-sat-soft: 160%;
-  --glass-edge-light: rgba(255, 255, 255, 0.9);
-  --glass-edge-dark: rgba(255, 255, 255, 0.12);
-}
-
-html {
-  background: #eef0f6;
-}
-html.dark {
-  background: #05060d;
-  color-scheme: dark;
-}
-
-/* ---------- الخلفية المحيطة (Ambient) — هي اللي بتظهر من خلال الزجاج ---------- */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(42% 46% at 10% 6%, rgba(139, 92, 246, 0.65), transparent 70%),
-    radial-gradient(38% 42% at 90% 10%, rgba(16, 185, 129, 0.5), transparent 70%),
-    radial-gradient(44% 48% at 84% 88%, rgba(244, 63, 94, 0.42), transparent 70%),
-    radial-gradient(46% 50% at 16% 90%, rgba(245, 158, 11, 0.45), transparent 70%),
-    radial-gradient(30% 34% at 55% 45%, rgba(168, 85, 247, 0.28), transparent 72%),
-    linear-gradient(180deg, #f2f4fb 0%, #e9edf7 100%);
-  animation: ambient-drift 48s ease-in-out infinite alternate;
-}
-html.dark body::before {
-  background:
-    radial-gradient(42% 46% at 10% 6%, rgba(124, 58, 237, 0.72), transparent 70%),
-    radial-gradient(38% 42% at 90% 10%, rgba(5, 150, 105, 0.55), transparent 70%),
-    radial-gradient(44% 48% at 84% 88%, rgba(190, 18, 60, 0.52), transparent 70%),
-    radial-gradient(46% 50% at 16% 90%, rgba(217, 119, 6, 0.5), transparent 70%),
-    radial-gradient(30% 34% at 55% 45%, rgba(99, 102, 241, 0.35), transparent 72%),
-    linear-gradient(180deg, #05060d 0%, #0b0d1a 100%);
-}
-@keyframes ambient-drift {
-  from { transform: translate3d(0, 0, 0) scale(1); }
-  to { transform: translate3d(2.5%, -2%, 0) scale(1.07); }
-}
-
-/* ---------- مواد الزجاج — الوضع النهاري ---------- */
-.bg-white,
-.bg-white\/80 {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.66), rgba(255, 255, 255, 0.42) 45%, rgba(255, 255, 255, 0.5)) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(200%);
-  backdrop-filter: blur(var(--glass-blur)) saturate(200%);
-  box-shadow: inset 0 1px 0 var(--glass-edge-light), 0 8px 32px rgba(15, 23, 42, 0.1);
-}
-.bg-slate-50,
-.bg-slate-50\/50,
-.bg-slate-50\/80 {
-  background: rgba(255, 255, 255, 0.32) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur-soft)) saturate(var(--glass-sat-soft));
-  backdrop-filter: blur(var(--glass-blur-soft)) saturate(var(--glass-sat-soft));
-}
-.bg-slate-100 {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0.34)) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur-soft)) saturate(var(--glass-sat-soft));
-  backdrop-filter: blur(var(--glass-blur-soft)) saturate(var(--glass-sat-soft));
-  box-shadow: inset 0 1px 0 var(--glass-edge-light);
-}
-.bg-slate-200 {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.44)) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur-soft)) saturate(var(--glass-sat-soft));
-  backdrop-filter: blur(var(--glass-blur-soft)) saturate(var(--glass-sat-soft));
-  box-shadow: inset 0 1px 0 var(--glass-edge-light);
-}
-.bg-slate-300 {
-  background: rgba(255, 255, 255, 0.62) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur-soft)) saturate(var(--glass-sat-soft));
-  backdrop-filter: blur(var(--glass-blur-soft)) saturate(var(--glass-sat-soft));
-}
-.bg-background {
-  background: rgba(255, 255, 255, 0.55) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(200%);
-  backdrop-filter: blur(var(--glass-blur)) saturate(200%);
-}
-
-/* ألوان ملوّنة شفافة (Chips/Badges) — الوضع النهاري */
-.bg-slate-500 { background: rgba(100, 116, 139, 0.45) !important; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
-.bg-emerald-50 { background: rgba(236, 253, 245, 0.55) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
-.bg-emerald-100 { background: rgba(209, 250, 229, 0.55) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
-.bg-red-50 { background: rgba(254, 242, 242, 0.55) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
-.bg-red-100 { background: rgba(254, 226, 226, 0.55) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
-.bg-amber-50 { background: rgba(255, 251, 235, 0.55) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
-.bg-amber-100 { background: rgba(254, 243, 199, 0.55) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
-.bg-violet-50 { background: rgba(245, 243, 255, 0.55) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
-.bg-violet-100 { background: rgba(237, 233, 254, 0.55) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
-.bg-orange-100 { background: rgba(255, 237, 213, 0.55) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
-.bg-rose-50 { background: rgba(255, 241, 242, 0.55) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
-.bg-blue-100 { background: rgba(219, 234, 254, 0.55) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
-
-/* حواف زجاجية بيضاء رفيعة — الوضع النهاري */
-.border-slate-100 { border-color: rgba(255, 255, 255, 0.55) !important; }
-.border-slate-200 { border-color: rgba(255, 255, 255, 0.72) !important; }
-.border-slate-300 { border-color: rgba(255, 255, 255, 0.88) !important; }
-.divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(15, 23, 42, 0.06) !important; }
-.divide-slate-200 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(15, 23, 42, 0.08) !important; }
-
-/* Hover زجاجي — الوضع النهاري */
-.hover\:bg-white:hover { background: rgba(255, 255, 255, 0.72) !important; }
-.hover\:bg-slate-50:hover { background: rgba(255, 255, 255, 0.5) !important; }
-.hover\:bg-slate-100:hover { background: rgba(255, 255, 255, 0.62) !important; }
-.hover\:bg-slate-200:hover { background: rgba(255, 255, 255, 0.72) !important; }
-.hover\:bg-slate-300:hover { background: rgba(255, 255, 255, 0.82) !important; }
-.hover\:bg-red-100:hover { background: rgba(254, 226, 226, 0.65) !important; }
-.hover\:bg-red-200:hover { background: rgba(254, 202, 202, 0.7) !important; }
-.hover\:bg-emerald-200:hover { background: rgba(167, 243, 208, 0.65) !important; }
-.hover\:bg-amber-200:hover { background: rgba(253, 230, 138, 0.65) !important; }
-.hover\:bg-violet-200:hover { background: rgba(221, 214, 254, 0.65) !important; }
-
-/* ---------- مواد الزجاج — الوضع الليلي (نفس درجة الشفافية) ---------- */
-.dark .bg-slate-900 {
-  background: rgba(9, 11, 20, 0.32) !important;
-}
-.dark .bg-slate-900\/80,
-.dark .bg-slate-900\/60 {
-  background: rgba(9, 11, 20, 0.5) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(190%);
-  backdrop-filter: blur(var(--glass-blur)) saturate(190%);
-  box-shadow: inset 0 1px 0 var(--glass-edge-dark);
-}
-.dark .bg-slate-800,
-.dark .bg-slate-800\/80 {
-  background: linear-gradient(135deg, rgba(24, 29, 48, 0.6), rgba(13, 16, 28, 0.42) 50%, rgba(17, 21, 36, 0.5)) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(190%);
-  backdrop-filter: blur(var(--glass-blur)) saturate(190%);
-  box-shadow: inset 0 1px 0 var(--glass-edge-dark), 0 8px 32px rgba(0, 0, 0, 0.45);
-}
-.dark .bg-slate-800\/50 {
-  background: rgba(15, 19, 32, 0.35) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur-soft)) saturate(var(--glass-sat-soft));
-  backdrop-filter: blur(var(--glass-blur-soft)) saturate(var(--glass-sat-soft));
-}
-.dark .bg-slate-700,
-.dark .bg-slate-700\/50 {
-  background: linear-gradient(135deg, rgba(33, 40, 62, 0.58), rgba(20, 25, 40, 0.42)) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur-soft)) saturate(var(--glass-sat-soft));
-  backdrop-filter: blur(var(--glass-blur-soft)) saturate(var(--glass-sat-soft));
-  box-shadow: inset 0 1px 0 var(--glass-edge-dark);
-}
-.dark .bg-slate-600,
-.dark .bg-slate-600\/50 {
-  background: rgba(38, 45, 66, 0.45) !important;
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
-  backdrop-filter: blur(14px) saturate(1.4);
-}
-.dark .bg-slate-500 {
-  background: rgba(50, 57, 80, 0.48) !important;
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-}
-.dark .bg-background {
-  background: rgba(13, 16, 28, 0.5) !important;
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(190%);
-  backdrop-filter: blur(var(--glass-blur)) saturate(190%);
-}
-
-/* ألوان ملوّنة شفافة — الوضع الليلي */
-.dark .bg-emerald-900 { background: rgba(6, 78, 59, 0.45) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
-.dark .bg-red-900 { background: rgba(127, 29, 29, 0.45) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
-.dark .bg-amber-900 { background: rgba(120, 53, 15, 0.45) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
-.dark .bg-violet-900 { background: rgba(76, 29, 149, 0.45) !important; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
-
-/* حواف زجاجية بيضاء رفيعة — الوضع الليلي */
-.dark .border-slate-500 { border-color: rgba(255, 255, 255, 0.18) !important; }
-.dark .border-slate-600 { border-color: rgba(255, 255, 255, 0.13) !important; }
-.dark .border-slate-700 { border-color: rgba(255, 255, 255, 0.09) !important; }
-.dark .divide-slate-700 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(255, 255, 255, 0.08) !important; }
-
-/* Hover زجاجي — الوضع الليلي */
-.dark .hover\:bg-slate-800:hover { background: rgba(22, 27, 43, 0.65) !important; }
-.dark .hover\:bg-slate-700:hover { background: rgba(33, 39, 60, 0.62) !important; }
-.dark .hover\:bg-slate-600:hover { background: rgba(46, 53, 76, 0.58) !important; }
-.dark .hover\:bg-slate-500:hover { background: rgba(58, 66, 92, 0.52) !important; }
-
-/* ---------- اللمسات النهائية على طريقة iOS ---------- */
-
-/* قوائم select المنسدلة تفضل مقروءة */
-select option { background: #ffffff; color: #0f172a; }
-.dark select option { background: #171c2e; color: #f1f5f9; }
-
-/* سكرول بار زجاجي رفيع */
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: rgba(100, 105, 130, 0.35);
-  border-radius: 999px;
-  border: 2.5px solid transparent;
-  background-clip: content-box;
-}
-::-webkit-scrollbar-thumb:hover { background: rgba(100, 105, 130, 0.55); background-clip: content-box; }
-html.dark ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); background-clip: content-box; }
-html.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); background-clip: content-box; }
-
-/* إدخال النصوص: مؤشر وتركيز بستايل iOS */
-input::placeholder, textarea::placeholder { opacity: 0.65; }
-
-/* احترام تقليل الحركة والشفافية */
-@media (prefers-reduced-motion: reduce) {
-  body::before { animation: none; }
-}
-@media (prefers-reduced-transparency: reduce) {
-  .bg-white, .bg-white\/80, .bg-slate-100, .bg-slate-200, .bg-background,
-  .dark .bg-slate-800, .dark .bg-slate-800\/80, .dark .bg-slate-700, .dark .bg-slate-700\/50, .dark .bg-slate-900, .dark .bg-background {
-    background: #ffffff !important;
-    -webkit-backdrop-filter: none !important;
-    backdrop-filter: none !important;
-    box-shadow: none !important;
-  }
-  .dark .bg-white, .dark .bg-slate-800, .dark .bg-slate-700, .dark .bg-slate-900, .dark .bg-background {
-    background: #10141f !important;
+@layer utilities {
+  @supports (backdrop-filter: blur(1px)) {
+    /* نهاري */
+    .bg-white {
+      background-color: rgb(255 255 255 / 0.80);
+      backdrop-filter: blur(18px) saturate(1.6);
+    }
+    .bg-slate-50 {
+      background-color: rgb(248 250 252 / 0.78);
+      backdrop-filter: blur(12px) saturate(1.4);
+    }
+    .bg-slate-100 {
+      background-color: rgb(241 245 249 / 0.76);
+      backdrop-filter: blur(12px) saturate(1.4);
+    }
+    /* ليلي — نفس درجة الشفافية بالضبط */
+    .dark .bg-slate-800 {
+      background-color: rgb(30 41 59 / 0.80);
+      backdrop-filter: blur(18px) saturate(1.4);
+    }
+    .dark .bg-slate-700 {
+      background-color: rgb(51 65 85 / 0.78);
+      backdrop-filter: blur(12px) saturate(1.4);
+    }
   }
 }

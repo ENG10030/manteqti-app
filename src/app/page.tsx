@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -19,6 +19,9 @@ import {
 } from 'lucide-react';
 import { FileUpload } from '@/components/file-upload';
 // socket.io-client imported dynamically in useEffect to prevent Vercel SSR/hydration issues
+
+// استرجاع الوضع المحفوظ قبل أول رسم (بدون وميض) — آمن للسيرفر والعميل
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 // Developer credentials
 const DEVELOPER_EMAIL = process.env.NEXT_PUBLIC_DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
@@ -181,6 +184,23 @@ function App() {
   const [initialLoad, setInitialLoad] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [darkMode, setDarkMode] = useState(false);
+
+  // نظام الثيم: استرجاع الوضع المحفوظ (أو تفضيل النظام) قبل أول رسم
+  useIsomorphicLayoutEffect(() => {
+    try {
+      const saved = localStorage.getItem('manteqti-theme');
+      if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) setDarkMode(true);
+    } catch { /* تجاهل */ }
+  }, []);
+  // مزامنة حالة الوضع مع html.dark + حفظ الاختيار + لون شريط المتصفح
+  useEffect(() => {
+    try {
+      document.documentElement.classList.toggle('dark', darkMode);
+      localStorage.setItem('manteqti-theme', darkMode ? 'dark' : 'light');
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', darkMode ? '#0f172a' : '#7c3aed');
+    } catch { /* تجاهل */ }
+  }, [darkMode]);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'rent' | 'sale'>('all');
   const [areaFilter, setAreaFilter] = useState<string>('all');
@@ -224,21 +244,6 @@ function App() {
   const [backupInfo, setBackupInfo] = useState<{ exportedAt: string; version: string; counts: Record<string, number> } | null>(null);
   const [myPendingApartments, setMyPendingApartments] = useState<Apartment[]>([]);
   const [showMyPending, setShowMyPending] = useState(false);
-
-  // مزامنة الوضع الليلي مع <html class="dark"> + حفظ اختيار المستخدم
-  useEffect(() => {
-    let stored: string | null = null;
-    try { stored = localStorage.getItem('manteqti-theme'); } catch {}
-    const prefersDark = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    if (stored === 'dark' || (!stored && prefersDark)) setDarkMode(true);
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', darkMode);
-    try { localStorage.setItem('manteqti-theme', darkMode ? 'dark' : 'light'); } catch {}
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', darkMode ? '#0b0d1a' : '#7c3aed');
-  }, [darkMode]);
 
   // Form states
   const [authStep, setAuthStep] = useState<'login' | 'register'>('login');
@@ -2613,7 +2618,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
   // Loading state
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center">
+    <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-slate-900' : 'bg-gradient-to-br from-slate-50 via-violet-50 to-purple-50'}`}>
       <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="text-center">
         <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-violet-600 to-purple-700 flex items-center justify-center mx-auto shadow-2xl shadow-violet-500/30">
           <Building2 className="h-12 w-12 text-white" />
@@ -2625,7 +2630,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
   // Error state
   if (error) return (
-    <div className="min-h-screen flex items-center justify-center p-4" dir="rtl">
+    <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-slate-900' : 'bg-gradient-to-br from-rose-50 to-slate-100'} p-4`} dir="rtl">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className={`max-w-md w-full rounded-3xl p-8 shadow-2xl text-center ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
         <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 ${darkMode ? 'bg-rose-900/30' : 'bg-rose-100'}`}><AlertCircle className="h-8 w-8 text-rose-500" /></div>
         <h2 className={`text-2xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>حدث خطأ</h2>
@@ -2637,7 +2642,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
   // Blocked user state - Only show chat with developer
   if (isBlocked && currentUser && !isDeveloper) return (
-    <div className="min-h-screen flex items-center justify-center p-4" dir="rtl">
+    <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-slate-900' : 'bg-gradient-to-br from-slate-50 via-red-50/30 to-rose-50/30'} p-4`} dir="rtl">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-lg w-full">
         <div className={`rounded-3xl p-8 shadow-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
           <div className="text-center mb-6">
@@ -2701,7 +2706,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
   // ⚠️ v219: Use strict comparison === false to avoid undefined being truthy
   if (currentUser && currentUser.isApproved === false && !isDeveloper) {
     return (
-      <div className="min-h-screen flex flex-col p-4" dir="rtl">
+      <div className={`min-h-screen flex flex-col ${darkMode ? 'bg-slate-900' : 'bg-gradient-to-br from-slate-50 via-amber-50/30 to-orange-50/30'} p-4`} dir="rtl">
         <div className="flex-1 flex items-center justify-center">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-lg w-full">
             <div className={`rounded-3xl p-8 shadow-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'} text-center`}>
@@ -2800,7 +2805,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
   }
 
   return (
-    <div className="min-h-screen flex flex-col" dir="rtl">
+    <div className={`min-h-screen flex flex-col ${darkMode ? 'bg-slate-900' : 'bg-gradient-to-br from-slate-50 via-violet-50/30 to-purple-50/30'}`} dir="rtl">
       {/* Header */}
       <header className={`sticky top-0 z-40 backdrop-blur-xl border-b ${darkMode ? 'bg-slate-900/80 border-slate-700' : 'bg-white/80 border-slate-200'}`}>
         <div className="max-w-7xl mx-auto px-4 py-4">
