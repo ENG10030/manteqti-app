@@ -122,37 +122,29 @@
 }
 
 /* ============================================================
-   iOS 27 Liquid Glass — طبقة شفافية موحدة فقط
-   التصميم والألوان والتخطيط كما هي تماماً؛ الأسطح الصلبة فقط
-   (bg-white / bg-slate-50 / bg-slate-100 / bg-slate-800 / bg-slate-700)
-   تصبح زجاجاً بنفس درجة شفافية زجاج الموقع الأصلي (80%) — نهاري = ليلي.
-   الخلفيات الجذرية (min-h-screen) والحاوية bg-slate-900 لا تُمس أبداً
-   حتى يبقى هناك ما يُشفَّر خلف الزجاج، والمتصفحات بدون دعم
-   backdrop-filter تبقى على الشكل الأصلي المعتم دون أي ضرر.
+   زجاج خفيف بلا لاج — الشفافية بدون ضبابية
+   نفس شكل الزجاج الشفاف (تعرض الخلفية المتدرجة خلف العناصر)
+   لكن بدون backdrop-filter: خلط الشفافية عملية GPU شبه مجانية،
+   بينما الضبابية (blur) كانت سبب اللاج والفلاش في كل النوافذ.
+   الضبابية الحقيقية الوحيدة المتبقية: الهيدر فقط (عنصر واحد صغير
+   في page.tsx بـ backdrop-blur-md) — وده معياري وآمن.
    ============================================================ */
 @layer utilities {
-  @supports (backdrop-filter: blur(1px)) {
-    /* نهاري */
-    .bg-white {
-      background-color: rgb(255 255 255 / 0.80);
-      backdrop-filter: blur(18px) saturate(1.6);
-    }
-    .bg-slate-50 {
-      background-color: rgb(248 250 252 / 0.78);
-      backdrop-filter: blur(12px) saturate(1.4);
-    }
-    .bg-slate-100 {
-      background-color: rgb(241 245 249 / 0.76);
-      backdrop-filter: blur(12px) saturate(1.4);
-    }
-    /* ليلي — نفس درجة الشفافية بالضبط */
-    .dark .bg-slate-800 {
-      background-color: rgb(30 41 59 / 0.80);
-      backdrop-filter: blur(18px) saturate(1.4);
-    }
-    .dark .bg-slate-700 {
-      background-color: rgb(51 65 85 / 0.78);
-      backdrop-filter: blur(12px) saturate(1.4);
-    }
+  /* نهاري */
+  .bg-white {
+    background-color: rgb(255 255 255 / 0.86);
+  }
+  .bg-slate-50 {
+    background-color: rgb(248 250 252 / 0.84);
+  }
+  .bg-slate-100 {
+    background-color: rgb(241 245 249 / 0.82);
+  }
+  /* ليلي — نفس الشفافية مع شفافية أعلى شوية للحفاظ على وضوح النص */
+  .dark .bg-slate-800 {
+    background-color: rgb(30 41 59 / 0.90);
+  }
+  .dark .bg-slate-700 {
+    background-color: rgb(51 65 85 / 0.88);
   }
 }

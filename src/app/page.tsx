@@ -3119,7 +3119,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
   return (
     <div className={`min-h-screen flex flex-col ${darkMode ? 'bg-slate-900' : 'bg-gradient-to-br from-slate-50 via-violet-50/30 to-purple-50/30'}`} dir="rtl">
       {/* Header */}
-      <header className={`sticky top-0 z-40 backdrop-blur-xl border-b ${darkMode ? 'bg-slate-900/80 border-slate-700' : 'bg-white/80 border-slate-200'}`}>
+      <header className={`sticky top-0 z-40 border-b backdrop-blur-md ${darkMode ? 'bg-slate-900/80 border-slate-700' : 'bg-white/80 border-slate-200'}`}>
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -3494,7 +3494,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
       })()}</AnimatePresence>
 
       {/* Footer */}
-      <footer className={`relative z-10 mt-auto py-6 border-t ${darkMode ? 'bg-slate-900/80 border-slate-700' : 'bg-white/80 border-slate-200'} backdrop-blur`}>
+      <footer className={`relative z-10 mt-auto py-6 border-t ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
         <div className="max-w-7xl mx-auto px-4 text-center">
           <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>© 2026 منطقتي | Manteqti - جميع الحقوق محفوظة</p>
           <div className="mt-3 flex items-center justify-center">
@@ -3863,7 +3863,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
             <div className="relative bg-gradient-to-br from-violet-600 via-purple-600 to-fuchsia-700 px-6 pt-7 pb-9">
               <button onClick={() => setShowPasskeyModal(false)} className="absolute top-4 left-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors"><X className="h-5 w-5 text-white" /></button>
               <div className="text-center">
-                <div className="mx-auto w-14 h-14 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center mb-2 border border-white/20">
+                <div className="mx-auto w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center mb-2 border border-white/20">
                   <Fingerprint className="h-7 w-7 text-white" />
                 </div>
                 <h2 className="text-xl font-bold text-white">الدخول بالبصمة 🔐</h2>
@@ -3916,9 +3916,9 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div className="absolute bottom-2 left-6 w-32 h-32 rounded-full border-2 border-white/20"></div>
                 <div className="absolute top-8 left-1/2 w-16 h-16 rounded-full border border-white/25"></div>
               </div>
-              <button onClick={() => setShowAuth(false)} className="absolute top-4 left-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-colors"><X className="h-5 w-5 text-white" /></button>
+              <button onClick={() => setShowAuth(false)} className="absolute top-4 left-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors"><X className="h-5 w-5 text-white" /></button>
               <div className="relative z-10 text-center">
-                <div className="mx-auto w-16 h-16 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center mb-3 border border-white/20">
+                <div className="mx-auto w-16 h-16 rounded-2xl bg-white/15 flex items-center justify-center mb-3 border border-white/20">
                   <Building2 className="h-8 w-8 text-white" />
                 </div>
                 <h2 className="text-2xl font-bold text-white">{authStep === 'login' ? 'مرحباً بعودتك! 👋' : 'انضم إلينا ✨'}</h2>
@@ -3927,7 +3927,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
             </div>
             {/* Form */}
             <div className="px-6 pb-6 -mt-6">
-              <div className={`rounded-2xl p-5 ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50/80'} backdrop-blur-sm border ${darkMode ? 'border-slate-600/50' : 'border-slate-100'}`}>
+              <div className={`rounded-2xl p-5 ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50/80'} border ${darkMode ? 'border-slate-600/50' : 'border-slate-100'}`}>
                 <form onSubmit={authStep === 'login' ? handleLogin : handleRegister} className="space-y-4">
                   {authStep === 'register' && (
                     <div>
@@ -4014,9 +4014,9 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div className="absolute bottom-2 left-6 w-32 h-32 rounded-full border-2 border-white/20"></div>
                 <div className="absolute top-8 left-1/2 w-16 h-16 rounded-full border border-white/25"></div>
               </div>
-              <button onClick={() => setShowDevLogin(false)} className="absolute top-4 left-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-colors"><X className="h-5 w-5 text-white" /></button>
+              <button onClick={() => setShowDevLogin(false)} className="absolute top-4 left-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors"><X className="h-5 w-5 text-white" /></button>
               <div className="relative z-10 text-center">
-                <div className="mx-auto w-16 h-16 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center mb-3 border border-white/20">
+                <div className="mx-auto w-16 h-16 rounded-2xl bg-white/15 flex items-center justify-center mb-3 border border-white/20">
                   <ShieldCheck className="h-8 w-8 text-white" />
                 </div>
                 <h2 className="text-2xl font-bold text-white">لوحة تحكم المطور 🔧</h2>
@@ -4025,7 +4025,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
             </div>
             {/* Form */}
             <div className="px-6 pb-6 -mt-6">
-              <div className={`rounded-2xl p-5 ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50/80'} backdrop-blur-sm border ${darkMode ? 'border-slate-600/50' : 'border-slate-100'}`}>
+              <div className={`rounded-2xl p-5 ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50/80'} border ${darkMode ? 'border-slate-600/50' : 'border-slate-100'}`}>
                 <form onSubmit={handleDevLogin} className="space-y-4">
                   <div>
                     <label className={`block text-xs font-semibold mb-2 uppercase tracking-wider ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>البريد الإلكتروني</label>
@@ -5737,7 +5737,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
             <div className="relative bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 p-6 text-white">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center"><Wallet className="h-5 w-5" /></div>
+                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center"><Wallet className="h-5 w-5" /></div>
                   <h2 className="text-xl font-bold">المحفظة</h2>
                 </div>
                 <button onClick={() => { setShowWallet(false); setShowPaymentSuccess(false); setSelectedPaymentMethod(''); setChargeAmount(''); }} className="p-2 rounded-xl bg-white/20 hover:bg-white/30 transition-colors"><X className="h-5 w-5" /></button>
