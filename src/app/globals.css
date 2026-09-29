@@ -171,7 +171,11 @@ html.dark body {
     linear-gradient(180deg, #0b101c 0%, #0e1524 52%, #0a0f1a 100%);
 }
 
-/* مواد الزجاج الحقيقية — blur محصور في العناصر الآمنة فقط */
+/* مواد الزجاج — الضبابية الحقيقية للهيدر/الفوتر فقط (عناصر ثابتة لا تتحرك)
+   ⚠️ أجسام النوافذ (.glass-sheet) شفافة alpha فقط — ممنوع backdrop-filter عليها:
+   الضبابية على عنصر بيتحرك/بيختفي بتعمل هدم وإعادة بناء لطبقة الكومبوزيتور
+   = فريم شبح (النافذة تختفي وترجع فريم واحد) = إحساس "فتحت أكتر من مرة".
+   مثبّت بالفيديو إطاراً بإطار: 239→71→239 مع الضبابية — وصفر قفزات بدونها */
 .glass-bar {
   background-color: rgb(255 255 255 / 0.60);
 }
@@ -180,7 +184,7 @@ html.dark body {
 }
 .glass-sheet {
   /* فاتح: مادة frosted زي iOS — أبيض أعلى عشان الـ overlay الغامق
-     اللي ورا اللوحة ما يخليهاش رمادية */
+     اللي ورا اللوحة ما يخليهاش رمادية — الـ alpha وحده بيدي نفس الإحساس بلا glitch */
   background-color: rgb(255 255 255 / 0.82);
 }
 .dark .glass-sheet {
@@ -191,9 +195,49 @@ html.dark body {
     -webkit-backdrop-filter: blur(20px) saturate(1.8);
     backdrop-filter: blur(20px) saturate(1.8);
   }
-  .glass-sheet {
-    -webkit-backdrop-filter: blur(16px) saturate(1.7);
-    backdrop-filter: blur(16px) saturate(1.7);
+}
+
+/* تثبيت طبقة الكومبوزيتور للنوافذ — منع "وميض الشبح":
+   framer-motion بيشيل will-change بعد ما الأنيميشن يخلص = هدم الطبقة المركّبة
+   وإعادة رسم = فريم واحد النافذة تختفي فيه وترجع ("فتحت أكتر من مرة").
+   translateZ(0) يخلي الطبقة موجودة بشكل دائم طول ما النافذة مفتوحة. */
+.fixed.inset-0,
+.glass-sheet {
+  transform: translateZ(0);
+}
+
+/* ============================================================
+   fade الدخول للنوافذ = CSS animation مش framer — السبب الجوهري:
+   framer كان بيعيد تشغيل أنيميشن الدخول لو حصل re-render بعد
+   اكتماله (زي ما داتا النافذة توصل وتعمل setState) → النافذة
+   تبان "بتفتح أكتر من مرة وبعدين تستقر". CSS animation بتشتغل
+   مرة واحدة عند التركيب ومستحيل تعيد تشغيلها مهما رندر React.
+   (framer بيفضل مسؤول عن fade الخروج فقط عبر AnimatePresence)
+   fill-mode: backwards يخفي العنصر قبل ما الأنيميشن يبدأ فقط،
+   وبعد نهايته يسيب الـ inline styles لـ framer يمشي على راحه.
+   ============================================================ */
+@keyframes manti-sheet-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes manti-sheet-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fixed.inset-0 {
+  animation: manti-sheet-in 0.18s ease-out backwards;
+}
+.glass-sheet {
+  animation: manti-sheet-in 0.18s ease-out backwards;
+}
+.sheet-up {
+  animation: manti-sheet-up 0.18s ease-out backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fixed.inset-0,
+  .glass-sheet,
+  .sheet-up {
+    animation: none;
   }
 }
 

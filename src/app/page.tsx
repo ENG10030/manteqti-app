@@ -28,6 +28,12 @@ const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffec
 // Developer credentials
 const DEVELOPER_EMAIL = process.env.NEXT_PUBLIC_DEVELOPER_EMAIL || 'ahmadmamdouh10030@gmail.com';
 
+/* كائنات أنيميشن ثابتة الهوية — تمنع framer من إعادة تشغيل fade الدخول عند
+   إعادة الرندر اللي بتعملها AnimatePresence بعد اكتمال الأنيميشن
+   (وهي اللي كانت بتظهر للمستخدم كأن "النافذة بتفتح أكتر من مرة") */
+const FADE_IN = { opacity: 1 };
+const FADE_OUT = { opacity: 0 };
+
 // معرّف OAuth من جوجل — لو مش موجود، زر جوجل مش هيظهر خالص
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 
@@ -158,8 +164,8 @@ function ConfirmDialog({ isOpen, title, message, confirmText = 'تأكيد', can
   const buttons = { danger: 'bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700', warning: 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700', info: 'bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800' };
   return (
     <AnimatePresence>
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4" onClick={onCancel}>
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()}
+      <motion.div exit={FADE_OUT} className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4" onClick={onCancel}>
+        <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()}
           className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
           <div className="text-center">
             <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>{icons[type]}</div>
@@ -3279,8 +3285,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
         const compareApts = apartments.filter(a => compareList.includes(a.id));
         const hasMixedTypes = compareApts.length > 1 && new Set(compareApts.map(a => a.type)).size > 1;
         return (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowCompare(false)}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-5xl rounded-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl max-h-[90vh] overflow-hidden flex flex-col`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowCompare(false)}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-5xl rounded-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl max-h-[90vh] overflow-hidden flex flex-col`}>
             {/* Header */}
             <div className={`p-5 border-b ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
               <div className="flex items-center justify-between">
@@ -3512,8 +3518,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Contact Dialog (for guests) */}
       <AnimatePresence>{showContactDialog && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowContactDialog(false)}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 shadow-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowContactDialog(false)}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 shadow-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet`}>
             <div className="flex items-center justify-between mb-6">
               <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>📧 تواصل معنا</h2>
               <button onClick={() => setShowContactDialog(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
@@ -3557,7 +3563,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Mobile Menu */}
       <AnimatePresence>{showMobileMenu && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[45] bg-black/70 md:hidden" onClick={() => setShowMobileMenu(false)}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[45] bg-black/70 md:hidden" onClick={() => setShowMobileMenu(false)}>
           <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} className={`absolute left-0 top-0 bottom-0 w-80 ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-2xl`} onClick={(e) => e.stopPropagation()}>
             <div className="p-4">
               <div className="flex items-center justify-between mb-6">
@@ -3603,8 +3609,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* ❤️ Favorites Modal */}
       <AnimatePresence>{showFavorites && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowFavorites(false)}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-2xl rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl max-h-[80vh] overflow-hidden flex flex-col`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowFavorites(false)}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-2xl rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl max-h-[80vh] overflow-hidden flex flex-col`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Heart className="h-6 w-6 text-red-500 fill-red-500" />المفضلة <span className="text-sm font-normal text-slate-500">({favorites.length})</span></h2>
               <button onClick={() => setShowFavorites(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
@@ -3638,8 +3644,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* My Pending Apartments Modal */}
       <AnimatePresence>{showMyPending && currentUser && !isDeveloper && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowMyPending(false)}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-2xl rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl max-h-[80vh] overflow-hidden flex flex-col`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowMyPending(false)}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-2xl rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl max-h-[80vh] overflow-hidden flex flex-col`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Hourglass className="h-6 w-6 text-amber-500" />عقاراتي قيد المراجعة</h2>
               <button onClick={() => setShowMyPending(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
@@ -3669,8 +3675,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* My Payments Modal */}
       <AnimatePresence>{showMyPayments && currentUser && !isDeveloper && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowMyPayments(false)}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-2xl rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl max-h-[80vh] overflow-hidden flex flex-col`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowMyPayments(false)}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-2xl rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl max-h-[80vh] overflow-hidden flex flex-col`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><CreditCard className="h-6 w-6 text-violet-500" />المدفوعات</h2>
               <div className="flex gap-2">
@@ -3698,8 +3704,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Dev Send Message Modal */}
       <AnimatePresence>{devMessageTo && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[85] bg-black/70 flex items-center justify-center p-4" onClick={() => setDevMessageTo(null)}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[85] bg-black/70 flex items-center justify-center p-4" onClick={() => setDevMessageTo(null)}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>📨 إرسال رسالة لـ {devMessageTo.userName}</h2>
               <button onClick={() => { setDevMessageTo(null); setDevMessageText(''); }} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
@@ -3715,8 +3721,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* User Detail Modal */}
       <AnimatePresence>{selectedUserDetail && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[85] bg-black/70 flex items-center justify-center p-4" onClick={() => { setSelectedUserDetail(null); setUserDetailData({ apartments: [], payments: [], inquiries: [] }); }}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-3xl rounded-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl max-h-[85vh] overflow-hidden flex flex-col`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[85] bg-black/70 flex items-center justify-center p-4" onClick={() => { setSelectedUserDetail(null); setUserDetailData({ apartments: [], payments: [], inquiries: [] }); }}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-3xl rounded-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl max-h-[85vh] overflow-hidden flex flex-col`}>
             <div className={`p-4 border-b ${darkMode ? 'border-slate-700' : 'border-slate-200'} flex items-center justify-between`}>
               <h2 className={`text-lg font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><User className="h-5 w-5 text-violet-500" />تفاصيل المستخدم: {selectedUserDetail.name}</h2>
               <button onClick={() => { setSelectedUserDetail(null); setUserDetailData({ apartments: [], payments: [], inquiries: [] }); }} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
@@ -3819,8 +3825,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Messages Modal */}
       <AnimatePresence>{showMessages && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowMessages(false)}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-lg rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl max-h-[80vh] overflow-hidden flex flex-col`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowMessages(false)}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-lg rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl max-h-[80vh] overflow-hidden flex flex-col`}>
             <div className="flex items-center justify-between mb-4">
               <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><MessageCircle className="h-6 w-6 text-violet-500" />{isDeveloper ? 'رسائل المستخدمين' : 'تواصل مع المطور'}</h2>
               <button onClick={() => setShowMessages(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
@@ -3858,8 +3864,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Passkey (بصمة) Management Modal — v9 */}
       <AnimatePresence>{showPasskeyModal && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowPasskeyModal(false)}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-3xl overflow-hidden ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`} dir="rtl">
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowPasskeyModal(false)}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.2, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-3xl overflow-hidden ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`} dir="rtl">
             <div className="relative bg-gradient-to-br from-violet-600 via-purple-600 to-fuchsia-700 px-6 pt-7 pb-9">
               <button onClick={() => setShowPasskeyModal(false)} className="absolute top-4 left-4 p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors"><X className="h-5 w-5 text-white" /></button>
               <div className="text-center">
@@ -3907,8 +3913,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Auth Modal */}
       <AnimatePresence>{showAuth && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowAuth(false)}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-3xl overflow-hidden ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowAuth(false)}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.2, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-3xl overflow-hidden ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
             {/* Gradient Header */}
             <div className="relative bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700 px-6 pt-8 pb-10">
               <div className="absolute inset-0 opacity-10">
@@ -4005,8 +4011,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Developer Login Modal */}
       <AnimatePresence>{showDevLogin && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowDevLogin(false)}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-3xl overflow-hidden ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowDevLogin(false)}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.2, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-3xl overflow-hidden ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
             {/* Golden Gradient Header */}
             <div className="relative bg-gradient-to-br from-amber-500 via-orange-500 to-rose-600 px-6 pt-8 pb-10">
               <div className="absolute inset-0 opacity-10">
@@ -4055,8 +4061,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Add Apartment Modal */}
       <AnimatePresence>{showAddModal && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowAddModal(false)}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowAddModal(false)}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
             <div className="flex items-center justify-between mb-6">
               <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>إضافة شقة جديدة</h2>
               <button onClick={() => setShowAddModal(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
@@ -4108,8 +4114,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Apartment Details Modal */}
       <AnimatePresence>{selectedApartment && !editApartment && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => { setSelectedApartment(null); setCurrentImageIndex(0); }}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => { setSelectedApartment(null); setCurrentImageIndex(0); }}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
             <div className="relative h-72 md:h-96">
               <img src={selectedApartment.images?.[currentImageIndex] || selectedApartment.imageUrl || '/logo.svg'} alt={selectedApartment.title} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
               {selectedApartment.images && selectedApartment.images.length > 1 && (
@@ -4232,8 +4238,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Edit Apartment Modal */}
       <AnimatePresence>{editApartment && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setEditApartment(null)}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setEditApartment(null)}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
             <div className="flex items-center justify-between mb-6">
               <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>تعديل الشقة</h2>
               <button onClick={() => setEditApartment(null)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
@@ -4263,8 +4269,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Chat Modal */}
       <AnimatePresence>{showChat && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => { setShowChat(false); setChatMessages([]); }}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-lg h-[80vh] rounded-2xl flex flex-col ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => { setShowChat(false); setChatMessages([]); }}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-lg h-[80vh] rounded-2xl flex flex-col ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
             <div className={`p-4 border-b ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -4312,8 +4318,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Developer Panel Modal */}
       <AnimatePresence>{showDevPanel && isDeveloper && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[75] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowDevPanel(false)}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-6xl max-h-[90vh] overflow-hidden rounded-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl flex flex-col`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[75] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowDevPanel(false)}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-6xl max-h-[90vh] overflow-hidden rounded-2xl ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl flex flex-col`}>
             <div className={`p-4 border-b ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
               <div className="flex items-center justify-between">
                 <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><ShieldCheck className="h-6 w-6 text-amber-500" />لوحة تحكم المطور</h2>
@@ -5663,8 +5669,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Selective Delete User Modal - highest z-index to always appear on top */}
       <AnimatePresence>{deleteUserModal.isOpen && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 flex items-center justify-center bg-black/70 p-4" style={{ zIndex: 99999 }} onClick={() => setDeleteUserModal({ isOpen: false, userId: '', userName: '', stats: null })}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18, ease: 'easeOut' }} className={`max-w-md w-full rounded-2xl shadow-2xl p-6 ${darkMode ? 'bg-slate-800 border border-slate-700' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 flex items-center justify-center bg-black/70 p-4" style={{ zIndex: 99999 }} onClick={() => setDeleteUserModal({ isOpen: false, userId: '', userName: '', stats: null })}>
+          <motion.div initial={FADE_OUT} animate={FADE_IN} transition={{ duration: 0.18, ease: 'easeOut' }} className={`max-w-md w-full rounded-2xl shadow-2xl p-6 ${darkMode ? 'bg-slate-800 border border-slate-700' : 'bg-white'}`} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center"><Trash2 className="h-6 w-6 text-red-500" /></div>
               <div><h3 className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-slate-900'}`}>🗑️ حذف "{deleteUserModal.userName}"</h3><p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>اختر البيانات المراد الاحتفاظ بها</p></div>
@@ -5704,8 +5710,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Payment Modal */}
       <AnimatePresence>{paymentApartment && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setPaymentApartment(null)}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setPaymentApartment(null)}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
             <div className="flex items-center justify-between mb-6">
               <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>طلب بيانات التواصل</h2>
               <button onClick={() => setPaymentApartment(null)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
@@ -5730,8 +5736,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* ========== المحفظة - واجهة الشحن والمعاملات ========== */}
       <AnimatePresence>{showWallet && (currentUser || isDeveloper) && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[90] bg-black/70 flex items-center justify-center p-4" onClick={() => { setShowWallet(false); setShowPaymentSuccess(false); setSelectedPaymentMethod(''); setChargeAmount(''); setCardNumber(''); setCardExpiry(''); setCardCvv(''); setCardType(null); }}>
-          <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 24 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-lg rounded-2xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[90] bg-black/70 flex items-center justify-center p-4" onClick={() => { setShowWallet(false); setShowPaymentSuccess(false); setSelectedPaymentMethod(''); setChargeAmount(''); setCardNumber(''); setCardExpiry(''); setCardCvv(''); setCardType(null); }}>
+          <motion.div exit={{ opacity: 0, y: 24 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-lg rounded-2xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col sheet-up ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet`}>
 
             {/* === رأس المحفظة - تدرج أخضر === */}
             <div className="relative bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 p-6 text-white">
@@ -5744,7 +5750,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               </div>
               <div className="text-center">
                 <p className="text-white/80 text-sm mb-1">رصيدك الحالي</p>
-                <motion.p key={currentUser?.walletBalance ?? 0} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18, ease: 'easeOut' }} className="text-4xl font-bold" style={{ textShadow: '0 2px 10px rgba(0,0,0,0.2)' }}>
+                <motion.p key={currentUser?.walletBalance ?? 0} initial={FADE_OUT} animate={FADE_IN} transition={{ duration: 0.18, ease: 'easeOut' }} className="text-4xl font-bold" style={{ textShadow: '0 2px 10px rgba(0,0,0,0.2)' }}>
                   {(currentUser?.walletBalance ?? 0).toLocaleString()}
                 </motion.p>
                 <p className="text-white/80 text-sm">ج.م</p>
@@ -5775,10 +5781,10 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
                     {/* === رسالة نجاح الشحن === */}
                     {showPaymentSuccess && (
-                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18, ease: 'easeOut' }} className={`text-center py-6 rounded-xl ${darkMode ? 'bg-emerald-900/30 border border-emerald-700' : 'bg-emerald-50 border border-emerald-200'}`}>
+                      <motion.div initial={FADE_OUT} animate={FADE_IN} transition={{ duration: 0.18, ease: 'easeOut' }} className={`text-center py-6 rounded-xl ${darkMode ? 'bg-emerald-900/30 border border-emerald-700' : 'bg-emerald-50 border border-emerald-200'}`}>
                         <CheckCircle2 className="h-16 w-16 mx-auto mb-3 text-emerald-500" />
-                        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="text-xl font-bold text-emerald-600">تم بنجاح!</motion.p>
-                        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className={`text-sm mt-1 ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>تم شحن رصيدك</motion.p>
+                        <motion.p initial={FADE_OUT} animate={FADE_IN} transition={{ delay: 0.3 }} className="text-xl font-bold text-emerald-600">تم بنجاح!</motion.p>
+                        <motion.p initial={FADE_OUT} animate={FADE_IN} transition={{ delay: 0.6 }} className={`text-sm mt-1 ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>تم شحن رصيدك</motion.p>
                         <div className={`mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs ${darkMode ? 'bg-emerald-800/40 text-emerald-300' : 'bg-emerald-100 text-emerald-700'}`}><ShieldCheck className="h-3.5 w-3.5" />معاملة آمنة ومؤمنة</div>
                       </motion.div>
                     )}
@@ -6036,8 +6042,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Forgot Password Modal */}
       <AnimatePresence>{showForgotPassword && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowForgotPassword(false)}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowForgotPassword(false)}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
             <div className="flex items-center justify-between mb-6">
               <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>استعادة كلمة المرور</h2>
               <button onClick={() => setShowForgotPassword(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
@@ -6056,8 +6062,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
 
       {/* Reset Password Modal */}
       <AnimatePresence>{showResetPassword && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowResetPassword(false)}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowResetPassword(false)}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
             <div className="flex items-center justify-between mb-6">
               <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>كلمة المرور الجديدة</h2>
               <button onClick={() => setShowResetPassword(false)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
@@ -6072,8 +6078,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
       )}</AnimatePresence>
       {/* OTP Verification Modal */}
       <AnimatePresence>{showOtpVerification && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowOtpVerification(false)}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[80] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowOtpVerification(false)}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-md rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
             <div className="text-center mb-6">
               <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 bg-gradient-to-r from-emerald-500 to-teal-600`}><Send className="h-8 w-8 text-white" /></div>
               <h3 className={`text-xl font-bold mb-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>تأكيد البريد الإلكتروني</h3>
