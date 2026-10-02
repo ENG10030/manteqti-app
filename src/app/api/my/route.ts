@@ -23,7 +23,18 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ apartments })
+    // أعلام خفيفة لمستندات الملكية (بدون الصور) — المستخدم يرى حالة مستنداته
+    const docFlags = await db.ownershipDocument.findMany({
+      where: { apartmentId: { in: apartments.map(a => a.id) } },
+      select: { apartmentId: true, hasContract: true, hasIdCard: true, verified: true },
+    })
+    const docMap = new Map(docFlags.map(d => [d.apartmentId, d]))
+    const apartmentsWithFlags = apartments.map(apt => {
+      const doc = docMap.get(apt.id)
+      return { ...apt, hasOwnershipDocs: !!(doc?.hasContract || doc?.hasIdCard), ownershipVerified: doc?.verified || false }
+    })
+
+    return NextResponse.json({ apartments: apartmentsWithFlags })
 
   } catch (error) {
     console.error("Get my apartments error:", error)

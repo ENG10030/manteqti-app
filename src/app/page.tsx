@@ -16,10 +16,11 @@ import {
   Download, Smartphone, Zap, Save, Archive, ArchiveRestore,
   Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen, SunMoon,
   GitCompare, Trophy, ScrollText, ClipboardCheck, HardDrive, Upload, Database,
-  Fingerprint
+  Fingerprint, FileText
 } from 'lucide-react';
 import { browserSupportsWebAuthn, startRegistration, startAuthentication } from '@simplewebauthn/browser';
 import { FileUpload } from '@/components/file-upload';
+import { DocumentUpload } from '@/components/document-upload';
 // socket.io-client imported dynamically in useEffect to prevent Vercel SSR/hydration issues
 
 // استرجاع الوضع المحفوظ قبل أول رسم (بدون وميض) — آمن للسيرفر والعميل
@@ -81,6 +82,7 @@ interface Apartment {
   description: string; ownerPhone: string; ownerWhatsapp?: string | null; mapLink: string; imageUrl?: string; images?: string[];
   videoUrl?: string; videos?: string[]; amenities?: string[]; isFeatured?: boolean; isVip?: boolean;
   type: 'rent' | 'sale'; status: string; paymentRef?: string; createdBy?: string; views?: number; createdAt: string; statusChangedAt?: string | null; archivedAt?: string | null;
+  hasOwnershipDocs?: boolean; ownershipVerified?: boolean;
 }
 
 interface Inquiry { id: string; apartmentId: string; userId?: string; name: string; email: string; phone: string; message: string; lifecycleStatus: string; createdAt: string; apartment?: { id: string; title: string; price: number; type: string } | null; payment?: { id: string; status: string; method: string } | null; }
@@ -183,11 +185,11 @@ function ConfirmDialog({ isOpen, title, message, confirmText = 'تأكيد', can
 }
 
 // كارت الشقة — مكوّن memo مستقل (v9.2): لما أي نافذة تفتح/تقفل الكروت ميعادش ترندر من الأول — أداء موبايل أسرع بكتير
-const ApartmentCard = memo(function ApartmentCard({ apartment, index, darkMode, isFavorite, isCompared, isDeveloper, toggleFavorite, toggleCompare, deleteApartment, fetchComments, setSelectedApartment, setEditApartment, setCurrentImageIndex }: {
+const ApartmentCard = memo(function ApartmentCard({ apartment, index, darkMode, isFavorite, isCompared, isDeveloper, toggleFavorite, toggleCompare, deleteApartment, fetchComments, setSelectedApartment, openEditApartment, setCurrentImageIndex }: {
   apartment: Apartment; index: number; darkMode: boolean; isFavorite: boolean; isCompared: boolean; isDeveloper: boolean;
   toggleFavorite: (id: string) => void; toggleCompare: (id: string) => void; deleteApartment: (id: string) => void; fetchComments: (apartmentId: string) => void;
   setSelectedApartment: React.Dispatch<React.SetStateAction<Apartment | null>>;
-  setEditApartment: React.Dispatch<React.SetStateAction<Apartment | null>>;
+  openEditApartment: (apt: Apartment) => void;
   setCurrentImageIndex: React.Dispatch<React.SetStateAction<number>>;
 }) {
   return (
@@ -199,6 +201,7 @@ const ApartmentCard = memo(function ApartmentCard({ apartment, index, darkMode, 
           {apartment.isFeatured && !apartment.isVip && <span className="px-2 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 text-white text-xs font-medium flex items-center gap-1"><Star className="h-3 w-3" /> مميز</span>}
           {!apartment.isFeatured && !apartment.isVip && <span className="px-2 py-1 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-medium flex items-center gap-1"><Home className="h-3 w-3" /> عادي</span>}
           <span className={`px-2 py-1 rounded-lg text-xs font-medium ${statusConfig[apartment.status]?.bgColor || 'bg-slate-100'} ${statusConfig[apartment.status]?.color || 'text-slate-600'}`}>{statusConfig[apartment.status]?.label || apartment.status}</span>
+          {apartment.ownershipVerified && <span className="px-2 py-1 rounded-lg bg-emerald-500 text-white text-xs font-medium flex items-center gap-1" title="تم التحقق من مستندات ملكية هذا العقار"><ShieldCheck className="h-3 w-3" /> موثق</span>}
         </div>
         <div className="absolute top-3 left-3">
           <span className={`relative px-3 py-1.5 rounded-full text-xs font-bold text-white ${apartment.type === 'rent' ? 'bg-gradient-to-r from-emerald-500 to-teal-600' : 'bg-gradient-to-r from-blue-500 to-cyan-600'} shadow-lg`}>{apartment.type === 'rent' ? 'للإيجار' : 'للبيع'}</span>
@@ -250,7 +253,7 @@ const ApartmentCard = memo(function ApartmentCard({ apartment, index, darkMode, 
           <button onClick={(e) => { e.stopPropagation(); toggleCompare(apartment.id); }} className={`py-2.5 px-4 rounded-xl font-medium text-sm flex items-center gap-1.5 transition-all ${isCompared ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/30' : darkMode ? 'bg-slate-700 text-purple-400 hover:bg-purple-500/20' : 'bg-purple-50 text-purple-600 hover:bg-purple-100'}`}><GitCompare className="h-4 w-4" /><span className="hidden sm:inline">مقارنة</span></button>
           {isDeveloper && (
             <>
-              <button onClick={() => setEditApartment(apartment)} className={`py-2.5 px-4 rounded-xl font-medium text-sm ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>تعديل</button>
+              <button onClick={() => openEditApartment(apartment)} className={`py-2.5 px-4 rounded-xl font-medium text-sm ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>تعديل</button>
               <button onClick={() => deleteApartment(apartment.id)} className="py-2.5 px-4 rounded-xl bg-red-500/10 text-red-500 font-medium text-sm hover:bg-red-500/20"><Trash2 className="h-4 w-4" /></button>
             </>
           )}
@@ -334,6 +337,17 @@ function App() {
   const [userDetailData, setUserDetailData] = useState<{ apartments: Apartment[]; payments: Payment[]; inquiries: Inquiry[] }>({ apartments: [], payments: [], inquiries: [] });
   const [selectedApartment, setSelectedApartment] = useState<Apartment | null>(null);
   const [editApartment, setEditApartment] = useState<Apartment | null>(null);
+  // مستندات إثبات الملكية (نافذة الإضافة)
+  const [ownershipContractImage, setOwnershipContractImage] = useState('');
+  const [ownerIdCardImage, setOwnerIdCardImage] = useState('');
+  // مستندات نافذة التعديل (للمطور)
+  const [editContractImage, setEditContractImage] = useState('');
+  const [editIdCardImage, setEditIdCardImage] = useState('');
+  const [editDocsTouched, setEditDocsTouched] = useState({ contract: false, idCard: false });
+  // عارض مستندات الملكية (المطور/المالك)
+  const [docViewer, setDocViewer] = useState<{ id: string; title: string } | null>(null);
+  const [docViewerData, setDocViewerData] = useState<{ contractImage: string | null; ownerIdCardImage: string | null; hasContract: boolean; hasIdCard: boolean; verified: boolean } | null>(null);
+  const [docViewerLoading, setDocViewerLoading] = useState(false);
   const [inquiryApartment, setInquiryApartment] = useState<Apartment | null>(null);
   const [paymentApartment, setPaymentApartment] = useState<Apartment | null>(null);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -2155,6 +2169,47 @@ function App() {
     finally { setResetLoading(false); }
   };
 
+  // ===== مستندات إثبات الملكية =====
+  const openDocumentsViewer = async (apt: Apartment) => {
+    setDocViewer({ id: apt.id, title: apt.title });
+    setDocViewerData(null);
+    setDocViewerLoading(true);
+    try {
+      const res = await fetch(`/api/apartments/${apt.id}/documents`);
+      const data = await res.json().catch(() => null);
+      if (res.ok && data) setDocViewerData(data);
+      else addToast((data && data.error) || 'تعذر جلب المستندات', 'error');
+    } catch { addToast('حدث خطأ في الاتصال', 'error'); }
+    finally { setDocViewerLoading(false); }
+  };
+
+  const handleVerifyOwnership = async (aptId: string, verify: boolean) => {
+    try {
+      const res = await fetch(`/api/apartments/${aptId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: verify ? 'verify-ownership' : 'unverify-ownership' }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        addToast(data.message || (verify ? 'تم توثيق الملكية' : 'تم إلغاء التوثيق'), 'success');
+        setDocViewerData(prev => prev ? { ...prev, verified: verify } : prev);
+        setApartments(prev => prev.map(a => a.id === aptId ? { ...a, ownershipVerified: verify } : a));
+        setAllApartments(prev => prev.map(a => a.id === aptId ? { ...a, ownershipVerified: verify } : a));
+      } else addToast(data.error || 'حدث خطأ', 'error');
+    } catch { addToast('حدث خطأ في الاتصال', 'error'); }
+  };
+
+  // فتح نافذة التعديل مع جلب المستندات المرفوعة (للمطور)
+  const openEditApartment = (apt: Apartment) => {
+    setEditApartment(apt);
+    setEditContractImage('');
+    setEditIdCardImage('');
+    setEditDocsTouched({ contract: false, idCard: false });
+    fetch(`/api/apartments/${apt.id}/documents`).then(r => r.ok ? r.json() : null).then(d => {
+      if (d) {
+        if (d.contractImage) setEditContractImage(d.contractImage);
+        if (d.ownerIdCardImage) setEditIdCardImage(d.ownerIdCardImage);
+      }
+    }).catch(() => {});
+  };
+
   const handleAddApartment = async (confirmed: boolean = false) => {
     if (!currentUser && !isDeveloper) {
       // التحقق من البيانات أولاً
@@ -2206,6 +2261,8 @@ function App() {
           type: aptForm.type,
           images: Array.isArray(imageUrls) && imageUrls.length > 0 ? JSON.stringify(imageUrls) : null, 
           videos: Array.isArray(videoUrls) && videoUrls.length > 0 ? JSON.stringify(videoUrls) : null, 
+          ownershipContractImage: ownershipContractImage || null,
+          ownerIdCardImage: ownerIdCardImage || null,
           createdBy: currentUser?.id, 
           isFeatured: aptForm.listingType === 'featured' || aptForm.listingType === 'vip',
           isVip: aptForm.listingType === 'vip',
@@ -2224,6 +2281,8 @@ function App() {
         setAptForm({ title: '', price: '', area: '', bedrooms: '1', bathrooms: '1', floor: '', apartmentSize: '', description: '', ownerPhone: '', ownerWhatsapp: '', mapLink: '', type: 'rent', listingType: 'regular' }); 
         setImageUrls([]); 
         setVideoUrls([]); 
+        setOwnershipContractImage('');
+        setOwnerIdCardImage('');
         addToast(isDeveloper ? 'تم نشر الشقة بنجاح!' : 'تم إرسال الشقة للمراجعة!', 'success'); 
       } else {
         addToast(data.error || 'حدث خطأ أثناء النشر', 'error');
@@ -2342,6 +2401,9 @@ function App() {
         isVip: editApartment.isVip ?? false,
         images: Array.isArray(editApartment.images) ? JSON.stringify(editApartment.images) : (editApartment.images || null),
         videos: Array.isArray(editApartment.videos) ? JSON.stringify(editApartment.videos) : (editApartment.videos || null),
+        // مستندات الملكية — تُرسل فقط لو عدّلها المطور في هذه الجلسة
+        ...(editDocsTouched.contract ? { ownershipContractImage: editContractImage || null } : {}),
+        ...(editDocsTouched.idCard ? { ownerIdCardImage: editIdCardImage || null } : {}),
       };
       console.log('[EDIT APARTMENT] Sending payload:', { id: editApartment.id, apartmentSize: editPayload.apartmentSize, imagesType: typeof editPayload.images });
       const res = await fetch(`/api/apartments/${editApartment.id}`, {
@@ -3243,7 +3305,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredApartments.map((apartment, i) => (
-                <ApartmentCard key={apartment.id} apartment={apartment} index={i} darkMode={darkMode} isFavorite={favorites.includes(apartment.id)} isCompared={compareList.includes(apartment.id)} isDeveloper={isDeveloper} toggleFavorite={stableToggleFavorite} toggleCompare={stableToggleCompare} deleteApartment={stableDeleteApartment} fetchComments={stableFetchComments} setSelectedApartment={setSelectedApartment} setEditApartment={setEditApartment} setCurrentImageIndex={setCurrentImageIndex} />
+                <ApartmentCard key={apartment.id} apartment={apartment} index={i} darkMode={darkMode} isFavorite={favorites.includes(apartment.id)} isCompared={compareList.includes(apartment.id)} isDeveloper={isDeveloper} toggleFavorite={stableToggleFavorite} toggleCompare={stableToggleCompare} deleteApartment={stableDeleteApartment} fetchComments={stableFetchComments} setSelectedApartment={setSelectedApartment} openEditApartment={openEditApartment} setCurrentImageIndex={setCurrentImageIndex} />
               ))}
             </div>
           )}
@@ -3642,6 +3704,58 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
         </motion.div>
       )}</AnimatePresence>
 
+      {/* Ownership Documents Viewer Modal (developer / owner only) */}
+      <AnimatePresence>{docViewer && (
+        <motion.div exit={FADE_OUT} className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4" onClick={() => setDocViewer(null)}>
+          <motion.div exit={FADE_OUT} transition={{ duration: 0.18, ease: 'easeOut' }} onClick={(e) => e.stopPropagation()} className={`w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl p-6 ${darkMode ? 'bg-slate-800' : 'bg-white'} glass-sheet shadow-2xl`}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className={`text-xl font-bold flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><FileText className="h-6 w-6 text-violet-500" />مستندات إثبات الملكية</h2>
+                <p className={`text-sm mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{docViewer.title}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {docViewerData?.verified && <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500 text-white flex items-center gap-1"><ShieldCheck className="h-4 w-4" />ملكية موثقة</span>}
+                <button onClick={() => setDocViewer(null)} className={`p-2 rounded-lg ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}><X className={`h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-600'}`} /></button>
+              </div>
+            </div>
+            {docViewerLoading ? (
+              <div className="py-16 text-center"><Loader2 className="h-10 w-10 animate-spin text-violet-500 mx-auto" /><p className={`mt-3 text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>جاري تحميل المستندات...</p></div>
+            ) : docViewerData ? (
+              <div className="space-y-6">
+                <div>
+                  <p className={`font-bold text-sm mb-2 flex items-center gap-2 ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>📄 صورة العقد التمالكي</p>
+                  {docViewerData.contractImage ? (
+                    <a href={docViewerData.contractImage} target="_blank" rel="noopener noreferrer" className="block rounded-xl overflow-hidden border-2 border-slate-200 dark:border-slate-600 hover:opacity-90 transition-opacity"><img src={docViewerData.contractImage} alt="صورة العقد التمالكي" className="w-full max-h-96 object-contain bg-white" /></a>
+                  ) : (
+                    <div className={`rounded-xl border-2 border-dashed p-8 text-center text-sm ${darkMode ? 'border-slate-600 text-slate-500' : 'border-slate-300 text-slate-400'}`}>لم تُرفع صورة العقد</div>
+                  )}
+                </div>
+                <div>
+                  <p className={`font-bold text-sm mb-2 flex items-center gap-2 ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>🪪 صورة بطاقة المالك</p>
+                  {docViewerData.ownerIdCardImage ? (
+                    <a href={docViewerData.ownerIdCardImage} target="_blank" rel="noopener noreferrer" className="block rounded-xl overflow-hidden border-2 border-slate-200 dark:border-slate-600 hover:opacity-90 transition-opacity"><img src={docViewerData.ownerIdCardImage} alt="صورة بطاقة المالك" className="w-full max-h-96 object-contain bg-white" /></a>
+                  ) : (
+                    <div className={`rounded-xl border-2 border-dashed p-8 text-center text-sm ${darkMode ? 'border-slate-600 text-slate-500' : 'border-slate-300 text-slate-400'}`}>لم تُرفع صورة البطاقة</div>
+                  )}
+                </div>
+                {isDeveloper && (
+                  <div className={`flex flex-col sm:flex-row gap-3 pt-4 border-t ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
+                    {docViewerData.verified ? (
+                      <button onClick={() => handleVerifyOwnership(docViewer.id, false)} className="flex-1 py-3 rounded-xl font-medium bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 flex items-center justify-center gap-2"><XCircle className="h-5 w-5" />إلغاء التوثيق</button>
+                    ) : (
+                      <button onClick={() => handleVerifyOwnership(docViewer.id, true)} disabled={!(docViewerData.hasContract || docViewerData.hasIdCard)} className="flex-1 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"><ShieldCheck className="h-5 w-5" />تأكيد الملكية بعد الفحص</button>
+                    )}
+                  </div>
+                )}
+                <p className={`text-xs text-center ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>🔒 هذه المستندات سرية — تظهر لك فقط ولا تُنشر للعامة إطلاقاً</p>
+              </div>
+            ) : (
+              <div className="py-12 text-center"><AlertCircle className={`h-10 w-10 mx-auto mb-2 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>تعذر تحميل المستندات</p></div>
+            )}
+          </motion.div>
+        </motion.div>
+      )}</AnimatePresence>
+
       {/* My Pending Apartments Modal */}
       <AnimatePresence>{showMyPending && currentUser && !isDeveloper && (
         <motion.div exit={FADE_OUT} className="fixed inset-0 z-[55] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowMyPending(false)}>
@@ -3662,6 +3776,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                         <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">قيد المراجعة</span>
                         <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
                         <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.area} • {apt.price.toLocaleString()} ج.م</p>
+                        {apt.hasOwnershipDocs ? <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-1 flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" />مستندات الملكية مرفوعة — بانتظار التحقق</p> : <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>لم تُرفع مستندات الملكية بعد</p>}
                       </div>
                       <button onClick={async () => { if (confirm('هل تريد حذف هذا العقار؟')) { await fetch(`/api/apartments/${apt.id}`, { method: 'DELETE' }); fetchMyPendingApartments(); fetchApartments(); addToast('تم حذف العقار', 'success'); } }} className="p-2 rounded-lg bg-red-500 text-white hover:bg-red-600"><Trash2 className="h-4 w-4" /></button>
                     </div>
@@ -4102,6 +4217,18 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رابط الخريطة (اختياري)</label><input type="url" value={aptForm.mapLink} onChange={(e) => setAptForm({ ...aptForm, mapLink: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}><ImageIcon className="h-4 w-4 inline ml-1" />صور الشقة</label><FileUpload type="image" value={imageUrls} onChange={setImageUrls} maxFiles={10} /></div>
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}><Video className="h-4 w-4 inline ml-1" />فيديوهات الشقة (اختياري)</label><FileUpload type="video" value={videoUrls} onChange={setVideoUrls} maxFiles={3} /></div>
+                <div className="col-span-2">
+                  <div className={`rounded-xl border p-4 space-y-4 ${darkMode ? 'border-slate-600 bg-slate-700/40' : 'border-slate-200 bg-slate-50/80'}`}>
+                    <div>
+                      <p className={`font-bold text-sm flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><ShieldCheck className="h-4 w-4 text-emerald-500" />مستندات إثبات الملكية (اختياري — يسرّع الموافقة)</p>
+                      <p className={`text-xs mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>ارفع صورة العقد التمالكي وصورة بطاقة المالك حتى يتم التحقق من ملكية الشقة. المستندات تظهر للمطور فقط ولا تُنشر للعامة إطلاقاً.</p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <DocumentUpload id="ownership-contract" label="📄 صورة العقد التمالكي" hint="عقد البيع / التمليك المسجل باسم المالك" value={ownershipContractImage} onChange={setOwnershipContractImage} darkMode={darkMode} />
+                      <DocumentUpload id="owner-id-card" label="🪪 صورة بطاقة المالك" hint="بطاقة الرقم القومي للمالك" value={ownerIdCardImage} onChange={setOwnerIdCardImage} darkMode={darkMode} />
+                    </div>
+                  </div>
+                </div>
               </div>
               <div className="flex gap-3 mt-6">
                 <button type="button" onClick={() => setShowAddModal(false)} className={`flex-1 py-3 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>إلغاء</button>
@@ -4129,6 +4256,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               <div className="absolute top-4 left-4 flex gap-2">
                 <span className={`px-3 py-1 rounded-full text-sm font-medium text-white ${selectedApartment.type === 'rent' ? 'bg-emerald-500' : 'bg-blue-500'}`}>{selectedApartment.type === 'rent' ? 'للإيجار' : 'للبيع'}</span>
                 <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusConfig[selectedApartment.status]?.bgColor} ${statusConfig[selectedApartment.status]?.color}`}>{statusConfig[selectedApartment.status]?.label}</span>
+                {selectedApartment.ownershipVerified && <span className="px-3 py-1 rounded-full text-sm font-medium bg-emerald-500 text-white flex items-center gap-1" title="تم التحقق من مستندات ملكية هذا العقار"><ShieldCheck className="h-4 w-4" />ملكية موثقة</span>}
               </div>
             </div>
             <div className="p-6">
@@ -4172,7 +4300,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <button onClick={() => toggleFavorite(selectedApartment.id)} className={`flex-1 py-3 rounded-xl font-medium flex items-center justify-center gap-2 ${favorites.includes(selectedApartment.id) ? 'bg-red-500 text-white' : darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}><Heart className={`h-5 w-5 ${favorites.includes(selectedApartment.id) ? 'fill-white' : ''}`} />{favorites.includes(selectedApartment.id) ? 'في المفضلة' : 'أضف للمفضلة'}</button>
                 {isDeveloper && (
                   <>
-                    <button onClick={() => setEditApartment(selectedApartment)} className={`py-3 px-4 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>تعديل</button>
+                    <button onClick={() => openDocumentsViewer(selectedApartment)} className="py-3 px-4 rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-400 font-medium hover:bg-violet-500/20 flex items-center gap-1.5"><FileText className="h-4 w-4" />المستندات</button>
+                    <button onClick={() => openEditApartment(selectedApartment)} className={`py-3 px-4 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>تعديل</button>
                     <button onClick={() => handleDeleteApartment(selectedApartment.id)} className="py-3 px-4 rounded-xl bg-red-500/10 text-red-500 font-medium hover:bg-red-500/20">حذف</button>
                   </>
                 )}
@@ -4257,6 +4386,18 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div><label className={`block text-sm font-medium mb-2 flex items-center gap-1.5 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}><WhatsAppIcon className="h-4 w-4 text-emerald-500" />رقم واتساب (اختياري)</label><input type="tel" dir="ltr" value={editApartment.ownerWhatsapp || ''} onChange={(e) => setEditApartment({ ...editApartment, ownerWhatsapp: e.target.value })} placeholder="01xxxxxxxxx" className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /><p className={`text-xs mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>يظهر مع بيانات التواصل — والعميل يفتح محادثة واتساب مباشرة</p></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحالة</label><select value={editApartment.status} onChange={(e) => { const newStatus = e.target.value; if (['sold', 'rented', 'unavailable'].includes(newStatus) && !['sold', 'rented', 'unavailable'].includes(editApartment.status)) { setEditStatusWarning(newStatus); } setEditApartment({ ...editApartment, status: newStatus }); }} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="available">متاح</option><option value="reserved">محجوز</option><option value="unavailable">غير متاح</option><option value="sold">تم البيع</option><option value="rented">تم التأجير</option></select>{editStatusWarning && <p className="text-red-500 text-xs mt-1.5 flex items-center gap-1 font-bold"><AlertTriangle className="h-3 w-3" />⚠️ سيتم أرشفة العقار وإخفاؤه من العرض بعد 48 ساعة من الحفظ (يمكن الاستعادة من لوحة المطور)</p>}</div>
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الوصف</label><textarea value={editApartment.description} onChange={(e) => setEditApartment({ ...editApartment, description: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} rows={3} /></div>
+                <div className="col-span-2">
+                  <div className={`rounded-xl border p-4 space-y-4 ${darkMode ? 'border-slate-600 bg-slate-700/40' : 'border-slate-200 bg-slate-50/80'}`}>
+                    <div>
+                      <p className={`font-bold text-sm flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><ShieldCheck className="h-4 w-4 text-emerald-500" />مستندات إثبات الملكية</p>
+                      <p className={`text-xs mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>تظهر للمطور فقط — يمكن استبدالها أو حذفها من هنا</p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <DocumentUpload id="edit-ownership-contract" label="📄 صورة العقد التمالكي" value={editContractImage} onChange={(v) => { setEditContractImage(v); setEditDocsTouched(t => ({ ...t, contract: true })); }} darkMode={darkMode} />
+                      <DocumentUpload id="edit-owner-id-card" label="🪪 صورة بطاقة المالك" value={editIdCardImage} onChange={(v) => { setEditIdCardImage(v); setEditDocsTouched(t => ({ ...t, idCard: true })); }} darkMode={darkMode} />
+                    </div>
+                  </div>
+                </div>
               </div>
               <div className="flex gap-3 mt-6">
                 <button type="button" onClick={() => setEditApartment(null)} className={`flex-1 py-3 rounded-xl font-medium ${darkMode ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>إلغاء</button>
@@ -4528,7 +4669,10 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                           <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.area} • {apt.price.toLocaleString()} ج.م • {apt.type === 'rent' ? 'إيجار' : 'بيع'}</p>
                           <p className={`text-xs mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>أُرسلت: {new Date(apt.createdAt).toLocaleDateString('ar-EG')}</p>
                         </div>
-                        <div className="flex gap-2"><button onClick={() => handleApproveApartment(apt.id)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600">موافقة</button><button onClick={() => handleRejectApartment(apt.id)} className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600">رفض</button></div>
+                        <div className="flex flex-col items-end gap-2 shrink-0">
+                          <button onClick={() => openDocumentsViewer(apt)} className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 ${apt.hasOwnershipDocs ? 'bg-violet-500 text-white hover:bg-violet-600' : darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-200 text-slate-500'}`}><FileText className="h-4 w-4" />مستندات الملكية{apt.hasOwnershipDocs ? '' : ' (لا توجد)'}</button>
+                          <div className="flex gap-2"><button onClick={() => handleApproveApartment(apt.id)} className="px-4 py-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600">موافقة</button><button onClick={() => handleRejectApartment(apt.id)} className="px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600">رفض</button></div>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -4549,6 +4693,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                               {apt.isVip && <span className="px-2 py-0.5 rounded-full text-xs bg-gradient-to-r from-purple-500 to-pink-600 text-white">VIP+</span>}
                               {apt.isFeatured && !apt.isVip && <span className="px-2 py-0.5 rounded-full text-xs bg-gradient-to-r from-amber-500 to-orange-600 text-white">مميز</span>}
                               {!apt.isFeatured && !apt.isVip && <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-500 text-white">عادي</span>}
+                              {apt.ownershipVerified && <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-500 text-white flex items-center gap-1" title="تم التحقق من مستندات الملكية"><ShieldCheck className="h-3 w-3" />ملكية موثقة</span>}
                             </div>
                             <p className={`text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apt.price.toLocaleString()} {settings.currency} • {statusConfig[apt.status]?.label}</p>
                             {(apt.statusChangedAt && ['sold', 'rented', 'unavailable'].includes(apt.status)) && (() => {
@@ -4582,6 +4727,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                             }
                           }} className={`px-3 py-1 rounded-lg text-sm ${darkMode ? 'bg-slate-600 text-white' : 'bg-white border'}`}><option value="available">متاح</option><option value="preview">في معاينة</option><option value="reserved">محجوز</option><option value="sold">تم البيع</option><option value="rented">تم التأجير</option><option value="unavailable">غير متاح</option></select>
                           <div className="flex gap-1">
+                            <button onClick={() => openDocumentsViewer(apt)} className={`p-1 rounded ${apt.hasOwnershipDocs ? 'bg-violet-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-200 text-slate-600'}`} title="مستندات الملكية"><FileText className="h-4 w-4" /></button>
                             <button onClick={() => toggleApartmentFlag(apt, 'isVip')} className={`p-1 rounded ${apt.isVip ? 'bg-purple-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-200 text-slate-600'}`} title="VIP+"><Diamond className="h-4 w-4" /></button>
                             <button onClick={() => toggleApartmentFlag(apt, 'isFeatured')} className={`p-1 rounded ${apt.isFeatured && !apt.isVip ? 'bg-amber-500 text-white' : darkMode ? 'bg-slate-600 text-slate-300' : 'bg-slate-200 text-slate-600'}`} title="مميز"><Star className="h-4 w-4" /></button>
                             <button onClick={() => handleDeleteApartment(apt.id)} className="p-1 rounded bg-red-500/10 text-red-500 hover:bg-red-500/20"><Trash2 className="h-4 w-4" /></button>

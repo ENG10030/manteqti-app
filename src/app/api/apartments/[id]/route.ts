@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { notifyApartmentsChanged } from "@/lib/realtime";
 import { sendApartmentApprovedEmail, sendApartmentRejectedEmail } from "@/lib/email";
+import { saveOwnershipDocuments, sanitizeDocImage } from "@/lib/ownership-docs";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
@@ -166,6 +167,18 @@ export async function PUT(
     // الإصلاح الذاتي للـ schema drift بيتعمل تلقائياً في src/lib/db.ts
     const updatedApartment = await db.apartment.update({ where: { id }, data: buildUpdateData() });
 
+    // مستندات الملكية — للمالك أو المطور: استبدال أو مسح (null) أو تجاهل (غير مُرسل)
+    if (body.ownershipContractImage !== undefined || body.ownerIdCardImage !== undefined) {
+      try {
+        await saveOwnershipDocuments(id, {
+          ...(body.ownershipContractImage !== undefined ? { contractImage: sanitizeDocImage(body.ownershipContractImage) } : {}),
+          ...(body.ownerIdCardImage !== undefined ? { ownerIdCardImage: sanitizeDocImage(body.ownerIdCardImage) } : {}),
+        });
+      } catch (docErr) {
+        console.error("Ownership docs update error:", docErr);
+      }
+    }
+
     // Notify all connected clients
     notifyApartmentsChanged('updated', id);
 
@@ -221,6 +234,32 @@ export async function PATCH(
       updateData.status = "rejected";
     } else if (action === "feature") {
       updateData.isFeatured = isFeatured !== undefined ? isFeatured : true;
+    } else if (action === "verify-ownership" || action === "unverify-ownership") {
+      // توثيق الملكية بعد فحص المستندات — للمطور فقط (الوصول هنا مقيّد به أصلاً)
+      const wantVerified = action === "verify-ownership";
+      const doc = await db.ownershipDocument.findUnique({
+        where: { apartmentId: id },
+        select: { hasContract: true, hasIdCard: true },
+      });
+      if (wantVerified && !(doc?.hasContract || doc?.hasIdCard)) {
+        return NextResponse.json({ error: "لا توجد مستندات مرفوعة لهذا العقار بعد" }, { status: 400 });
+      }
+      await db.ownershipDocument.upsert({
+        where: { apartmentId: id },
+        update: {
+          verified: wantVerified,
+          verifiedBy: wantVerified ? user.id : null,
+          verifiedAt: wantVerified ? new Date() : null,
+        },
+        create: {
+          apartmentId: id,
+          verified: wantVerified,
+          verifiedBy: wantVerified ? user.id : null,
+          verifiedAt: wantVerified ? new Date() : null,
+        },
+      });
+      const fresh = await db.apartment.findUnique({ where: { id } });
+      return NextResponse.json({ message: wantVerified ? "تم توثيق ملكية العقار" : "تم إلغاء توثيق الملكية", apartment: fresh });
     } else {
       if (isFeatured !== undefined) updateData.isFeatured = isFeatured;
     }

@@ -41,6 +41,7 @@ model User {
   blockedUsers     BlockedUser[]  @relation("BlockedUserRelation")
   walletTransactions WalletTransaction[]
   webauthnCredentials WebAuthnCredential[]
+  verifiedDocs     OwnershipDocument[] @relation("OwnershipDocVerifier")
 
   @@map("User")
 }
@@ -103,8 +104,32 @@ model Apartment {
   likes         Like[]
   comments      Comment[]
   editRequests  PropertyEditRequest[]
+  ownershipDocument OwnershipDocument?
 
   @@map("Apartment")
+}
+
+// مستندات إثبات ملكية العقار — جدول منفصل حتى لا تُخزَّن الصور الحساسة
+// مع العقار نفسه (لا تتسرب في أي endpoint عام يرجّع العقار)
+// الصور تُخزَّن data URL (JPEG مضغوط من العميل) وتُقدَّم فقط عبر
+// /api/apartments/[id]/documents للمالك أو المطور حصراً
+model OwnershipDocument {
+  id               String    @id @default(cuid())
+  apartmentId      String    @unique
+  contractImage    String?   // صورة العقد التمالكي (data URL)
+  ownerIdCardImage String?   // صورة بطاقة المالك (data URL)
+  hasContract      Boolean   @default(false) // أعلام خفيفة تظهر في القوائم العامة بدل تحميل الصور
+  hasIdCard        Boolean   @default(false)
+  verified         Boolean   @default(false) // تم التحقق من الملكية بواسطة المطور
+  verifiedBy       String?
+  verifiedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  verifiedByUser User? @relation("OwnershipDocVerifier", fields: [verifiedBy], references: [id], onDelete: SetNull)
+
+  @@map("OwnershipDocument")
 }
 
 model Inquiry {

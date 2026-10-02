@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { verify } from "jsonwebtoken";
 import { notifyApartmentsChanged } from "@/lib/realtime";
 import { maybeRunAutoArchive } from "@/lib/auto-archive";
+import { sanitizeDocImage, saveOwnershipDocuments } from "@/lib/ownership-docs";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
@@ -105,9 +106,22 @@ export async function GET(request: Request) {
     });
 
     // ⛔ SECURITY: Remove ownerPhone + ownerWhatsapp from public response
+    // مستندات الملكية في جدول منفصل أصلاً — هنا نجيب أعلاماً خفيفة فقط (بدون الصور)
+    const apartmentIds = apartments.map(a => a.id);
+    const docFlags = apartmentIds.length > 0 ? await db.ownershipDocument.findMany({
+      where: { apartmentId: { in: apartmentIds } },
+      select: { apartmentId: true, hasContract: true, hasIdCard: true, verified: true },
+    }) : [];
+    const docMap = new Map(docFlags.map(d => [d.apartmentId, d]));
+
     const sanitizedApartments = apartments.map(apt => {
       const { ownerPhone, ownerWhatsapp, ...safeApt } = apt;
-      return safeApt;
+      const doc = docMap.get(apt.id);
+      return {
+        ...safeApt,
+        hasOwnershipDocs: !!(doc?.hasContract || doc?.hasIdCard),
+        ownershipVerified: doc?.verified || false,
+      };
     });
 
     // no-store: التحديثات الحية تعتمد على إن كل جلب يرجّع أحدث داتا
@@ -224,6 +238,18 @@ export async function POST(request: Request) {
 
     // الإصلاح الذاتي للـ schema drift بيتعمل تلقائياً في src/lib/db.ts
     const apartment = await db.apartment.create({ data: buildData() });
+
+    // مستندات إثبات الملكية (اختيارية) — تُخزَّن في جدول منفصل آمن
+    // sanitizeDocImage يرفض أي محتوى غير صورة — الحقول الصالحة فقط تُحفظ
+    const contractImage = sanitizeDocImage(body.ownershipContractImage);
+    const ownerIdCardImage = sanitizeDocImage(body.ownerIdCardImage);
+    if (contractImage || ownerIdCardImage) {
+      try {
+        await saveOwnershipDocuments(apartment.id, { contractImage, ownerIdCardImage });
+      } catch (docErr) {
+        console.error("Ownership docs save error:", docErr);
+      }
+    }
 
     // Notify all connected clients
     notifyApartmentsChanged('created', apartment.id);
