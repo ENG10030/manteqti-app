@@ -42,6 +42,7 @@ model User {
   walletTransactions WalletTransaction[]
   webauthnCredentials WebAuthnCredential[]
   verifiedDocs     OwnershipDocument[] @relation("OwnershipDocVerifier")
+  uploads          UploadedImage[]
 
   @@map("User")
 }
@@ -339,4 +340,20 @@ model WalletTransaction {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("WalletTransaction")
+}
+
+// الصور/الفيديوهات المرفوعة للشقق — تُخزن كـ base64 وتُخدم عبر /api/images/[id]
+// (يعمل بدون أي خدمة خارجية على Vercel — الضغط يتم على جهاز المستخدم قبل الرفع)
+model UploadedImage {
+  id          String   @id @default(cuid())
+  data        String   // محتوى الملف base64 بدون بادئة data:
+  mimeType    String   // image/jpeg | image/png | image/webp | image/gif | video/mp4 | video/webm
+  size        Int      // الحجم بالبايت (بعد فك base64)
+  kind        String   @default("image") // image | video
+  uploadedBy  String?
+  createdAt   DateTime @default(now())
+
+  uploadedByUser User? @relation(fields: [uploadedBy], references: [id], onDelete: SetNull)
+
+  @@map("UploadedImage")
 }
