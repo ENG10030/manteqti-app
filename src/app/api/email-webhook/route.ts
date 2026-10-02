@@ -1,36 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { verifyResendWebhook } from '@/lib/webhook-verify';
 
 // Resend Webhook endpoint
 // Receives email status notifications (delivered, bounced, complained, etc.)
 // Configure in Resend Dashboard → Webhooks → add URL: https://your-domain.com/api/email-webhook
 
-// Verify webhook signature (security measure)
-async function verifyWebhookSignature(body: string, signature: string | null, timestamp: string | null): Promise<boolean> {
-  const RESEND_WEBHOOK_SECRET = process.env.RESEND_WEBHOOK_SECRET;
-  if (!RESEND_WEBHOOK_SECRET || !signature) return false;
-  try {
-    const crypto = await import('crypto');
-    const expectedSig = crypto
-      .createHmac('sha256', RESEND_WEBHOOK_SECRET)
-      .update(`${timestamp}.${body}`)
-      .digest('base64');
-    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSig));
-  } catch {
-    return false;
-  }
-}
 
 // Email event types we care about
 const TRACKED_EVENTS = ['email.delivered', 'email.bounced', 'email.complained', 'email.delivery_failed', 'email.spam_reported'];
 
 export async function POST(request: NextRequest) {
   try {
-    // Optional: Verify webhook signature for security
-    const signature = request.headers.get('resend-signature');
-    const timestamp = request.headers.get('resend-timestamp');
+    // ⛔ SECURITY: تحقق Svix حقيقي — الدالة القديمة كانت معرفة ولا تُنادى أبداً
     const rawBody = await request.text();
-    
+    const verdict = await verifyResendWebhook(request, rawBody);
+    if (!verdict.ok) {
+      console.warn(`[Email Webhook] Rejected: ${verdict.reason}`);
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+    }
+
     let body: any;
     try {
       body = JSON.parse(rawBody);

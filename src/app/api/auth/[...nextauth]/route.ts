@@ -100,7 +100,8 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
   },
-  secret: process.env.NEXTAUTH_SECRET || "your-secret-key-here",
+  // ⛔ SECURITY: لا سرّ افتراضي أبداً — سرّ قابل للتخمين = جلسات مزوّرة
+  secret: process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET,
 };
 
 const handler = NextAuth(authOptions);

@@ -4,6 +4,7 @@ import { verify } from "jsonwebtoken";
 import { notifyApartmentsChanged } from "@/lib/realtime";
 import { sendApartmentApprovedEmail, sendApartmentRejectedEmail } from "@/lib/email";
 import { saveOwnershipDocuments, sanitizeDocImage } from "@/lib/ownership-docs";
+import { buildInstallmentsUpdate } from "@/lib/installments";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
@@ -53,7 +54,49 @@ function toNullableTextUpdate(v: unknown): string | null | undefined {
   return s || null;
 }
 
+// تعقيم نص (إزالة وسوم HTML + حد طول) — نفس نهج POST
+function sanitizeText(v: unknown, max = 500): string {
+  return String(v ?? '').replace(/<[^>]*>/g, '').trim().slice(0, max);
+}
+
+// ⛔ SECURITY: رابط الخريطة لازم يكون http/https صالح — يمنع javascript: وغيرها (XSS مخزّن)
+function safeMapLink(v: unknown): string | null {
+  if (v === undefined || v === null || v === '') return null;
+  const s = String(v).trim().slice(0, 500);
+  if (!s) return null;
+  try {
+    const u = new URL(s);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    return s;
+  } catch {
+    return null;
+  }
+}
+
+// الصور/الفيديوهات JSON نصي بحد أقصى — يمنع تضخيم القاعدة
+function safeMediaList(v: unknown): string | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  const s = String(v);
+  if (!s || s.length > 100_000) return null; // حد 100KB للنص JSON
+  return s;
+}
+
+const APARTMENT_TYPES = ['rent', 'sale'];
+const APARTMENT_STATUSES = ['available', 'pending', 'sold', 'rented', 'unavailable', 'rejected'];
+
+// بوابة التعديل المشتركة: مطور يمرر دائماً، مالك لازم يكون مؤكد البريد ومعتمد وغير محظور
+function canEditApartment(user: { role: string; isBlocked: boolean; emailVerified: boolean; isApproved: boolean }): boolean {
+  if (user.role === 'DEVELOPER') return true;
+  if (user.isBlocked) return false;
+  if (!user.emailVerified) return false;
+  if (!user.isApproved) return false;
+  return true;
+}
+
 // GET - جلب عقار واحد
+// ⛔ SECURITY: بيانات التواصل (هاتف المالك/واتساب/الخريطة/بريد وهاتف صاحب الحساب)
+// تظهر للمالك والمطور فقط — أقل من كده يستلم نسخة معقمة (نفس بوابات /details)
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -74,7 +117,22 @@ export async function GET(
       return NextResponse.json({ error: "العقار غير موجود" }, { status: 404 });
     }
 
-    return NextResponse.json({ apartment });
+    const viewer = await getCurrentUser(request);
+    const isPrivileged = !!viewer && (viewer.role === 'DEVELOPER' || viewer.id === apartment.createdBy);
+
+    if (isPrivileged) {
+      return NextResponse.json({ apartment });
+    }
+
+    const { ownerPhone, ownerWhatsapp, mapLink, ...safeApartment } = apartment;
+    const sanitized = {
+      ...safeApartment,
+      ownerPhone: null,
+      ownerWhatsapp: null,
+      mapLink: null,
+      user: apartment.user ? { id: apartment.user.id, name: apartment.user.name } : null,
+    };
+    return NextResponse.json({ apartment: sanitized });
   } catch (error) {
     console.error("Get apartment error:", error);
     return NextResponse.json(
@@ -93,6 +151,13 @@ export async function PUT(
     const user = await getCurrentUser(request);
     if (!user) {
       return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
+    }
+
+    if (!canEditApartment(user)) {
+      return NextResponse.json(
+        { error: user.isBlocked ? "تم حظر حسابك — لا يمكنك تعديل العقارات" : "حسابك غير مؤكد أو قيد المراجعة" },
+        { status: 403 }
+      );
     }
 
     const { id } = await params;
@@ -117,6 +182,24 @@ export async function PUT(
       delete body.status;
     }
 
+    // ⛔ SECURITY: نفس تعقيم POST — النصوص بدون وسوم، السالب مرفوض، التعداد مقيّد
+    if (body.title !== undefined && !sanitizeText(body.title)) {
+      return NextResponse.json({ error: "العنوان مطلوب" }, { status: 400 });
+    }
+    if (body.price !== undefined) {
+      const p = toNumUpdate(body.price);
+      if (p === undefined || p < 0) {
+        return NextResponse.json({ error: "السعر غير صالح" }, { status: 400 });
+      }
+    }
+    if (body.type !== undefined && !APARTMENT_TYPES.includes(String(body.type))) {
+      return NextResponse.json({ error: "نوع العقار غير صالح" }, { status: 400 });
+    }
+    if (body.status !== undefined && !APARTMENT_STATUSES.includes(String(body.status))) {
+      return NextResponse.json({ error: "الحالة غير صالحة" }, { status: 400 });
+    }
+    body.mapLink = body.mapLink === undefined ? undefined : safeMapLink(body.mapLink);
+
     // إدارة الأرشفة التلقائية (بعد 48 ساعة في الحالات النهائية)
     const FINAL_STATUSES = ['sold', 'rented', 'unavailable'];
     let statusChangedAtData: Date | null | undefined = undefined;
@@ -140,26 +223,31 @@ export async function PUT(
       archivedAtData = null;
     }
 
+    // نظام الأقساط — "لم يُرسل" = تجاهل، false = مسح، true = حفظ القيم المعقّمة
+    const installmentsUpdate = buildInstallmentsUpdate(body);
+
     const buildUpdateData = () => ({
-      title: body.title,
-      description: body.description,
+      title: body.title !== undefined ? sanitizeText(body.title) : undefined,
+      description: body.description !== undefined ? sanitizeText(body.description) : undefined,
       // ✅ يقبل 0 (عقار مجاني) — الفرق بين "لم يُرسل" و"صفر"
       price: toNumUpdate(body.price),
-      area: body.area,
+      area: body.area !== undefined ? sanitizeText(body.area, 120) : undefined,
       bedrooms: toNumUpdate(body.bedrooms),
       bathrooms: toNumUpdate(body.bathrooms),
       floor: toNullableIntUpdate(body.floor),
       apartmentSize: toNullableIntUpdate(body.apartmentSize),
       type: body.type,
-      images: body.images,
-      videos: body.videos,
-      ownerPhone: body.ownerPhone,
+      images: safeMediaList(body.images),
+      videos: safeMediaList(body.videos),
+      ownerPhone: body.ownerPhone !== undefined ? sanitizeText(body.ownerPhone, 30) : undefined,
       // رقم واتساب اختياري — فارغ يعني مسح الرقم
       ownerWhatsapp: toNullableTextUpdate(body.ownerWhatsapp),
       mapLink: body.mapLink,
       status: body.status,
       statusChangedAt: statusChangedAtData,
       archivedAt: archivedAtData,
+      // نظام الأقساط — نفس منهج "لم يُرسل = تجاهل"
+      ...installmentsUpdate,
       isFeatured: body.isFeatured,
       isVip: body.isVip,
     });

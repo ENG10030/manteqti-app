@@ -40,6 +40,14 @@ export async function GET(
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
     }
 
+    // ⛔ SECURITY: المالك أو المط فقط — أي مستخدم مسجل كان يشوف مدفوعات الغير (IDOR)
+    // وبيانات الباحث فيها (اسم/بريد/هاتف)
+    const dbUser = await db.user.findUnique({ where: { id: decoded.userId }, select: { role: true } });
+    const isPrivileged = dbUser?.role === 'DEVELOPER' || payment.userId === decoded.userId;
+    if (!isPrivileged) {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+    }
+
     return NextResponse.json({
       id: payment.id,
       inquiryId: payment.inquiryId,

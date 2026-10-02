@@ -4,9 +4,24 @@ import { verify } from "jsonwebtoken";
 import { notifyApartmentsChanged } from "@/lib/realtime";
 import { maybeRunAutoArchive } from "@/lib/auto-archive";
 import { sanitizeDocImage, saveOwnershipDocuments } from "@/lib/ownership-docs";
+import { sanitizeInstallments } from "@/lib/installments";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
+
+// ⛔ SECURITY: رابط الخريطة لازم يكون http/https صالح — يمنع javascript: وغيرها (XSS مخزّن)
+function safeMapLink(v: unknown): string | null {
+  if (v === undefined || v === null || v === '') return null;
+  const s = String(v).trim().slice(0, 500);
+  if (!s) return null;
+  try {
+    const u = new URL(s);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    return s;
+  } catch {
+    return null;
+  }
+}
 
 async function getCurrentUser(request: Request) {
   const cookieHeader = request.headers.get("cookie");
@@ -221,12 +236,14 @@ export async function POST(request: Request) {
       bathrooms: parseInt(bathrooms) || 1,
       floor: floor ? parseInt(floor) : null,
       apartmentSize: apartmentSize ? parseInt(apartmentSize) : null,
+      // نظام الأقساط — تعقيم موحّد من lib/installments (hasInstallments=false يصفّر الكل)
+      ...sanitizeInstallments(body),
       ownerPhone,
       // رقم واتساب اختياري للناشر — يظهر مع بيانات التواصل بعد الدفع
       ownerWhatsapp: typeof ownerWhatsapp === "string" && ownerWhatsapp.trim()
         ? ownerWhatsapp.replace(/<[^>]*>/g, "").trim().slice(0, 30)
         : null,
-      mapLink: mapLink || null,
+      mapLink: safeMapLink(mapLink),
       type: type || "rent",
       status,
       images: images || null,

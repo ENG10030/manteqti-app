@@ -141,8 +141,16 @@ export async function GET(
 
     const { id: userId } = await params
 
+    // ⛔ SECURITY: select صريح — كان الـ row كامل بيرجع للعميل
+    // بما فيه هاش كلمة السر وهاش الـ OTP وتوكن إعادة التعيين
     const userRecord = await db.user.findUnique({
-      where: { id: userId }
+      where: { id: userId },
+      select: {
+        id: true, identifier: true, name: true, email: true, phone: true,
+        role: true, isBlocked: true, isApproved: true, emailVerified: true,
+        blockReason: true, blockedAt: true,
+        createdAt: true, updatedAt: true,
+      }
     })
 
     if (!userRecord) {

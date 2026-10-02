@@ -25,7 +25,8 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             name: true,
-            identifier: true,
+            // ⛔ SECURITY: identifier = بريد المستخدم — إزالته يمنع تعداد الإيميلات
+            // (كان ممكن يسحب قايمة كل المستخدمين اللي عملوا لايك بفلتر userId)
           }
         },
         apartment: {

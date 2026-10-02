@@ -5,6 +5,7 @@ import { sendPasswordChangedEmail } from '@/lib/email';
 import { cookies } from 'next/headers';
 import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
+import { checkRateLimit, recordFailedAttempt, getClientIp } from '@/lib/rate-limit';
 
 // ⛔ SECURITY: GET requires auth to prevent email enumeration
 export async function GET(request: NextRequest) {
@@ -76,6 +77,17 @@ export async function POST(request: NextRequest) {
 
     const normalizedEmail = email.toLowerCase().trim();
 
+    // ⛔ SECURITY: حد معدل محاولة التخمين — الرمز 6 أرقام (مليون احتمال، صلاحية ساعة)
+    // بدون هذا الحد كان ممكن يتفكّم بقوة. 5 محاولات لكل بريد + 20 لكل IP كل 15 دقيقة
+    const clientIp = getClientIp(request);
+    const [emailOk, ipOk] = await Promise.all([
+      checkRateLimit('reset-password', 'email', normalizedEmail, 5, 15 * 60),
+      checkRateLimit('reset-password', 'ip', clientIp, 20, 15 * 60),
+    ]);
+    if (!emailOk || !ipOk) {
+      return NextResponse.json({ error: 'محاولات كثيرة — حاول بعد 15 دقيقة' }, { status: 429 });
+    }
+
     const user = await db.user.findFirst({
       where: {
         OR: [
@@ -97,6 +109,10 @@ export async function POST(request: NextRequest) {
     const isTokenValid = await bcrypt.compare(code, user.passwordResetToken);
 
     if (!isTokenValid) {
+      await Promise.all([
+        recordFailedAttempt('reset-password', 'email', normalizedEmail, request, 'Wrong OTP'),
+        recordFailedAttempt('reset-password', 'ip', clientIp, request, 'Wrong OTP'),
+      ]);
       return NextResponse.json({ error: 'رمز الاستعادة غير صحيح' }, { status: 400 });
     }
 

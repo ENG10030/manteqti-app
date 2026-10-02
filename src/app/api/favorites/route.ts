@@ -13,21 +13,28 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // ⛔ SECURITY: select صريح — بدون هاتف/واتساب/خريطة المالك أو هاتف صاحب الحساب
+    // (كان الـ include الكامل بيسرّب بيانات التواصل اللي خلف جدار الدفع)
     const favorites = await db.like.findMany({
       where: { userId: auth.user.id },
-      include: {
-        apartment: {
-          include: {
-            user: {
-              select: { id: true, name: true, phone: true },
-            },
-          },
-        },
-      },
       orderBy: { createdAt: 'desc' },
     });
 
-    return NextResponse.json({ favorites });
+    const apartmentIds = [...new Set(favorites.map(f => f.apartmentId))];
+    const apartments = apartmentIds.length > 0 ? await db.apartment.findMany({
+      where: { id: { in: apartmentIds } },
+      select: {
+        id: true, title: true, description: true, price: true, area: true,
+        bedrooms: true, bathrooms: true, floor: true, apartmentSize: true,
+        type: true, status: true, imageUrl: true, images: true, videos: true,
+        amenities: true, isFeatured: true, isVip: true, createdAt: true, updatedAt: true,
+      },
+    }) : [];
+    const apartmentMap = new Map(apartments.map(a => [a.id, a]));
+
+    return NextResponse.json({
+      favorites: favorites.map(f => ({ ...f, apartment: apartmentMap.get(f.apartmentId) || null })),
+    });
   } catch (error: unknown) {
     console.error('Get favorites error:', error);
     return NextResponse.json(

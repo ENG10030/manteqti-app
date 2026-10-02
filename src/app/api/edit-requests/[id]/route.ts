@@ -43,6 +43,15 @@ export async function GET(
       return NextResponse.json({ error: 'طلب التعديل غير موجود' }, { status: 404 });
     }
 
+    // ⛔ SECURITY: صاحب الطلب أو المطور فقط — أي مستخدم كان يشوف طلبات غيره (IDOR)
+    // مع بيانات العقار كاملة (هاتف المالك) وبريد صاحب الطلب
+    const decoded = verify(token, JWT_SECRET!) as unknown as { userId: string; role?: string };
+    const dbUser = await db.user.findUnique({ where: { id: decoded.userId }, select: { role: true } });
+    const isPrivileged = dbUser?.role === 'DEVELOPER' || editRequest.userId === decoded.userId;
+    if (!isPrivileged) {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+    }
+
     return NextResponse.json(editRequest);
   } catch (error) {
     console.error('Error fetching edit request:', error);

@@ -65,15 +65,34 @@ export async function POST(request: NextRequest) {
 
     const data = await request.json();
 
+    // ⛔ SECURITY: الحالة والمبلغ يُحددان من السيرفر دائماً — قبول status من العميل كان
+    // بيسمح بتجاوز جدار الدفع (Paid فوراً بدون فلوس). الاعتماد بيتعمل من المطور/الويبهوك فقط.
+    // المسار الشرعي الوحيد لـ "Paid" فوراً: الرسوم = 0 في الإعدادات (تواصل مجاني).
+    // كمان لازم الـ inquiry يخص المستخدم نفسه (يمنع إنشاء مدفوعات على استفسارات غيره)
+    if (!data.inquiryId || typeof data.inquiryId !== 'string') {
+      return NextResponse.json({ error: 'معرّف الاستفسار مطلوب' }, { status: 400 });
+    }
+    const inquiry = await db.inquiry.findUnique({ where: { id: data.inquiryId }, select: { id: true, userId: true } });
+    if (!inquiry) {
+      return NextResponse.json({ error: 'الاستفسار غير موجود' }, { status: 404 });
+    }
+    if (inquiry.userId && inquiry.userId !== auth.userId) {
+      return NextResponse.json({ error: 'غير مصرح لك' }, { status: 403 });
+    }
+
+    const settings = await db.settings.findFirst({ select: { contactFee: true } });
+    const fee = settings?.contactFee ?? 0;
+    const status = fee === 0 ? 'Paid' : 'Pending'; // المجاني يُعتمد تلقائياً، المفلوس يستنى المطور
+
     const payment = await db.payment.create({
       data: {
         inquiryId: data.inquiryId,
-        method: data.method,
-        status: data.status || 'Pending',
-        inquiryStatus: data.inquiryStatus || 'Pending',
-        amount: data.amount,
-        transactionRef: data.transactionRef,
-        paymentLink: data.paymentLink,
+        method: typeof data.method === 'string' ? data.method.slice(0, 50) : null,
+        status,
+        inquiryStatus: 'Pending',
+        amount: fee, // مصدر الحقيقة = الإعدادات، مش رقم العميل
+        transactionRef: typeof data.transactionRef === 'string' ? data.transactionRef.slice(0, 200) : null,
+        paymentLink: typeof data.paymentLink === 'string' ? data.paymentLink.slice(0, 500) : null,
         userId: auth.userId
       }
     });

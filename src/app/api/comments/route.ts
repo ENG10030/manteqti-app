@@ -11,6 +11,23 @@ async function logAction(data: { commentId: string; action: string; performedBy:
   }
 }
 
+// التحقق من هوية العارض (اختياري — الزائر يبقى null)
+async function getViewer(request: NextRequest) {
+  try {
+    const { verify } = await import('jsonwebtoken');
+    const JWT_SECRET = process.env.JWT_SECRET;
+    if (!JWT_SECRET) return null;
+    const cookieHeader = request.headers.get('cookie');
+    const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, '&') || '');
+    const token = cookies.get('auth-token');
+    if (!token) return null;
+    const decoded = verify(token, JWT_SECRET) as unknown as { userId: string };
+    return await db.user.findUnique({ where: { id: decoded.userId }, select: { id: true, role: true } });
+  } catch {
+    return null;
+  }
+}
+
 // جلب التعليقات
 export async function GET(request: NextRequest) {
   try {
@@ -20,16 +37,37 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId');
     const includeLogs = searchParams.get('includeLogs') === 'true';
 
+    const viewer = await getViewer(request);
+    const isDeveloper = viewer?.role === 'DEVELOPER';
+
+    let includeLogsRequested = includeLogs && isDeveloper;
     const where: Record<string, unknown> = {};
     if (apartmentId) where.apartmentId = apartmentId;
-    // ⛔ SECURITY: Only allow filtering by status if explicitly requested
-    // By default, hide pending/rejected comments from public
-    if (!status) {
-      where.status = 'approved';
-    } else {
-      where.status = status;
+
+    // ⛔ SECURITY: فلترة الحالات غير المعتمدة (pending/rejected/all...) للمطور فقط —
+    // كانت مكشوفة للعامة (تعليقات غير مراجعة + سجل إجراءات الإدارة)
+    if (status && status !== 'approved') {
+      if (!isDeveloper) {
+        return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
+      }
+      if (status !== 'all') where.status = status; // 'all' = كل الحالات
+    } else if (!status) {
+      if (viewer) {
+        // المسجل دخوله يشوف المعتمد + تعليقاته هو (حتى لو معلقة) — الواجهة مبنية على كده
+        where.OR = [{ status: 'approved' }, { userId: viewer.id }];
+      } else {
+        where.status = 'approved';
+      }
+    }
+    // فلترة بحسب مستخدم معين = كشف تاريخ تعليقاته → للمطور فقط
+    if (userId && !isDeveloper) {
+      return NextResponse.json({ error: 'غير مصرح' }, { status: 403 });
     }
     if (userId) where.userId = userId;
+    // سجل إجراءات الإدارة → للمطور فقط
+    if (includeLogs && !isDeveloper) {
+      includeLogsRequested = false;
+    }
 
     const comments = await db.comment.findMany({
       where,
@@ -41,7 +79,7 @@ export async function GET(request: NextRequest) {
             // ⛔ SECURITY: Do NOT expose identifier (email) in public comments
           }
         },
-        ...(includeLogs ? {
+        ...(includeLogsRequested ? {
           actionLogs: {
             orderBy: { createdAt: 'desc' },
           }

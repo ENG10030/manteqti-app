@@ -1,24 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { verifyResendWebhook } from '@/lib/webhook-verify';
 
 // Resend sends webhook events (delivered, bounced, complained, etc.)
 // Configure in Resend Dashboard → Webhooks → Add endpoint → https://your-domain.com/api/resend-webhook
 
-const RESEND_WEBHOOK_SECRET = process.env.RESEND_WEBHOOK_SECRET || '';
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify webhook signature (Resend uses a webhook signing secret)
-    if (RESEND_WEBHOOK_SECRET) {
-      const resendSignature = request.headers.get('resend-signature');
-      if (!resendSignature) {
-        return NextResponse.json({ error: 'Missing signature' }, { status: 401 });
-      }
-      // Note: Full signature verification requires crypto module
-      // For now, we just check the header exists
+    // ⛔ SECURITY: تحقق Svix حقيقي من توقيع Resend (كان بيكتفى بوجود الهيدر فقط)
+    const rawBody = await request.text();
+    const verdict = await verifyResendWebhook(request, rawBody);
+    if (!verdict.ok) {
+      console.warn(`[Resend Webhook] Rejected: ${verdict.reason}`);
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
 
-    const payload = await request.json();
+    let payload: { type?: string; data?: Record<string, unknown> };
+    try {
+      payload = JSON.parse(rawBody);
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+    }
     const eventType = payload.type;
     const emailData = payload.data;
 

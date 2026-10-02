@@ -1,24 +1,25 @@
 'use client';
 
-import { useState, useEffect, useLayoutEffect, useCallback, useRef, memo } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, memo } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Building2, MapPin, Bed, Bath, Phone, ExternalLink, X,
-  CreditCard, MessageSquare, Loader2, Eye, EyeOff, Lock, Mail,
+  CreditCard, Loader2, Eye, EyeOff, Lock, Mail,
   Sun, Moon, Check, AlertCircle, RefreshCw, Star,
-  TrendingUp, Filter, Heart, User, MessageCircle, ThumbsUp,
+  TrendingUp, Filter, Heart, User, MessageCircle,
   BarChart3, DollarSign, Settings, LogOut, Menu, AlertTriangle, 
   CheckCircle2, XCircle, Image as ImageIcon, Video,
   ChevronLeft, ChevronRight, Plus, Trash2, ShieldCheck, Hourglass,
-  Send, Bot, Home, Crown, Diamond, Ban, Brain, Search,
-  VideoIcon, Activity, Wallet, Key, ArrowUp, Layers,
+  Send, Home, Diamond, Ban, Brain, Search,
+  Activity, Wallet, Key, ArrowUp, Layers,
   Download, Smartphone, Zap, Save, Archive, ArchiveRestore,
-  Clock, Sparkles, Share2, Calendar, BookOpen, Users, FilePen, SunMoon,
-  GitCompare, Trophy, ScrollText, ClipboardCheck, HardDrive, Upload, Database,
+  Clock, Sparkles, BookOpen, Users, FilePen, SunMoon,
+  GitCompare, Trophy, ScrollText, ClipboardCheck, Upload, Database,
   Fingerprint, FileText
 } from 'lucide-react';
-import { browserSupportsWebAuthn, startRegistration, startAuthentication } from '@simplewebauthn/browser';
+// @simplewebauthn/browser يُحمَّل ديناميكياً عند الحاجة (~15KB لا يُشحن لكل زائر)
+
 import { FileUpload } from '@/components/file-upload';
 import { DocumentUpload } from '@/components/document-upload';
 // socket.io-client imported dynamically in useEffect to prevent Vercel SSR/hydration issues
@@ -76,6 +77,9 @@ const statusConfig: Record<string, { label: string; color: string; bgColor: stri
   'hidden': { label: 'مخفي', color: 'text-gray-600', bgColor: 'bg-gray-200', dotColor: 'bg-gray-400' }
 };
 
+// نظام الأقساط — تسميات الدورية للعرض (مختصرة للكروت)
+const INSTALLMENT_FREQ_LABELS: Record<string, string> = { monthly: 'شهري', quarterly: 'ربعي', annual: 'سنوي' };
+
 // Interfaces
 interface Apartment {
   id: string; title: string; price: number; area: string; bedrooms: number; bathrooms: number; floor?: number | null; apartmentSize?: number | null;
@@ -83,6 +87,8 @@ interface Apartment {
   videoUrl?: string; videos?: string[]; amenities?: string[]; isFeatured?: boolean; isVip?: boolean;
   type: 'rent' | 'sale'; status: string; paymentRef?: string; createdBy?: string; views?: number; createdAt: string; statusChangedAt?: string | null; archivedAt?: string | null;
   hasOwnershipDocs?: boolean; ownershipVerified?: boolean;
+  // نظام الأقساط
+  hasInstallments?: boolean; remainingInstallments?: number | null; installmentAmount?: number | null; installmentFrequency?: string | null; installmentsNotes?: string | null;
 }
 
 interface Inquiry { id: string; apartmentId: string; userId?: string; name: string; email: string; phone: string; message: string; lifecycleStatus: string; createdAt: string; apartment?: { id: string; title: string; price: number; type: string } | null; payment?: { id: string; status: string; method: string } | null; }
@@ -195,13 +201,14 @@ const ApartmentCard = memo(function ApartmentCard({ apartment, index, darkMode, 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }} whileHover={{ y: -5 }} className={`rounded-2xl overflow-hidden ${darkMode ? 'bg-slate-800' : 'bg-white'} shadow-lg group`}>
       <div className="relative h-48 overflow-hidden">
-        <img src={apartment.imageUrl || apartment.images?.[0] || '/logo.svg'} alt={apartment.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
+        <img src={apartment.imageUrl || apartment.images?.[0] || '/logo.svg'} alt={apartment.title} loading={index < 4 ? 'eager' : 'lazy'} decoding="async" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
         <div className="absolute top-3 right-3 flex gap-2 flex-wrap">
           {apartment.isVip && <span className="px-2 py-1 rounded-lg bg-gradient-to-r from-purple-500 to-pink-600 text-white text-xs font-medium flex items-center gap-1"><Diamond className="h-3 w-3" /> VIP</span>}
           {apartment.isFeatured && !apartment.isVip && <span className="px-2 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 text-white text-xs font-medium flex items-center gap-1"><Star className="h-3 w-3" /> مميز</span>}
           {!apartment.isFeatured && !apartment.isVip && <span className="px-2 py-1 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-medium flex items-center gap-1"><Home className="h-3 w-3" /> عادي</span>}
           <span className={`px-2 py-1 rounded-lg text-xs font-medium ${statusConfig[apartment.status]?.bgColor || 'bg-slate-100'} ${statusConfig[apartment.status]?.color || 'text-slate-600'}`}>{statusConfig[apartment.status]?.label || apartment.status}</span>
           {apartment.ownershipVerified && <span className="px-2 py-1 rounded-lg bg-emerald-500 text-white text-xs font-medium flex items-center gap-1" title="تم التحقق من مستندات ملكية هذا العقار"><ShieldCheck className="h-3 w-3" /> موثق</span>}
+          {apartment.hasInstallments && <span className="px-2 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 text-white text-xs font-medium flex items-center gap-1" title="هذا العقار عليه أقساط متبقية — المبلغ المطلوب غير شامل الأقساط"><CreditCard className="h-3 w-3" /> يوجد أقساط</span>}
         </div>
         <div className="absolute top-3 left-3">
           <span className={`relative px-3 py-1.5 rounded-full text-xs font-bold text-white ${apartment.type === 'rent' ? 'bg-gradient-to-r from-emerald-500 to-teal-600' : 'bg-gradient-to-r from-blue-500 to-cyan-600'} shadow-lg`}>{apartment.type === 'rent' ? 'للإيجار' : 'للبيع'}</span>
@@ -214,7 +221,10 @@ const ApartmentCard = memo(function ApartmentCard({ apartment, index, darkMode, 
         <h3 className={`text-lg font-bold mb-2 line-clamp-1 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apartment.title}</h3>
         {/* السعر في الأعلى */}
         <div className="mb-2">
-          <p className="text-2xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent">{apartment.price.toLocaleString()} ج.م{apartment.type === 'rent' && <span className={`text-sm font-normal ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}> /شهر</span>}</p>
+          <p className="text-2xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent">{apartment.price.toLocaleString()} ج.م{apartment.type === 'rent' && <span className={`text-sm font-normal ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}> /شهر</span>}{apartment.hasInstallments && <span className={`text-sm font-normal ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}> + أقساط</span>}</p>
+          {apartment.hasInstallments && (!!apartment.remainingInstallments || !!apartment.installmentAmount) && (
+            <p className={`text-xs font-medium mt-0.5 flex items-center gap-1 ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}><Clock className="h-3 w-3" />{apartment.remainingInstallments ? `${apartment.remainingInstallments} قسط متبقي` : 'يوجد أقساط متبقية'}{apartment.installmentAmount ? ` • ${apartment.installmentAmount.toLocaleString()} ج.م${apartment.installmentFrequency && INSTALLMENT_FREQ_LABELS[apartment.installmentFrequency] ? ` / ${INSTALLMENT_FREQ_LABELS[apartment.installmentFrequency]}` : ''}` : ''}</p>
+          )}
         </div>
         {/* وصف الشقة */}
         <p className={`text-sm mb-3 line-clamp-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apartment.description}</p>
@@ -306,10 +316,18 @@ function App() {
   // زر التبديل: نهاري ← ليلي ← تلقائي ← نهاري
   const cycleTheme = () => setThemeMode((m) => (m === 'light' ? 'dark' : m === 'dark' ? 'auto' : 'light'));
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState(''); // نص البحث الفوري — يُخفّض الضغط بحيث الفلترة تحدث بعد 250ms من السكون
+
+  // Debounce للبحث — منع إعادة فلترة/رسم الشبكة مع كل ضغطة حرف
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQuery(searchInput), 250);
+    return () => clearTimeout(t);
+  }, [searchInput]);
   const [typeFilter, setTypeFilter] = useState<'all' | 'rent' | 'sale'>('all');
   const [areaFilter, setAreaFilter] = useState<string>('all');
   const [bedroomsFilter, setBedroomsFilter] = useState<string>('all');
   const [priceFilter, setPriceFilter] = useState<string>('all');
+  const [installmentsFilter, setInstallmentsFilter] = useState<string>('all'); // الأقساط: الكل / عليها أقساط / بدون أقساط
   const [bathroomsFilter, setBathroomsFilter] = useState<string>('all');
   const [sizeFilter, setSizeFilter] = useState<string>('all');
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -390,7 +408,7 @@ function App() {
   const [devPassword, setDevPassword] = useState('');
   const [showDevPassword, setShowDevPassword] = useState(false);
   const [devLoading, setDevLoading] = useState(false);
-  const [aptForm, setAptForm] = useState({ title: '', price: '', area: '', bedrooms: '1', bathrooms: '1', floor: '', apartmentSize: '', description: '', ownerPhone: '', ownerWhatsapp: '', mapLink: '', type: 'rent' as 'rent' | 'sale', listingType: 'regular' as 'regular' | 'featured' | 'vip' });
+  const [aptForm, setAptForm] = useState({ title: '', price: '', area: '', bedrooms: '1', bathrooms: '1', floor: '', apartmentSize: '', description: '', ownerPhone: '', ownerWhatsapp: '', mapLink: '', type: 'rent' as 'rent' | 'sale', listingType: 'regular' as 'regular' | 'featured' | 'vip', hasInstallments: false, remainingInstallments: '', installmentAmount: '', installmentFrequency: 'monthly', installmentsNotes: '' });
   const [aptSubmitting, setAptSubmitting] = useState(false);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
@@ -740,7 +758,15 @@ function App() {
       clearTimeout(timeoutId);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to fetch');
-      const processedData = Array.isArray(data) ? data.map(processApartment) : [];
+      // ⚡ skip-setState: لو مفيش أي تغيير فعلي (نفس التوقيع) ما نعملوش re-render للشبكة كلها
+      // كان الحلقة كل 30 ثانية + الـ changes-poll يعيدوا رسم ~42 كارت حتى بلا أي تغيير
+      const raw = Array.isArray(data) ? data : [];
+      const sig = raw.map((a: { id?: string; updatedAt?: string; status?: string; isFeatured?: boolean; isVip?: boolean; ownershipVerified?: boolean }) =>
+        [a.id, a.updatedAt, a.status, a.isFeatured ? 1 : 0, a.isVip ? 1 : 0, a.ownershipVerified ? 1 : 0].join(':')
+      ).join('|');
+      if (sig && sig === apartmentsSigRef.current && !isInitial) return;
+      apartmentsSigRef.current = sig;
+      const processedData = raw.map(processApartment);
       setApartments(processedData);
       setAllApartments(processedData);
       setError(null);
@@ -1644,18 +1670,25 @@ function App() {
     } catch {}
   };
 
+  // توقيع آخر قائمة عقارات — يُستخدم لتخطّي setState عند عدم وجود تغييرات
+  const apartmentsSigRef = useRef<string>('');
+  // حارس سباق: آخر نافذة فتحت فقط لها حق تحديث التعليقات — استجابة قديمة لن تمسح تعليقات الأحدث
+  const commentsRequestRef = useRef<string>('');
   const fetchComments = async (apartmentId: string) => {
+    commentsRequestRef.current = apartmentId;
     try { 
       // Fetch all comments for apartment (approved + own pending) - UI filters visibility
       const res = await fetch(`/api/comments?apartmentId=${apartmentId}`); 
       const data = await res.json();
+      if (commentsRequestRef.current !== apartmentId) return; // استجابة متأخرة لنافذة أُغلقت
       setComments(Array.isArray(data) ? data : []); 
     } catch {}
   };
 
   const fetchAllComments = async () => {
     try { 
-      const res = await fetch('/api/comments'); 
+      // المطور يجلب كل الحالات (بانتظار/مرفوض/محذوف) لإدارة التعليقات — السيرفر يسمح للمطور فقط
+      const res = await fetch(isDeveloper ? '/api/comments?status=all' : '/api/comments'); 
       const data = await res.json();
       setComments(Array.isArray(data) ? data : []); 
     } catch {}
@@ -1748,30 +1781,48 @@ function App() {
     } catch {}
   }, []);
 
-  // Filter apartments
-  const uniqueAreas = [...new Set([...apartments.map(apt => apt.area), ...egyptianAreas])].filter(a => a).sort();
-  const statsUniqueAreas = [...new Set(apartments.map(apt => apt.area).filter(a => a))].sort();
-  const filteredApartments = apartments.filter(apt => {
-    if (!isDeveloper && (apt.status === 'pending' || apt.status === 'rejected')) return false;
-    if (typeFilter !== 'all' && apt.type !== typeFilter) return false;
-    if (areaFilter !== 'all' && apt.area !== areaFilter) return false;
-    if (bedroomsFilter !== 'all' && apt.bedrooms < parseInt(bedroomsFilter)) return false;
-    if (bathroomsFilter !== 'all' && apt.bathrooms < parseInt(bathroomsFilter)) return false;
-    if (sizeFilter !== 'all' && apt.apartmentSize && apt.apartmentSize < parseInt(sizeFilter)) return false;
-    if (sizeFilter !== 'all' && !apt.apartmentSize) return false;
-    if (priceFilter !== 'all' && apt.price > parseInt(priceFilter)) return false;
-    if (searchQuery && !apt.title.toLowerCase().includes(searchQuery.toLowerCase()) && !apt.area.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true;
-  }).sort((a, b) => {
-    // VIP+ first, then VIP, then Featured, then by date
-    if (a.isVip && !b.isVip) return -1;
-    if (!a.isVip && b.isVip) return 1;
-    if (a.isFeatured && !b.isFeatured) return -1;
-    if (!a.isFeatured && b.isFeatured) return 1;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-  });
+  // Filter apartments — useMemo: الحسابات المشتقة لا تُعاد مع كل تغيير حالة غير متعلق
+  // (فتح نافذة/توست/لايك لم يكن ليغيّر النتيجة — كان بيعيد فلترة وفرز كل العقارات بلا داعٍ)
+  const uniqueAreas = useMemo(
+    () => [...new Set([...apartments.map(apt => apt.area), ...egyptianAreas])].filter(a => a).sort(),
+    [apartments]
+  );
+  const statsUniqueAreas = useMemo(
+    () => [...new Set(apartments.map(apt => apt.area).filter(a => a))].sort(),
+    [apartments]
+  );
+  const filteredApartments = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const list = apartments.filter(apt => {
+      if (!isDeveloper && (apt.status === 'pending' || apt.status === 'rejected')) return false;
+      if (typeFilter !== 'all' && apt.type !== typeFilter) return false;
+      if (areaFilter !== 'all' && apt.area !== areaFilter) return false;
+      if (bedroomsFilter !== 'all' && apt.bedrooms < parseInt(bedroomsFilter)) return false;
+      if (bathroomsFilter !== 'all' && apt.bathrooms < parseInt(bathroomsFilter)) return false;
+      if (sizeFilter !== 'all' && apt.apartmentSize && apt.apartmentSize < parseInt(sizeFilter)) return false;
+      if (sizeFilter !== 'all' && !apt.apartmentSize) return false;
+      if (priceFilter !== 'all' && apt.price > parseInt(priceFilter)) return false;
+      if (installmentsFilter === 'yes' && !apt.hasInstallments) return false;
+      if (installmentsFilter === 'no' && apt.hasInstallments) return false;
+      if (q && !apt.title.toLowerCase().includes(q) && !apt.area.toLowerCase().includes(q)) return false;
+      return true;
+    });
+    // فرز بتواريخ محسوبة مرة واحدة بدل new Date داخل المقارنة (O(N log N) parse كان يتكرر لكل رندر)
+    const ts = new Map(list.map(apt => [apt.id, new Date(apt.createdAt).getTime()]));
+    return list.sort((a, b) => {
+      // VIP+ first, then VIP, then Featured, then by date
+      if (a.isVip && !b.isVip) return -1;
+      if (!a.isVip && b.isVip) return 1;
+      if (a.isFeatured && !b.isFeatured) return -1;
+      if (!a.isFeatured && b.isFeatured) return 1;
+      return (ts.get(b.id) || 0) - (ts.get(a.id) || 0);
+    });
+  }, [apartments, isDeveloper, typeFilter, areaFilter, bedroomsFilter, bathroomsFilter, sizeFilter, priceFilter, installmentsFilter, searchQuery]);
 
-  const pendingApartments = allApartments.filter(apt => apt.status === 'pending');
+  const pendingApartments = useMemo(
+    () => allApartments.filter(apt => apt.status === 'pending'),
+    [allApartments]
+  );
 
   // Handlers
  const handleDevLogin = async (e: React.FormEvent) => {
@@ -1939,8 +1990,12 @@ function App() {
   const [passkeyListLoading, setPasskeyListLoading] = useState(false);
 
   useEffect(() => {
-    // فحص دعم المتصفح للبصمة (Chrome/Android، Safari/iOS، ...)
-    setWebAuthnSupported(browserSupportsWebAuthn());
+    // فحص دعم المتصفح للبصمة (Chrome/Android، Safari/iOS، ...) — تحميل ديناميكي للمكتبة
+    let cancelled = false;
+    import('@simplewebauthn/browser')
+      .then(m => { if (!cancelled) setWebAuthnSupported(m.browserSupportsWebAuthn()); })
+      .catch(() => { if (!cancelled) setWebAuthnSupported(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const detectDeviceLabel = (): string => {
@@ -1971,7 +2026,7 @@ function App() {
       }
       let assertion;
       try {
-        assertion = await startAuthentication({ optionsJSON: optData.options });
+        assertion = await (await import('@simplewebauthn/browser')).startAuthentication({ optionsJSON: optData.options });
       } catch (err: unknown) {
         const errName = (err as { name?: string })?.name || '';
         if (errName === 'NotAllowedError') { addToast('تم إلغاء الدخول بالبصمة أو انتهت المدة', 'info'); }
@@ -2024,7 +2079,7 @@ function App() {
       const deviceName = detectDeviceLabel();
       let attestation;
       try {
-        attestation = await startRegistration({ optionsJSON: optData });
+        attestation = await (await import('@simplewebauthn/browser')).startRegistration({ optionsJSON: optData });
       } catch (err: unknown) {
         const errName = (err as { name?: string })?.name || '';
         if (errName === 'NotAllowedError') addToast('تم إلغاء تسجيل البصمة', 'info');
@@ -2235,6 +2290,7 @@ function App() {
     }
     if (!confirmed) {
       if (!aptForm.title || !aptForm.price || !aptForm.area || !aptForm.description || !aptForm.ownerPhone || !aptForm.apartmentSize) { addToast('يرجى ملء جميع الحقول المطلوبة بما فيها المساحة', 'error'); return; }
+      if (aptForm.hasInstallments && !aptForm.remainingInstallments && !aptForm.installmentAmount && !aptForm.installmentsNotes.trim()) { addToast('فعّلت الأقساط — اكتب عدد الأقساط أو قيمة القسط أو تفاصيل الدفع', 'error'); return; }
       const listingLabels: Record<string, string> = { regular: 'عادي', featured: 'مميز ⭐', vip: 'VIP+ 👑' };
       const listingLabel = listingLabels[aptForm.listingType] || 'عادي';
       const listingFee = aptForm.listingType === 'vip' ? settings.vipFee : aptForm.listingType === 'featured' ? settings.featuredFee : 0;
@@ -2263,6 +2319,12 @@ function App() {
           videos: Array.isArray(videoUrls) && videoUrls.length > 0 ? JSON.stringify(videoUrls) : null, 
           ownershipContractImage: ownershipContractImage || null,
           ownerIdCardImage: ownerIdCardImage || null,
+          // نظام الأقساط — السيرفر بيعقّمها في lib/installments
+          hasInstallments: aptForm.hasInstallments,
+          remainingInstallments: aptForm.hasInstallments && aptForm.remainingInstallments ? parseInt(aptForm.remainingInstallments) : null,
+          installmentAmount: aptForm.hasInstallments && aptForm.installmentAmount ? parseInt(aptForm.installmentAmount) : null,
+          installmentFrequency: aptForm.hasInstallments ? aptForm.installmentFrequency : null,
+          installmentsNotes: aptForm.hasInstallments ? (aptForm.installmentsNotes.trim() || null) : null,
           createdBy: currentUser?.id, 
           isFeatured: aptForm.listingType === 'featured' || aptForm.listingType === 'vip',
           isVip: aptForm.listingType === 'vip',
@@ -2278,7 +2340,7 @@ function App() {
       if (res.ok) { 
         fetchApartments(); 
         setShowAddModal(false); 
-        setAptForm({ title: '', price: '', area: '', bedrooms: '1', bathrooms: '1', floor: '', apartmentSize: '', description: '', ownerPhone: '', ownerWhatsapp: '', mapLink: '', type: 'rent', listingType: 'regular' }); 
+        setAptForm({ title: '', price: '', area: '', bedrooms: '1', bathrooms: '1', floor: '', apartmentSize: '', description: '', ownerPhone: '', ownerWhatsapp: '', mapLink: '', type: 'rent', listingType: 'regular', hasInstallments: false, remainingInstallments: '', installmentAmount: '', installmentFrequency: 'monthly', installmentsNotes: '' }); 
         setImageUrls([]); 
         setVideoUrls([]); 
         setOwnershipContractImage('');
@@ -2399,6 +2461,12 @@ function App() {
         statusChangedAt: needsAutoDelete ? new Date().toISOString() : null,
         isFeatured: editApartment.isFeatured ?? false,
         isVip: editApartment.isVip ?? false,
+        // نظام الأقساط — السيرفر بيعقّمها في lib/installments (false يمسح الكل)
+        hasInstallments: !!editApartment.hasInstallments,
+        remainingInstallments: editApartment.hasInstallments ? (editApartment.remainingInstallments ?? null) : null,
+        installmentAmount: editApartment.hasInstallments ? (editApartment.installmentAmount ?? null) : null,
+        installmentFrequency: editApartment.hasInstallments ? (editApartment.installmentFrequency ?? null) : null,
+        installmentsNotes: editApartment.hasInstallments ? (editApartment.installmentsNotes?.trim() || null) : null,
         images: Array.isArray(editApartment.images) ? JSON.stringify(editApartment.images) : (editApartment.images || null),
         videos: Array.isArray(editApartment.videos) ? JSON.stringify(editApartment.videos) : (editApartment.videos || null),
         // مستندات الملكية — تُرسل فقط لو عدّلها المطور في هذه الجلسة
@@ -2499,11 +2567,14 @@ function App() {
       setPaymentSubmitting(true);
       try {
         const inqRes = await fetch('/api/inquiries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apartmentId: paymentApartment.id, userId: currentUser?.id, name: currentUser?.name || 'زائر', email: currentUser?.identifier || 'guest@example.com', phone: 'N/A', message: 'طلب بيانات تواصل (مجاني)' }) });
+        if (!inqRes.ok) throw new Error('inquiry-failed');
         const inquiry = await inqRes.json();
-        await fetch('/api/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inquiryId: inquiry.id, method: 'مجاني', status: 'Paid', amount: 0, userId: currentUser?.id }) });
+        if (!inquiry?.id) throw new Error('inquiry-invalid');
+        const payRes = await fetch('/api/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inquiryId: inquiry.id, method: 'مجاني', amount: 0, userId: currentUser?.id }) });
+        if (!payRes.ok) throw new Error('payment-failed');
         setPaymentApartment(null); setPaymentMethod('');
         addToast('تم الحصول على بيانات التواصل مجاناً! ✨', 'success');
-      } finally { setPaymentSubmitting(false); setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+      } catch { addToast('حدث خطأ أثناء إتمام الطلب — حاول تاني', 'error'); } finally { setPaymentSubmitting(false); setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
       return;
     }
     if (!paymentMethod) return;
@@ -2512,11 +2583,14 @@ function App() {
     setPaymentSubmitting(true);
     try {
       const inqRes = await fetch('/api/inquiries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apartmentId: paymentApartment.id, userId: currentUser?.id, name: currentUser?.name || 'زائر', email: currentUser?.identifier || 'guest@example.com', phone: 'N/A', message: 'طلب بيانات تواصل' }) });
+      if (!inqRes.ok) throw new Error('inquiry-failed');
       const inquiry = await inqRes.json();
-      await fetch('/api/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inquiryId: inquiry.id, method: paymentMethod, status: 'Pending', amount: settings.contactFee, userId: currentUser?.id }) });
+      if (!inquiry?.id) throw new Error('inquiry-invalid');
+      const payRes = await fetch('/api/payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inquiryId: inquiry.id, method: paymentMethod, amount: settings.contactFee, userId: currentUser?.id }) });
+      if (!payRes.ok) throw new Error('payment-failed');
       setPaymentApartment(null); setPaymentMethod('');
-      addToast('تم إرسال طلب الدفع!', 'success');
-    } finally { setPaymentSubmitting(false); setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
+      addToast('تم إرسال طلب الدفع! هيتأكد من الإدارة قريباً 🙏', 'success');
+    } catch { addToast('حدث خطأ أثناء إرسال طلب الدفع — حاول تاني', 'error'); } finally { setPaymentSubmitting(false); setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'warning' }); }
   };
 
   const handleConfirmPayment = async (paymentId: string, confirmed: boolean = false) => {
@@ -2698,37 +2772,6 @@ function App() {
   };
 
   // Handle file upload
-  const handleFileUpload = async (files: FileList | null, type: 'image' | 'video'): Promise<string[]> => {
-    if (!files || files.length === 0) return [];
-    
-    const uploadedUrls: string[] = [];
-    
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('type', type);
-      
-      try {
-        const res = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData
-        });
-        
-        const data = await res.json();
-        if (res.ok && data.url) {
-          uploadedUrls.push(data.url);
-        } else {
-          addToast(data.error || `فشل في رفع ${file.name}`, 'error');
-        }
-      } catch {
-        addToast(`فشل في رفع ${file.name}`, 'error');
-      }
-    }
-    
-    return uploadedUrls;
-  };
-
   // Delete like (developer only)
   const deleteLike = async (likeId: string) => {
     try {
@@ -2784,6 +2827,16 @@ function App() {
   };
 
   // AI Description Generation for Apartments
+  // سطر الأقساط اليتضاف للوصف لو العقار عليها أقساط — بيخلي الإعلان نصّاً واضح إن "يوجد أقساط"
+  const installmentsDescSuffix = () => {
+    if (!aptForm.hasInstallments) return '';
+    const freq = aptForm.installmentFrequency === 'quarterly' ? 'ربعي' : aptForm.installmentFrequency === 'annual' ? 'سنوي' : 'شهري';
+    const parts: string[] = [];
+    if (aptForm.remainingInstallments) parts.push(`متبقي ${aptForm.remainingInstallments} قسط`);
+    if (aptForm.installmentAmount) parts.push(`قيمة القسط ${aptForm.installmentAmount} ج.م (${freq})`);
+    if (!parts.length) return '\nويوجد أقساط على العقار — والمبلغ المطلوب غير شامل الأقساط.';
+    return `\nويوجد أقساط على العقار (${parts.join('، ')}) — والمبلغ المطلوب غير شامل الأقساط.`;
+  };
   const generateAIDescription = async () => {
     if (!aptForm.title || !aptForm.area) {
       addToast('أدخل العنوان والمنطقة أولاً', 'error');
@@ -2799,18 +2852,18 @@ function App() {
           area: aptForm.area,
           bedrooms: parseInt(aptForm.bedrooms),
           bathrooms: parseInt(aptForm.bathrooms),
-          features: []
+          features: aptForm.hasInstallments ? ['يوجد أقساط متبقية على العقار'] : []
         })
       });
       const data = await res.json();
       if (res.ok && data.description) {
-        setAptForm({ ...aptForm, description: data.description });
+        setAptForm({ ...aptForm, description: data.description + installmentsDescSuffix() });
         addToast('تم إنشاء الوصف بالذكاء الاصطناعي! ✨', 'success');
       } else {
         // Fallback description
         const fallbackDesc = `${aptForm.title} - ${aptForm.type === 'rent' ? 'للإيجار' : 'للبيع'} في ${aptForm.area}.
 ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام${aptForm.floor ? `، الدور ${aptForm.floor}` : ''}${aptForm.apartmentSize ? `، مساحة ${aptForm.apartmentSize} م²` : ''}.
-${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م` : `السعر ${aptForm.price} ج.م`}.`;
+${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م` : `السعر ${aptForm.price} ج.م`}.${installmentsDescSuffix()}`;
         setAptForm({ ...aptForm, description: fallbackDesc });
         addToast('تم إنشاء وصف افتراضي', 'success');
       }
@@ -2818,7 +2871,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
       // Fallback on error
       const fallbackDesc = `${aptForm.title} - ${aptForm.type === 'rent' ? 'للإيجار' : 'للبيع'} في ${aptForm.area}.
 ${aptForm.bedrooms} غرف نوم، ${aptForm.bathrooms} حمام${aptForm.floor ? `، الدور ${aptForm.floor}` : ''}${aptForm.apartmentSize ? `، مساحة ${aptForm.apartmentSize} م²` : ''}.
-${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م` : `السعر ${aptForm.price} ج.م`}.`;
+${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م` : `السعر ${aptForm.price} ج.م`}.${installmentsDescSuffix()}`;
       setAptForm({ ...aptForm, description: fallbackDesc });
       addToast('تم إنشاء وصف افتراضي', 'info');
     } finally {
@@ -2878,8 +2931,11 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
   };
 
   // v9.2 — هويات ثابتة لدوال الكروت عشان memo يشتغل (بتستدعي دايماً آخر نسخة من الدالة — صفر مخاطرة stale state)
-  const gridActionsRef = useRef({ toggleFavorite, toggleCompare, handleDeleteApartment, fetchComments });
-  gridActionsRef.current = { toggleFavorite, toggleCompare, handleDeleteApartment, fetchComments };
+  const gridActionsRef = useRef({ toggleFavorite, toggleCompare, handleDeleteApartment, fetchComments, openEditApartment });
+  gridActionsRef.current = { toggleFavorite, toggleCompare, handleDeleteApartment, fetchComments, openEditApartment };
+  // هوية ثابتة لـ openEditApartment — كانت تُمرَّر خاماً فتبطل memo الكروت بالكامل مع كل re-render
+  // (أي توست/فتح نافذة/حرف بحث كان يعيد رسم ~42 كارت) — نفس نمط stableToggleFavorite
+  const stableOpenEditApartment = useCallback((apt: Apartment) => gridActionsRef.current.openEditApartment(apt), []);
   const stableToggleFavorite = useCallback((id: string) => gridActionsRef.current.toggleFavorite(id), []);
   const stableToggleCompare = useCallback((id: string) => gridActionsRef.current.toggleCompare(id), []);
   const stableDeleteApartment = useCallback((id: string) => gridActionsRef.current.handleDeleteApartment(id), []);
@@ -3286,7 +3342,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
             <div className="flex flex-col md:flex-row gap-4">
               <div className="flex-1 relative">
                 <Filter className={`absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`} />
-                <input type="text" placeholder="ابحث عن شقة..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className={`w-full pr-12 pl-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
+                <input type="text" placeholder="ابحث عن شقة..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} className={`w-full pr-12 pl-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
               </div>
               <div className="flex flex-wrap gap-3">
                 <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as any)} className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="all">الكل</option><option value="rent">إيجار</option><option value="sale">بيع</option></select>
@@ -3295,6 +3351,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <select value={bathroomsFilter} onChange={(e) => setBathroomsFilter(e.target.value)} className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="all">عدد الحمامات</option><option value="1">1+ حمام</option><option value="2">2+ حمام</option><option value="3">3+ حمام</option></select>
                 <select value={sizeFilter} onChange={(e) => setSizeFilter(e.target.value)} className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="all">كل المساحات</option><option value="50">50+ م²</option><option value="80">80+ م²</option><option value="100">100+ م²</option><option value="120">120+ م²</option><option value="150">150+ م²</option><option value="200">200+ م²</option><option value="250">250+ م²</option></select>
                 <select value={priceFilter} onChange={(e) => setPriceFilter(e.target.value)} className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="all">كل الأسعار</option><option value="5000">حتى 5,000</option><option value="10000">حتى 10,000</option><option value="20000">حتى 20,000</option><option value="50000">حتى 50,000</option><option value="100000">حتى 100,000</option><option value="500000">حتى 500,000</option><option value="1000000">حتى 1,000,000</option></select>
+                <select value={installmentsFilter} onChange={(e) => setInstallmentsFilter(e.target.value)} aria-label="فلترة حسب الأقساط" className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="all">الأقساط: الكل</option><option value="yes">عليها أقساط</option><option value="no">بدون أقساط</option></select>
               </div>
             </div>
           </div>
@@ -3305,7 +3362,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredApartments.map((apartment, i) => (
-                <ApartmentCard key={apartment.id} apartment={apartment} index={i} darkMode={darkMode} isFavorite={favorites.includes(apartment.id)} isCompared={compareList.includes(apartment.id)} isDeveloper={isDeveloper} toggleFavorite={stableToggleFavorite} toggleCompare={stableToggleCompare} deleteApartment={stableDeleteApartment} fetchComments={stableFetchComments} setSelectedApartment={setSelectedApartment} openEditApartment={openEditApartment} setCurrentImageIndex={setCurrentImageIndex} />
+                <ApartmentCard key={apartment.id} apartment={apartment} index={i} darkMode={darkMode} isFavorite={favorites.includes(apartment.id)} isCompared={compareList.includes(apartment.id)} isDeveloper={isDeveloper} toggleFavorite={stableToggleFavorite} toggleCompare={stableToggleCompare} deleteApartment={stableDeleteApartment} fetchComments={stableFetchComments} setSelectedApartment={setSelectedApartment} openEditApartment={stableOpenEditApartment} setCurrentImageIndex={setCurrentImageIndex} />
               ))}
             </div>
           )}
@@ -3321,7 +3378,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
           <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border ${hasMixedTypes ? 'border-red-500/50 bg-gradient-to-r from-red-50 to-rose-50 dark:from-red-950/50 dark:to-rose-950/50' : darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
             <div className="flex -space-x-2 rtl:space-x-reverse">
               {compareApts.map(apt => (
-                <img key={apt.id} src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-10 h-10 rounded-full border-2 border-white object-cover" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
+                <img loading="lazy" decoding="async" key={apt.id} src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-10 h-10 rounded-full border-2 border-white object-cover" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
               ))}
             </div>
             {hasMixedTypes ? (
@@ -3359,7 +3416,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
               <div className="flex gap-3 mt-4 overflow-x-auto pb-2">
                 {compareApts.map(apt => (
                   <div key={apt.id} className={`flex items-center gap-3 p-2 rounded-xl shrink-0 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                    <img src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-12 h-12 rounded-lg object-cover" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
+                    <img loading="lazy" decoding="async" src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-12 h-12 rounded-lg object-cover" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
                     <div>
                       <p className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</p>
                       <p className="text-xs text-purple-500 font-medium">{apt.type === 'rent' ? 'إيجار' : 'بيع'}</p>
@@ -3421,7 +3478,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                         <th className={`p-3 text-right text-sm font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>المعيار</th>
                         {compareApts.map(apt => (
                           <th key={apt.id} className="p-3 text-center">
-                            <img src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-16 h-12 object-cover rounded-lg mx-auto mb-2" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
+                            <img loading="lazy" decoding="async" src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-16 h-12 object-cover rounded-lg mx-auto mb-2" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
                             <p className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</p>
                           </th>
                         ))}
@@ -3682,7 +3739,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div className="text-center py-12"><Heart className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>لا توجد شقق في المفضلة</p></div>
               ) : apartments.filter(a => favorites.includes(a.id)).map(apt => (
                 <div key={apt.id} className={`flex gap-3 p-3 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'} group`}>
-                  <img src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-24 h-20 object-cover rounded-lg shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
+                  <img loading="lazy" decoding="async" src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-24 h-20 object-cover rounded-lg shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
                   <div className="flex-1 min-w-0">
                     <h4 className={`font-bold truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h4>
                     <p className="text-lg font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent">{apt.price.toLocaleString()} ج.م</p>
@@ -3771,7 +3828,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div className="space-y-4">{myPendingApartments.map(apt => (
                   <div key={apt.id} className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
                     <div className="flex gap-4">
-                      <img src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-24 h-20 object-cover rounded-lg" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
+                      <img loading="lazy" decoding="async" src={apt.imageUrl || apt.images?.[0] || '/logo.svg'} alt={apt.title} className="w-24 h-20 object-cover rounded-lg" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
                       <div className="flex-1">
                         <span className="px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">قيد المراجعة</span>
                         <h3 className={`font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{apt.title}</h3>
@@ -4185,7 +4242,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
             <form onSubmit={(e) => { e.preventDefault(); handleAddApartment(); }} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>عنوان الشقة *</label><input type="text" value={aptForm.title} onChange={(e) => setAptForm({ ...aptForm, title: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
-                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>السعر *</label><input type="number" value={aptForm.price} onChange={(e) => setAptForm({ ...aptForm, price: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
+                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{aptForm.hasInstallments ? '💰 المبلغ المطلوب (كاش — غير الأقساط) *' : 'السعر *'}</label><input type="number" value={aptForm.price} onChange={(e) => setAptForm({ ...aptForm, price: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>المنطقة *</label><input type="text" list="area-suggestions" value={aptForm.area} onChange={(e) => setAptForm({ ...aptForm, area: e.target.value })} placeholder="اكتب أو اختر المنطقة" className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /><datalist id="area-suggestions">{egyptianAreas.map(area => <option key={area} value={area} />)}</datalist></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>غرف النوم</label><select value={aptForm.bedrooms} onChange={(e) => setAptForm({ ...aptForm, bedrooms: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>{[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحمامات</label><select value={aptForm.bathrooms} onChange={(e) => setAptForm({ ...aptForm, bathrooms: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>{[1, 2, 3, 4].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
@@ -4209,6 +4266,33 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <p className={`text-xs font-bold ${aptForm.listingType === 'vip' ? 'text-purple-600 dark:text-purple-400' : darkMode ? 'text-slate-300' : 'text-slate-600'}`}>VIP+</p>
                       <p className={`text-xs mt-0.5 ${(settings.vipFee || 300) === 0 ? 'text-emerald-500 font-bold' : (darkMode ? 'text-slate-500' : 'text-slate-400')}`}>{(settings.vipFee || 300) === 0 ? 'مجاني ✨' : `${settings.vipFee || 300} ${settings.currency}`}</p>
                     </button>
+                  </div>
+                </div>
+                <div className="col-span-2">
+                  <div className={`rounded-xl border p-4 space-y-4 ${aptForm.hasInstallments ? (darkMode ? 'border-amber-700/60 bg-amber-900/10' : 'border-amber-300 bg-amber-50/70') : (darkMode ? 'border-slate-600 bg-slate-700/40' : 'border-slate-200 bg-slate-50/80')}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className={`font-bold text-sm flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><CreditCard className="h-4 w-4 text-amber-500" />العقار عليه أقساط؟</p>
+                        <p className={`text-xs mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لو الشقة لسه عليها أقساط (مثلاً لشركة أو كومباوند)، فعّل ده واكتب تفاصيل الأقساط — والمبلغ المطلوب فوق يبقى غير الأقساط. الكل هيظهر على الإعلان بعد النشر</p>
+                      </div>
+                      <button type="button" role="switch" aria-checked={aptForm.hasInstallments} aria-label="تفعيل الأقساط" onClick={() => setAptForm({ ...aptForm, hasInstallments: !aptForm.hasInstallments })} className={`inline-flex h-7 w-12 shrink-0 items-center rounded-full px-1 transition-colors ${aptForm.hasInstallments ? 'justify-end bg-amber-500' : darkMode ? 'justify-start bg-slate-600' : 'justify-start bg-slate-300'}`}><span className="inline-block h-5 w-5 rounded-full bg-white shadow" /></button>
+                    </div>
+                    {aptForm.hasInstallments && (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div><label className={`block text-xs font-medium mb-1.5 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>عدد الأقساط المتبقية</label><input type="number" min="0" placeholder="مثال: 24" value={aptForm.remainingInstallments} onChange={(e) => setAptForm({ ...aptForm, remainingInstallments: e.target.value })} className={`w-full px-3 py-2.5 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                          <div><label className={`block text-xs font-medium mb-1.5 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>قيمة القسط الواحد</label><input type="number" min="0" placeholder="مثال: 15000" value={aptForm.installmentAmount} onChange={(e) => setAptForm({ ...aptForm, installmentAmount: e.target.value })} className={`w-full px-3 py-2.5 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                          <div><label className={`block text-xs font-medium mb-1.5 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>دورية السداد</label><select value={aptForm.installmentFrequency} onChange={(e) => setAptForm({ ...aptForm, installmentFrequency: e.target.value })} className={`w-full px-3 py-2.5 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="monthly">شهري</option><option value="quarterly">ربعي (كل 3 شهور)</option><option value="annual">سنوي</option></select></div>
+                        </div>
+                        {(parseInt(aptForm.remainingInstallments) > 0 && parseInt(aptForm.installmentAmount) > 0) && (
+                          <div className={`p-3 rounded-xl text-sm font-bold flex flex-wrap items-center gap-x-3 gap-y-1 ${darkMode ? 'bg-slate-800/80 text-amber-300' : 'bg-white text-amber-700'}`}>
+                            <span>📊 إجمالي الأقساط المتبقية: {(parseInt(aptForm.remainingInstallments) * parseInt(aptForm.installmentAmount)).toLocaleString('ar-EG')} ج.م</span>
+                            <span className="text-xs font-medium opacity-70">(غير شامل المبلغ المطلوب كاش)</span>
+                          </div>
+                        )}
+                        <div><label className={`block text-xs font-medium mb-1.5 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>تفاصيل الدفع (اختياري)</label><textarea placeholder="مثال: متبقي 24 قسط لشركة التطوير — القسط يُدفع يوم 5 من كل شهر، ونقل العقد بعد سداد القسط الأول" value={aptForm.installmentsNotes} onChange={(e) => setAptForm({ ...aptForm, installmentsNotes: e.target.value })} rows={2} className={`w-full px-3 py-2.5 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>رقم الهاتف *</label><input type="tel" value={aptForm.ownerPhone} onChange={(e) => setAptForm({ ...aptForm, ownerPhone: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
@@ -4257,6 +4341,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <span className={`px-3 py-1 rounded-full text-sm font-medium text-white ${selectedApartment.type === 'rent' ? 'bg-emerald-500' : 'bg-blue-500'}`}>{selectedApartment.type === 'rent' ? 'للإيجار' : 'للبيع'}</span>
                 <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusConfig[selectedApartment.status]?.bgColor} ${statusConfig[selectedApartment.status]?.color}`}>{statusConfig[selectedApartment.status]?.label}</span>
                 {selectedApartment.ownershipVerified && <span className="px-3 py-1 rounded-full text-sm font-medium bg-emerald-500 text-white flex items-center gap-1" title="تم التحقق من مستندات ملكية هذا العقار"><ShieldCheck className="h-4 w-4" />ملكية موثقة</span>}
+                {selectedApartment.hasInstallments && <span className="px-3 py-1 rounded-full text-sm font-medium bg-gradient-to-r from-amber-500 to-orange-600 text-white flex items-center gap-1" title="هذا العقار عليه أقساط متبقية"><CreditCard className="h-4 w-4" />يوجد أقساط</span>}
               </div>
             </div>
             <div className="p-6">
@@ -4268,8 +4353,22 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div className="flex items-center gap-1"><Bath className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.bathrooms} حمام</span></div>
                 {selectedApartment.floor && <div className="flex items-center gap-1"><Home className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>الدور {selectedApartment.floor}</span></div>}
               </div>
-              <p className="text-3xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent mb-4">{selectedApartment.price.toLocaleString()} ج.م{selectedApartment.type === 'rent' && <span className="text-sm text-slate-500"> /شهر</span>}</p>
+              <p className="text-3xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent mb-4">{selectedApartment.price.toLocaleString()} ج.م{selectedApartment.type === 'rent' && <span className="text-sm text-slate-500"> /شهر</span>}{selectedApartment.hasInstallments && <span className="text-base text-amber-500"> + أقساط</span>}</p>
               <p className={`mb-6 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{selectedApartment.description}</p>
+
+              {selectedApartment.hasInstallments && (
+                <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-amber-900/20 border border-amber-700/50' : 'bg-amber-50 border border-amber-200'}`}>
+                  <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><CreditCard className="h-5 w-5 text-amber-500" />تفاصيل الأقساط</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                    <p className={darkMode ? 'text-slate-300' : 'text-slate-700'}>💰 المطلوب كاش (غير الأقساط): <span className="font-bold">{selectedApartment.price.toLocaleString('ar-EG')} ج.م</span></p>
+                    {!!selectedApartment.remainingInstallments && <p className={darkMode ? 'text-slate-300' : 'text-slate-700'}>🔢 الأقساط المتبقية: <span className="font-bold">{selectedApartment.remainingInstallments} قسط</span></p>}
+                    {!!selectedApartment.installmentAmount && <p className={darkMode ? 'text-slate-300' : 'text-slate-700'}>💳 قيمة القسط: <span className="font-bold">{selectedApartment.installmentAmount.toLocaleString('ar-EG')} ج.م{selectedApartment.installmentFrequency && INSTALLMENT_FREQ_LABELS[selectedApartment.installmentFrequency] ? ` / ${INSTALLMENT_FREQ_LABELS[selectedApartment.installmentFrequency]}` : ''}</span></p>}
+                    {(!!selectedApartment.remainingInstallments && !!selectedApartment.installmentAmount) && <p className={darkMode ? 'text-slate-300' : 'text-slate-700'}>📊 إجمالي الأقساط المتبقية: <span className="font-bold">{(selectedApartment.remainingInstallments * selectedApartment.installmentAmount).toLocaleString('ar-EG')} ج.م</span></p>}
+                    {(!!selectedApartment.remainingInstallments && !!selectedApartment.installmentAmount) && <p className={`sm:col-span-2 border-t pt-2 mt-1 ${darkMode ? 'border-amber-700/40 text-amber-200' : 'border-amber-200 text-amber-800'}`}>🧮 التكلفة الإجمالية التقديرية (كاش + أقساط): <span className="font-bold">{(selectedApartment.price + selectedApartment.remainingInstallments * selectedApartment.installmentAmount).toLocaleString('ar-EG')} ج.م</span></p>}
+                  </div>
+                  {selectedApartment.installmentsNotes && <p className={`mt-3 text-sm leading-relaxed ${darkMode ? 'text-amber-200/90' : 'text-amber-800'}`}><span className="font-bold">📝 تفاصيل الدفع:</span> {selectedApartment.installmentsNotes}</p>}
+                </div>
+              )}
               
               {hasPaidForApartment(selectedApartment.id) ? (
                 <div className={`p-4 rounded-xl mb-6 ${darkMode ? 'bg-slate-700' : 'bg-slate-100'}`}>
@@ -4376,7 +4475,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
             <form onSubmit={handleEditApartment} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>العنوان</label><input type="text" value={editApartment.title} onChange={(e) => setEditApartment({ ...editApartment, title: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
-                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>السعر</label><input type="number" value={editApartment.price} onChange={(e) => setEditApartment({ ...editApartment, price: parseInt(e.target.value) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{editApartment.hasInstallments ? '💰 المبلغ المطلوب (كاش — غير الأقساط)' : 'السعر'}</label><input type="number" value={editApartment.price} onChange={(e) => setEditApartment({ ...editApartment, price: parseInt(e.target.value) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>المنطقة</label><input type="text" list="area-suggestions-edit" value={editApartment.area} onChange={(e) => setEditApartment({ ...editApartment, area: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /><datalist id="area-suggestions-edit">{egyptianAreas.map(area => <option key={area} value={area} />)}</datalist></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>غرف النوم</label><select value={editApartment.bedrooms} onChange={(e) => setEditApartment({ ...editApartment, bedrooms: parseInt(e.target.value) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>{[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحمامات</label><select value={editApartment.bathrooms} onChange={(e) => setEditApartment({ ...editApartment, bathrooms: parseInt(e.target.value) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}>{[1, 2, 3, 4].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
@@ -4385,6 +4484,33 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الهاتف</label><input type="tel" value={editApartment.ownerPhone} onChange={(e) => setEditApartment({ ...editApartment, ownerPhone: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                 <div><label className={`block text-sm font-medium mb-2 flex items-center gap-1.5 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}><WhatsAppIcon className="h-4 w-4 text-emerald-500" />رقم واتساب (اختياري)</label><input type="tel" dir="ltr" value={editApartment.ownerWhatsapp || ''} onChange={(e) => setEditApartment({ ...editApartment, ownerWhatsapp: e.target.value })} placeholder="01xxxxxxxxx" className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /><p className={`text-xs mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>يظهر مع بيانات التواصل — والعميل يفتح محادثة واتساب مباشرة</p></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحالة</label><select value={editApartment.status} onChange={(e) => { const newStatus = e.target.value; if (['sold', 'rented', 'unavailable'].includes(newStatus) && !['sold', 'rented', 'unavailable'].includes(editApartment.status)) { setEditStatusWarning(newStatus); } setEditApartment({ ...editApartment, status: newStatus }); }} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="available">متاح</option><option value="reserved">محجوز</option><option value="unavailable">غير متاح</option><option value="sold">تم البيع</option><option value="rented">تم التأجير</option></select>{editStatusWarning && <p className="text-red-500 text-xs mt-1.5 flex items-center gap-1 font-bold"><AlertTriangle className="h-3 w-3" />⚠️ سيتم أرشفة العقار وإخفاؤه من العرض بعد 48 ساعة من الحفظ (يمكن الاستعادة من لوحة المطور)</p>}</div>
+                <div className="col-span-2">
+                  <div className={`rounded-xl border p-4 space-y-4 ${editApartment.hasInstallments ? (darkMode ? 'border-amber-700/60 bg-amber-900/10' : 'border-amber-300 bg-amber-50/70') : (darkMode ? 'border-slate-600 bg-slate-700/40' : 'border-slate-200 bg-slate-50/80')}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className={`font-bold text-sm flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><CreditCard className="h-4 w-4 text-amber-500" />العقار عليه أقساط؟</p>
+                        <p className={`text-xs mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>لو فعّلتها، المبلغ المطلوب فوق يبقى غير الأقساط — وتفاصيل الأقساط تظهر على الإعلان</p>
+                      </div>
+                      <button type="button" role="switch" aria-checked={!!editApartment.hasInstallments} aria-label="تفعيل الأقساط" onClick={() => setEditApartment({ ...editApartment, hasInstallments: !editApartment.hasInstallments })} className={`inline-flex h-7 w-12 shrink-0 items-center rounded-full px-1 transition-colors ${editApartment.hasInstallments ? 'justify-end bg-amber-500' : darkMode ? 'justify-start bg-slate-600' : 'justify-start bg-slate-300'}`}><span className="inline-block h-5 w-5 rounded-full bg-white shadow" /></button>
+                    </div>
+                    {editApartment.hasInstallments && (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div><label className={`block text-xs font-medium mb-1.5 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>عدد الأقساط المتبقية</label><input type="number" min="0" placeholder="مثال: 24" value={editApartment.remainingInstallments ?? ''} onChange={(e) => setEditApartment({ ...editApartment, remainingInstallments: e.target.value === '' ? null : parseInt(e.target.value) })} className={`w-full px-3 py-2.5 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                          <div><label className={`block text-xs font-medium mb-1.5 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>قيمة القسط الواحد</label><input type="number" min="0" placeholder="مثال: 15000" value={editApartment.installmentAmount ?? ''} onChange={(e) => setEditApartment({ ...editApartment, installmentAmount: e.target.value === '' ? null : parseInt(e.target.value) })} className={`w-full px-3 py-2.5 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                          <div><label className={`block text-xs font-medium mb-1.5 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>دورية السداد</label><select value={editApartment.installmentFrequency || 'monthly'} onChange={(e) => setEditApartment({ ...editApartment, installmentFrequency: e.target.value })} className={`w-full px-3 py-2.5 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="monthly">شهري</option><option value="quarterly">ربعي (كل 3 شهور)</option><option value="annual">سنوي</option></select></div>
+                        </div>
+                        {((editApartment.remainingInstallments || 0) > 0 && (editApartment.installmentAmount || 0) > 0) && (
+                          <div className={`p-3 rounded-xl text-sm font-bold flex flex-wrap items-center gap-x-3 gap-y-1 ${darkMode ? 'bg-slate-800/80 text-amber-300' : 'bg-white text-amber-700'}`}>
+                            <span>📊 إجمالي الأقساط المتبقية: {((editApartment.remainingInstallments || 0) * (editApartment.installmentAmount || 0)).toLocaleString('ar-EG')} ج.م</span>
+                            <span className="text-xs font-medium opacity-70">(غير شامل المبلغ المطلوب كاش)</span>
+                          </div>
+                        )}
+                        <div><label className={`block text-xs font-medium mb-1.5 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>تفاصيل الدفع (اختياري)</label><textarea placeholder="مثال: متبقي 24 قسط لشركة التطوير — القسط يُدفع يوم 5 من كل شهر" value={editApartment.installmentsNotes || ''} onChange={(e) => setEditApartment({ ...editApartment, installmentsNotes: e.target.value })} rows={2} className={`w-full px-3 py-2.5 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
+                      </div>
+                    )}
+                  </div>
+                </div>
                 <div className="col-span-2"><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الوصف</label><textarea value={editApartment.description} onChange={(e) => setEditApartment({ ...editApartment, description: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} rows={3} /></div>
                 <div className="col-span-2">
                   <div className={`rounded-xl border p-4 space-y-4 ${darkMode ? 'border-slate-600 bg-slate-700/40' : 'border-slate-200 bg-slate-50/80'}`}>
@@ -4431,7 +4557,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <div className="grid grid-cols-1 gap-2">
                         {msg.results.map((r) => (
                           <button key={r.id} onClick={() => openChatApartment(r)} aria-label={`عرض ${r.title}`} className={`flex items-center gap-3 p-2.5 rounded-xl border text-right transition-all hover:scale-[1.01] hover:shadow-md ${darkMode ? 'bg-slate-900/60 border-slate-600 hover:border-violet-500' : 'bg-white border-slate-200 hover:border-violet-400'}`}>
-                            <img src={r.imageUrl || '/logo.svg'} alt={r.title} className="w-14 h-14 rounded-lg object-cover shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
+                            <img loading="lazy" decoding="async" src={r.imageUrl || '/logo.svg'} alt={r.title} className="w-14 h-14 rounded-lg object-cover shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; (e.target as HTMLImageElement).onerror = null; }} />
                             <div className="min-w-0 flex-1">
                               <p className={`text-sm font-bold truncate ${darkMode ? 'text-white' : 'text-slate-900'}`}>{r.title}</p>
                               <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>📍 {r.area} • 🛏️ {r.bedrooms} غرف</p>

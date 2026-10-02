@@ -76,6 +76,13 @@ model Apartment {
   bathrooms        Int
   floor            Int?
   apartmentSize    Int?
+  // نظام الأقساط — لو العقار لسه عليه أقساط (مثلاً من شركة/كومباوند)
+  // price هنا = المبلغ المطلوب كاش (غير الأقساط) — والأقساط تُعرض في الإعلان
+  hasInstallments        Boolean @default(false)
+  remainingInstallments  Int?    // عدد الأقساط المتبقية
+  installmentAmount      Int?    // قيمة القسط الواحد
+  installmentFrequency   String? // monthly | quarterly | annual
+  installmentsNotes      String? // تفاصيل الدفع (نص حر للمالك)
   description      String
   ownerPhone       String
   ownerWhatsapp    String?
