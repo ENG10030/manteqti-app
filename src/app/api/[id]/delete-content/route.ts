@@ -1,50 +1,17 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getCurrentUser } from "@/lib/auth"
-import { db } from "@/lib/db"
+import { NextResponse } from "next/server";
 
-// حذف عقار
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const user = await getCurrentUser(request)
-
-    if (!user || user.role !== "DEVELOPER") {
-      return NextResponse.json(
-        { error: "غير مصرح لك بهذا الإجراء" },
-        { status: 403 }
-      )
-    }
-
-    const { id: apartmentId } = await params
-
-    const apartment = await db.apartment.findUnique({
-      where: { id: apartmentId }
-    })
-
-    if (!apartment) {
-      return NextResponse.json(
-        { error: "العقار غير موجود" },
-        { status: 404 }
-      )
-    }
-
-    // حذف العقار
-    await db.apartment.delete({
-      where: { id: apartmentId }
-    })
-
-    return NextResponse.json({
-      success: true,
-      message: "تم حذف العقار نهائياً"
-    })
-
-  } catch (error) {
-    console.error("Delete apartment error:", error)
-    return NextResponse.json(
-      { error: "حدث خطأ أثناء حذف العقار" },
-      { status: 500 }
-    )
-  }
+// ⛔ المسار القديم اتقفل نهائياً (v10.3) — كان مفتوح بلا مصادقة كاملة
+// البديل المحمي بالجلسة والملكية والدور: /api/apartments/[id]
+// الرد 410 Gone واضح لأي نداء قديم بدل ما يفضل شغال بلا حماية
+function gone() {
+  return NextResponse.json(
+    { error: "هذا المسار القديم اتشال نهائياً — استخدم /api/apartments/[id] المحمي" },
+    { status: 410 }
+  );
 }
+
+export async function GET() { return gone(); }
+export async function POST() { return gone(); }
+export async function PUT() { return gone(); }
+export async function PATCH() { return gone(); }
+export async function DELETE() { return gone(); }

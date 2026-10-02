@@ -165,6 +165,51 @@ function processApartment(apt: any): Apartment {
 
 const egyptianAreas = ['المعادي', 'مدينة نصر', 'الدقي', 'المهندسين', 'حلوان', 'عين شمس', 'مصر الجديدة', 'التجمع الخامس', 'الشيخ زايد', 'العباسية', 'المقطم', 'شبرا', 'الزمالك', 'التجمع الأول', 'القاهرة الجديدة', 'أكتوبر', 'العبور', 'الشروق', 'الرقابة', 'فيصل', 'جاردن سيتي', 'المعصرة', 'عابدين', 'الزهراء', 'حدائق القبة', 'مدينة السلام', '15 مايو', 'حلوان الجديدة', 'بدر', 'النزهة', 'المريوطية'];
 
+// ═══ الفلترة الذكية الديناميكية (v10.3): صفر أرقام ثابتة — كل خيارات الفلترة محسوبة من العقارات المنشورة فعلاً ═══
+// تنسيق سعر مختصر: 15000 → "15 ألف"، 2500000 → "2.5 مليون"، 3500 → "3,500"
+function formatPriceShort(v: number): string {
+  if (!isFinite(v) || v <= 0) return '0';
+  if (v >= 1000000) {
+    const m = v / 1000000;
+    const s = m % 1 === 0 ? String(m) : m.toFixed(1).replace(/\.0$/, '');
+    return `${s} مليون`;
+  }
+  if (v >= 10000) {
+    const k = v / 1000;
+    const s = k % 1 === 0 ? String(k) : k.toFixed(1).replace(/\.0$/, '');
+    return `${s} ألف`;
+  }
+  return v.toLocaleString();
+}
+
+// تقريب لأعلى لأقرب رقم "لطيف": 37300 → 40,000 — 1240000 → 1,500,000
+function niceCeil(v: number): number {
+  if (v <= 0) return 0;
+  const mag = Math.pow(10, Math.floor(Math.log10(v)));
+  const norm = v / mag;
+  const step = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find(s => norm <= s) ?? 10;
+  return Math.round(step * mag);
+}
+
+// حدود ديناميكية من قيم منشورة فعلاً:
+// قيم فريدة قليلة → الخيارات هي القيم نفسها بالظبط | كتير → حدود من توزيع البيانات (quantiles) مقرّبة لأرقام لطيفة
+function buildDynamicBuckets(values: number[], maxBuckets = 5): number[] {
+  const uniq = [...new Set(values.filter(v => typeof v === 'number' && isFinite(v) && v > 0))].sort((a, b) => a - b);
+  if (uniq.length === 0) return [];
+  if (uniq.length <= maxBuckets) return uniq;
+  const cutoffs: number[] = [];
+  for (let i = 1; i <= maxBuckets; i++) {
+    const idx = Math.min(uniq.length - 1, Math.round((i / maxBuckets) * (uniq.length - 1)));
+    cutoffs.push(niceCeil(uniq[idx]));
+  }
+  return [...new Set(cutoffs)].sort((a, b) => a - b);
+}
+
+// قيم "X+" للغرف/الحمامات: فقط القيم المنشورة فعلاً (مع سقف عقلي يستبعد إدخالات غلط)
+function buildPlusOptions(values: number[], max = 20): number[] {
+  return [...new Set(values.filter(v => Number.isInteger(v) && v >= 1 && v <= max))].sort((a, b) => a - b);
+}
+
 // Confirm Dialog Component
 function ConfirmDialog({ isOpen, title, message, confirmText = 'تأكيد', cancelText = 'إلغاء', onConfirm, onCancel, type = 'warning', loading = false, darkMode }: { isOpen: boolean; title: string; message: string; confirmText?: string; cancelText?: string; onConfirm: () => void; onCancel: () => void; type?: 'danger' | 'warning' | 'info'; loading?: boolean; darkMode: boolean; }) {
   if (!isOpen) return null;
@@ -1783,14 +1828,42 @@ function App() {
 
   // Filter apartments — useMemo: الحسابات المشتقة لا تُعاد مع كل تغيير حالة غير متعلق
   // (فتح نافذة/توست/لايك لم يكن ليغيّر النتيجة — كان بيعيد فلترة وفرز كل العقارات بلا داعٍ)
-  const uniqueAreas = useMemo(
-    () => [...new Set([...apartments.map(apt => apt.area), ...egyptianAreas])].filter(a => a).sort(),
-    [apartments]
-  );
+  // ═══ خيارات الفلترة الديناميكية (v10.3) — كلها متولدة من المنشور فعلاً، مفيش أرقام ثابتة ═══
   const statsUniqueAreas = useMemo(
     () => [...new Set(apartments.map(apt => apt.area).filter(a => a))].sort(),
     [apartments]
   );
+  // المناطق: فقط اللي فيها عقارات منشورة فعلاً + عدّاد لكل منطقة (الأكثر نشراً أولاً)
+  const filterAreaOptions = useMemo(
+    () => {
+      const counts = new Map<string, number>();
+      apartments.forEach(apt => { if (apt.area) counts.set(apt.area, (counts.get(apt.area) || 0) + 1); });
+      return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ar')).map(([name, count]) => ({ name, count }));
+    },
+    [apartments]
+  );
+  const typeCounts = useMemo(
+    () => ({ rent: apartments.filter(a => a.type === 'rent').length, sale: apartments.filter(a => a.type === 'sale').length }),
+    [apartments]
+  );
+  const bedroomOptions = useMemo(() => buildPlusOptions(apartments.map(a => a.bedrooms)), [apartments]);
+  const bathroomOptions = useMemo(() => buildPlusOptions(apartments.map(a => a.bathrooms)), [apartments]);
+  const sizeOptions = useMemo(() => buildDynamicBuckets(apartments.filter(a => a.apartmentSize).map(a => a.apartmentSize as number)), [apartments]);
+  // السعر: حدود متولدة من الأسعار المنشورة — لو مختار إيجار أو بيع تتولد من نوعه فقط (سلم الأسعار مختلف تماماً)
+  const priceOptions = useMemo(
+    () => buildDynamicBuckets(apartments.filter(a => typeFilter === 'all' || a.type === typeFilter).map(a => a.price)),
+    [apartments, typeFilter]
+  );
+  // لو حدود السعر اتغيرت (تبديل النوع/تحديث البيانات) والقيمة المختارة بقت غير موجودة — نرجّعها "الكل"
+  useEffect(() => {
+    setPriceFilter(prev => (prev !== 'all' && !priceOptions.some(v => String(v) === prev) ? 'all' : prev));
+  }, [priceOptions]);
+  const hasActiveFilters = typeFilter !== 'all' || areaFilter !== 'all' || bedroomsFilter !== 'all' || bathroomsFilter !== 'all' || sizeFilter !== 'all' || priceFilter !== 'all' || installmentsFilter !== 'all' || searchQuery.trim() !== '';
+  const resetAllFilters = () => {
+    setTypeFilter('all'); setAreaFilter('all'); setBedroomsFilter('all'); setBathroomsFilter('all');
+    setSizeFilter('all'); setPriceFilter('all'); setInstallmentsFilter('all');
+    setSearchInput(''); setSearchQuery('');
+  };
   const filteredApartments = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const list = apartments.filter(apt => {
@@ -1804,7 +1877,7 @@ function App() {
       if (priceFilter !== 'all' && apt.price > parseInt(priceFilter)) return false;
       if (installmentsFilter === 'yes' && !apt.hasInstallments) return false;
       if (installmentsFilter === 'no' && apt.hasInstallments) return false;
-      if (q && !apt.title.toLowerCase().includes(q) && !apt.area.toLowerCase().includes(q)) return false;
+      if (q && !apt.title.toLowerCase().includes(q) && !apt.area.toLowerCase().includes(q) && !(apt.description || '').toLowerCase().includes(q)) return false;
       return true;
     });
     // فرز بتواريخ محسوبة مرة واحدة بدل new Date داخل المقارنة (O(N log N) parse كان يتكرر لكل رندر)
@@ -3345,26 +3418,36 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <input type="text" placeholder="ابحث عن شقة..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} className={`w-full pr-12 pl-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
               </div>
               <div className="flex flex-wrap gap-3">
-                <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as any)} className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="all">الكل</option><option value="rent">إيجار</option><option value="sale">بيع</option></select>
-                <select value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="all">كل المناطق</option>{uniqueAreas.map(area => <option key={area} value={area}>{area}</option>)}</select>
-                <select value={bedroomsFilter} onChange={(e) => setBedroomsFilter(e.target.value)} className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="all">عدد الغرف</option><option value="1">1+ غرفة</option><option value="2">2+ غرفة</option><option value="3">3+ غرفة</option><option value="4">4+ غرفة</option></select>
-                <select value={bathroomsFilter} onChange={(e) => setBathroomsFilter(e.target.value)} className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="all">عدد الحمامات</option><option value="1">1+ حمام</option><option value="2">2+ حمام</option><option value="3">3+ حمام</option></select>
-                <select value={sizeFilter} onChange={(e) => setSizeFilter(e.target.value)} className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="all">كل المساحات</option><option value="50">50+ م²</option><option value="80">80+ م²</option><option value="100">100+ م²</option><option value="120">120+ م²</option><option value="150">150+ م²</option><option value="200">200+ م²</option><option value="250">250+ م²</option></select>
-                <select value={priceFilter} onChange={(e) => setPriceFilter(e.target.value)} className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="all">كل الأسعار</option><option value="5000">حتى 5,000</option><option value="10000">حتى 10,000</option><option value="20000">حتى 20,000</option><option value="50000">حتى 50,000</option><option value="100000">حتى 100,000</option><option value="500000">حتى 500,000</option><option value="1000000">حتى 1,000,000</option></select>
+                <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as any)} aria-label="فلترة حسب النوع" className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="all">الكل ({apartments.length})</option><option value="rent">إيجار ({typeCounts.rent})</option><option value="sale">بيع ({typeCounts.sale})</option></select>
+                <select value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} aria-label="فلترة حسب المنطقة" className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="all">كل المناطق</option>{filterAreaOptions.map(a => <option key={a.name} value={a.name}>{a.name} ({a.count})</option>)}</select>
+                <select value={bedroomsFilter} onChange={(e) => setBedroomsFilter(e.target.value)} aria-label="فلترة حسب عدد الغرف" className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="all">عدد الغرف</option>{bedroomOptions.map(n => <option key={n} value={String(n)}>{n}+ {n === 1 ? 'غرفة' : 'غرف'}</option>)}</select>
+                <select value={bathroomsFilter} onChange={(e) => setBathroomsFilter(e.target.value)} aria-label="فلترة حسب عدد الحمامات" className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="all">عدد الحمامات</option>{bathroomOptions.map(n => <option key={n} value={String(n)}>{n}+ {n === 1 ? 'حمام' : 'حمامات'}</option>)}</select>
+                <select value={sizeFilter} onChange={(e) => setSizeFilter(e.target.value)} aria-label="فلترة حسب المساحة" className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="all">كل المساحات</option>{sizeOptions.map(n => <option key={n} value={String(n)}>{n}+ م²</option>)}</select>
+                <select value={priceFilter} onChange={(e) => setPriceFilter(e.target.value)} aria-label="فلترة حسب السعر" className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="all">كل الأسعار</option>{priceOptions.map(n => <option key={n} value={String(n)}>حتى {formatPriceShort(n)}</option>)}</select>
                 <select value={installmentsFilter} onChange={(e) => setInstallmentsFilter(e.target.value)} aria-label="فلترة حسب الأقساط" className={`px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="all">الأقساط: الكل</option><option value="yes">عليها أقساط</option><option value="no">بدون أقساط</option></select>
+                {hasActiveFilters && (
+                  <button onClick={resetAllFilters} className={`px-4 py-3 rounded-xl border font-medium transition-all flex items-center gap-2 ${darkMode ? 'bg-slate-700 border-slate-600 text-white hover:bg-slate-600' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'}`}>
+                    <RefreshCw className="h-4 w-4" /> مسح الفلاتر
+                  </button>
+                )}
               </div>
             </div>
           </div>
 
           {/* Apartments Grid */}
           {filteredApartments.length === 0 ? (
-            <div className="text-center py-16"><Building2 className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><h3 className={`text-xl font-bold mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>لا توجد عقارات</h3><p className={darkMode ? 'text-slate-400' : 'text-slate-500'}>جرب تغيير معايير البحث</p></div>
+            <div className="text-center py-16"><Building2 className={`h-16 w-16 mx-auto mb-4 ${darkMode ? 'text-slate-600' : 'text-slate-300'}`} /><h3 className={`text-xl font-bold mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{apartments.length === 0 ? 'لا توجد عقارات منشورة بعد' : 'مفيش نتائج مطابقة للفلترة'}</h3><p className={`mb-6 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{apartments.length === 0 ? 'الفلترة هتشتغل تلقائياً مع أول عقار ينشر' : 'جرب تغيير أو مسح معايير البحث'}</p>{hasActiveFilters && (<button onClick={resetAllFilters} className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 transition-all"><RefreshCw className="h-4 w-4" /> مسح كل الفلاتر</button>)}</div>
           ) : (
+            <>
+            <div className={`mb-4 text-sm ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+              عرض <strong className={darkMode ? 'text-white' : 'text-slate-900'}>{filteredApartments.length}</strong> من {apartments.length} عقار منشور{hasActiveFilters ? ' — الفلترة شغالة على اللي منشور فعلاً' : ''}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredApartments.map((apartment, i) => (
                 <ApartmentCard key={apartment.id} apartment={apartment} index={i} darkMode={darkMode} isFavorite={favorites.includes(apartment.id)} isCompared={compareList.includes(apartment.id)} isDeveloper={isDeveloper} toggleFavorite={stableToggleFavorite} toggleCompare={stableToggleCompare} deleteApartment={stableDeleteApartment} fetchComments={stableFetchComments} setSelectedApartment={setSelectedApartment} openEditApartment={stableOpenEditApartment} setCurrentImageIndex={setCurrentImageIndex} />
               ))}
             </div>
+            </>
           )}
         </div>
       </main>
@@ -4677,7 +4760,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                     <div className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>
                       <p>📊 <strong>نسبة الإيجار للبيع:</strong> {allApartments.length > 0 ? Math.round((allApartments.filter(a => a.type === 'rent').length / allApartments.length) * 100) : 0}% إيجار</p>
                       <p className="mt-2">💰 <strong>متوسط الأسعار:</strong> {allApartments.length > 0 ? Math.round(allApartments.reduce((a, b) => a + b.price, 0) / allApartments.length).toLocaleString() : 0} {settings.currency}</p>
-                      <p className="mt-2">🏆 <strong>أكثر منطقة:</strong> {uniqueAreas.length > 0 ? uniqueAreas.reduce((a, b) => allApartments.filter(apt => apt.area === a).length >= allApartments.filter(apt => apt.area === b).length ? a : b, uniqueAreas[0]) : 'لا توجد'}</p>
+                      <p className="mt-2">🏆 <strong>أكثر منطقة:</strong> {statsUniqueAreas.length > 0 ? statsUniqueAreas.reduce((a, b) => allApartments.filter(apt => apt.area === a).length >= allApartments.filter(apt => apt.area === b).length ? a : b, statsUniqueAreas[0]) : 'لا توجد'}</p>
                       <p className="mt-2">👤 <strong>المستخدمين النشطين:</strong> {allUsers.length} | المحظورين: {blockedUsers.length}</p>
                     </div>
                   </div>
