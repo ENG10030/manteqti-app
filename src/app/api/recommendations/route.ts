@@ -51,9 +51,16 @@ export async function POST(request: NextRequest) {
   try {
     const { budget, bedrooms, type, area } = await request.json();
 
+    // ⛔ SECURITY: select صريح — ممنوع إرجاع ownerPhone/ownerWhatsapp/mapLink
+    // (كان المسار بيرجّع صف العقار كاملاً بلا مصادقة = تجاوز كامل لجدار دفع بيانات التواصل)
     const apartments = await db.apartment.findMany({
-      where: { status: 'available' },
-      orderBy: { createdAt: 'desc' }
+      where: { status: 'available', archivedAt: null },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true, title: true, price: true, area: true, type: true,
+        bedrooms: true, bathrooms: true, apartmentSize: true, floor: true,
+        hasInstallments: true,
+      },
     });
 
     if (apartments.length === 0) {

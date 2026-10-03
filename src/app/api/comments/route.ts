@@ -102,7 +102,9 @@ export async function POST(request: NextRequest) {
     if (errorResponse || !auth) return errorResponse!;
 
     const body = await request.json();
-    const { apartmentId, content } = body;
+    const { apartmentId } = body;
+    // ⛔ SECURITY: حد طول التعليق + تعقيم أساسي (كان بلا حد = تضخيم DB)
+    const content = typeof body.content === 'string' ? body.content.trim().slice(0, 2000) : '';
 
     if (!apartmentId || !content) {
       return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 });

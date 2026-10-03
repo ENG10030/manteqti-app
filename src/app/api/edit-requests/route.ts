@@ -87,6 +87,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'العقار غير موجود' }, { status: 404 });
     }
 
+    // ⛔ SECURITY: طلبات التعديل من مالك العقار فقط (أو المطور) — كانت أي معتمد يسبام عقارات غيره
+    if (apartment.createdBy !== tokenUserId && auth.role !== 'DEVELOPER') {
+      return NextResponse.json({ error: 'غير مصرح لك — طلبات التعديل لصاحب العقار فقط' }, { status: 403 });
+    }
+
     // التحقق من أن العقار موافق عليه (منشور)
     if (apartment.status !== 'available') {
       return NextResponse.json({ error: 'لا يمكن طلب تعديل على عقار غير منشور' }, { status: 400 });

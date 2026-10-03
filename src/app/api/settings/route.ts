@@ -74,8 +74,19 @@ export async function GET(request: Request) {
     }
 
     // حماية أمنية: لا ترجع رقم الـ PIN السري للعملاء أبداً (المطور فقط يحتاجه ولا يُعرض)
-    const { paymentSecurityPin: _pin, ...publicSettings } = settings as Record<string, unknown>;
+    const { paymentSecurityPin: _pin, ...rest } = settings as Record<string, unknown>;
     void _pin;
+    // ⛔ SECURITY: بيانات التحصيل (محافظ/إنستاباي/بنك/USDT) مالياً وحشية — مبتتعرضش للعام
+    // (كانت بتتسرب كاملة من GET العام رغم أن payments/methods بتقنّعها!) — المطور في جلسة صحيحة يشوفها كاملة
+    const SENSITIVE_ACCOUNT_FIELDS = [
+      "vodafoneCashNumber", "orangeCashNumber", "etisalatCashNumber",
+      "instapayAccount", "bankAccountNumber", "bankAccountName", "usdtTronAddress",
+    ] as const;
+    let publicSettings: Record<string, unknown> = rest;
+    if (!(await isDeveloper(request))) {
+      publicSettings = { ...rest };
+      for (const f of SENSITIVE_ACCOUNT_FIELDS) delete publicSettings[f];
+    }
     return NextResponse.json({ settings: { ...publicSettings, updatedAt: settings.updatedAt?.toISOString() || new Date().toISOString() } }, { headers: { 'Cache-Control': 'no-store', 'Pragma': 'no-cache' } });
   } catch (error) {
     console.error("Get settings error:", error);

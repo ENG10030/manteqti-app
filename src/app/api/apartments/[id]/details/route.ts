@@ -158,7 +158,8 @@ export async function GET(
       // PII: رقم واتساب الناشر — نفس شروط إظهار الهاتف
       ownerWhatsapp: canSeeOwnerContact ? (apartment.ownerWhatsapp || '') : '',
       // PII: only show mapLink if user can see contact
-      mapLink: canSeeOwnerContact ? (apartment.mapLink || '') : '',
+      // ⛔ SECURITY: إعادة تعقيم الروابط القديمة المخزّنة قبل إصلاح v10.1
+      mapLink: canSeeOwnerContact && apartment.mapLink && /^https?:\/\//i.test(apartment.mapLink) ? apartment.mapLink : '',
       imageUrl: apartment.imageUrl,
       images: apartment.images ? JSON.parse(apartment.images) : [],
       amenities: apartment.amenities ? JSON.parse(apartment.amenities) : [],

@@ -396,6 +396,12 @@ export async function DELETE(
       return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
     }
 
+    // ⛔ SECURITY: نفس بوابة التعديل — المحظور/غير الموثق/غير المعتمد ما يقدرش يمسح
+    // (كان DELETE بلا بوابة بينما PUT عليها — محظور كان يمسح عقاراته ويتهرب من الردع)
+    if (!canEditApartment(user)) {
+      return NextResponse.json({ error: "حسابك غير مصرح له بالحذف — راجع الإدارة" }, { status: 403 });
+    }
+
     const { id } = await params;
 
     const apartment = await db.apartment.findUnique({

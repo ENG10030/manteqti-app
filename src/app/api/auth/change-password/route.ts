@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import bcrypt from "bcryptjs";
 import { verify } from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
+import { checkRateLimit, recordFailedAttempt, getClientIp } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,6 +28,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'جميع الحقول مطلوبة' }, { status: 400 });
     }
 
+    // ⛔ SECURITY: حد للمحاولات على كلمة المرور الحالية — 5 / 15 دقيقة (كان بلا حد = تخمين مفتوح)
+    const allowed = await checkRateLimit("change-password", "ip", getClientIp(request), 5, 15 * 60);
+    if (!allowed) {
+      return NextResponse.json({ error: 'محاولات كثيرة. حاول بعد 15 دقيقة' }, { status: 429 });
+    }
+
     if (newPassword.length < 8) {
       return NextResponse.json({ error: 'كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل' }, { status: 400 });
     }
@@ -47,6 +54,7 @@ export async function POST(request: NextRequest) {
     // Verify current password
     const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
     if (!isPasswordValid) {
+      await recordFailedAttempt("change-password", "ip", getClientIp(request), request, "wrong current password");
       return NextResponse.json({ error: 'كلمة المرور الحالية غير صحيحة' }, { status: 401 });
     }
 

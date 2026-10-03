@@ -5,31 +5,15 @@ import { sign } from "jsonwebtoken";
 import { JWT_SECRET } from "@/lib/auth";
 import { sendOTPEmail } from "@/lib/email";
 import crypto from "crypto";
-
-// Rate limiting for user login (in-memory)
-const loginRateLimit = new Map<string, { count: number; windowStart: number }>();
-const MAX_LOGIN_ATTEMPTS = 10;
-const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-
-function checkLoginRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = loginRateLimit.get(ip);
-  if (!entry || now - entry.windowStart > LOGIN_WINDOW_MS) {
-    loginRateLimit.set(ip, { count: 1, windowStart: now });
-    return true;
-  }
-  if (entry.count >= MAX_LOGIN_ATTEMPTS) {
-    return false;
-  }
-  entry.count += 1;
-  return true;
-}
+import { checkRateLimit, recordFailedAttempt, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
   try {
-    // Rate limiting
-    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-    if (!checkLoginRateLimit(clientIp)) {
+    // Rate limiting — DB-backed (يعمل صح على serverless، الذاكرة كانت بتتصفّر مع كل instance)
+    // عدد محاولات الفشل: 10 / 15 دقيقة لكل IP
+    const clientIp = getClientIp(request);
+    const allowed = await checkRateLimit("login", "ip", clientIp, 10, 15 * 60);
+    if (!allowed) {
       return NextResponse.json({ 
         error: "طلبات كثيرة. يرجى المحاولة بعد 15 دقيقة",
         errorCode: "TOO_MANY_REQUESTS"
@@ -64,6 +48,7 @@ export async function POST(request: Request) {
 
     if (!user) {
       // Generic error to prevent user enumeration
+      await recordFailedAttempt("login", "ip", clientIp, request, "user not found");
       return NextResponse.json({ 
         error: "بيانات الدخول غير صحيحة",
         errorCode: "INVALID_CREDENTIALS"
@@ -74,6 +59,7 @@ export async function POST(request: Request) {
 
     if (!isValidPassword) {
       // Generic error - same as user not found to prevent enumeration
+      await recordFailedAttempt("login", "ip", clientIp, request, "wrong password");
       return NextResponse.json({ 
         error: "بيانات الدخول غير صحيحة",
         errorCode: "INVALID_CREDENTIALS"

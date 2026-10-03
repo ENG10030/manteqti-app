@@ -57,14 +57,25 @@ export async function POST(request: NextRequest) {
 
     const data = await request.json();
 
+    // ⛔ SECURITY: تعقيم + حدود طول — كانت الحقول تتخزن خام (XSS مخزّن في لوحة الإدارة + تضخيم DB)
+    const cleanText = (v: unknown, max: number): string =>
+      typeof v === 'string' ? v.replace(/<[^>]*>/g, '').trim().slice(0, max) : '';
+    const cleanName = cleanText(data.name, 100);
+    const cleanEmail = cleanText(data.email, 254);
+    const cleanPhone = cleanText(data.phone, 30);
+    const cleanMessage = cleanText(data.message, 2000);
+    if (!cleanName || !cleanMessage) {
+      return NextResponse.json({ error: 'الاسم والرسالة مطلوبان' }, { status: 400 });
+    }
+
     const inquiry = await db.inquiry.create({
       data: {
-        apartmentId: data.apartmentId,
+        apartmentId: String(data.apartmentId || '').slice(0, 40),
         userId: auth.userId,
-        name: data.name,
-        email: data.email,
-        phone: data.phone,
-        message: data.message,
+        name: cleanName,
+        email: cleanEmail,
+        phone: cleanPhone,
+        message: cleanMessage,
         lifecycleStatus: 'New'
       },
       include: {

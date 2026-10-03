@@ -4,6 +4,7 @@ import { verify } from "jsonwebtoken";
 import { JWT_SECRET } from "@/lib/auth";
 import { getClientIp } from "@/lib/rate-limit";
 import { broadcastEvent, WebhookEvents } from "@/lib/webhook";
+import { timingSafePinCompare } from "@/lib/pin-compare";
 
 export const dynamic = "force-dynamic";
 
@@ -214,7 +215,7 @@ export async function PUT(request: NextRequest) {
       // Verify security PIN if set in settings (mandatory when configured)
       const settings = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
       if ((settings as unknown as Record<string, unknown>)?.paymentSecurityPin) {
-        if (!securityPin || securityPin !== (settings as unknown as Record<string, unknown>).paymentSecurityPin) {
+        if (!securityPin || !timingSafePinCompare(securityPin, String((settings as unknown as Record<string, unknown>).paymentSecurityPin))) {
           await db.operationLog.create({
             data: {
               action: "WALLET_BULK_PIN_FAILED",
@@ -260,7 +261,7 @@ export async function PUT(request: NextRequest) {
     // Verify security PIN if set in settings (mandatory when configured)
     const settings = await db.settings.findFirst({ orderBy: { createdAt: "desc" } });
     if ((settings as unknown as Record<string, unknown>)?.paymentSecurityPin) {
-      if (!securityPin || securityPin !== (settings as unknown as Record<string, unknown>).paymentSecurityPin) {
+      if (!securityPin || !timingSafePinCompare(securityPin, String((settings as unknown as Record<string, unknown>).paymentSecurityPin))) {
         await db.operationLog.create({
           data: {
             action: "WALLET_PIN_FAILED",

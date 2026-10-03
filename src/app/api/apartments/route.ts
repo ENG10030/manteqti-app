@@ -23,6 +23,14 @@ function safeMapLink(v: unknown): string | null {
   }
 }
 
+// ⛔ SECURITY: نفس تعقيم PUT — حد 100KB لنصوص الوسائط (كانت POST بلا حد = تضخيم DB حتى 4.5MB للحقل)
+function safeMediaList(v: unknown): string | null {
+  if (v === undefined || v === null) return null;
+  const s = String(v);
+  if (!s || s.length > 100_000) return null; // حد 100KB لنص JSON للصور/الفيديو
+  return s;
+}
+
 async function getCurrentUser(request: Request) {
   const cookieHeader = request.headers.get("cookie");
   const cookies = new URLSearchParams(cookieHeader?.replace(/; /g, "&") || "");
@@ -74,8 +82,20 @@ export async function GET(request: Request) {
     }
 
     // المطور يرى جميع العقارات، المستخدم العادي يرى العقارات المتاحة والموافق عليها فقط
+    // ⛔ SECURITY: الحالات الداخلية (pending/hidden/rejected) ما بتتسرّبش لعامة الناس —
+    // المسجل يشوف عقاراته هو فقط، والمطور يشوف الكل (كانت أي حالة تتطلب بلا بوابة!)
     if (status) {
-      where.status = status;
+      const PUBLIC_STATUSES = ["available", "reserved", "sold", "rented"];
+      if (!PUBLIC_STATUSES.includes(status) && !isDeveloper) {
+        if (user) {
+          where.status = status;
+          where.createdBy = user.id; // عقاراته هو فقط
+        } else {
+          return NextResponse.json({ error: "غير مصرح لك" }, { status: 403 });
+        }
+      } else {
+        where.status = status;
+      }
     } else if (!isDeveloper) {
       where.status = { in: ["available", "reserved", "sold", "rented"] };
     }
@@ -134,6 +154,8 @@ export async function GET(request: Request) {
       const doc = docMap.get(apt.id);
       return {
         ...safeApt,
+        // ⛔ SECURITY: إعادة تعقيم روابط الخرائط القديمة المخزّنة قبل إصلاح v10.1 (javascript: مخزّن)
+        mapLink: apt.mapLink && /^https?:\/\//i.test(apt.mapLink) ? apt.mapLink : null,
         hasOwnershipDocs: !!(doc?.hasContract || doc?.hasIdCard),
         ownershipVerified: doc?.verified || false,
       };
@@ -246,8 +268,8 @@ export async function POST(request: Request) {
       mapLink: safeMapLink(mapLink),
       type: type || "rent",
       status,
-      images: images || null,
-      videos: videos || null,
+      images: safeMediaList(images),
+      videos: safeMediaList(videos),
       createdBy: user.id,
       isFeatured: false,
       isVip: false,

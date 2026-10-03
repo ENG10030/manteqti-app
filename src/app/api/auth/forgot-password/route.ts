@@ -3,32 +3,18 @@ import { db } from '@/lib/db';
 import crypto from 'crypto';
 import { sendPasswordResetEmail } from '@/lib/email';
 import bcrypt from 'bcryptjs';
-
-// Rate limiting for forgot-password requests
-const forgotCounts = new Map<string, { count: number; lastRequest: number }>();
-const MAX_FORGET_REQUESTS = 3;
-const FORGET_WINDOW = 10 * 60 * 1000; // 10 minutes
+import { checkRateLimit, recordFailedAttempt, getClientIp } from '@/lib/rate-limit';
 
 // إرسال طلب استعادة كلمة المرور
 export async function POST(request: NextRequest) {
   try {
-    // Rate limit by IP
-    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-    const now = Date.now();
-    const fCount = forgotCounts.get(clientIp);
-    if (fCount) {
-      if (now - fCount.lastRequest < FORGET_WINDOW) {
-        if (fCount.count >= MAX_FORGET_REQUESTS) {
-          return NextResponse.json({ error: 'طلبات كثيرة. يرجى المحاولة بعد 10 دقائق' }, { status: 429 });
-        }
-        fCount.count += 1;
-        fCount.lastRequest = now;
-      } else {
-        forgotCounts.set(clientIp, { count: 1, lastRequest: now });
-      }
-    } else {
-      forgotCounts.set(clientIp, { count: 1, lastRequest: now });
+    // Rate limit by IP — DB-backed (3 طلبات / 10 دقائق لكل IP)
+    const clientIp = getClientIp(request);
+    const allowed = await checkRateLimit("forgot-password", "ip", clientIp, 3, 10 * 60);
+    if (!allowed) {
+      return NextResponse.json({ error: 'طلبات كثيرة. يرجى المحاولة بعد 10 دقائق' }, { status: 429 });
     }
+    await recordFailedAttempt("forgot-password", "ip", clientIp, request, "reset request");
 
     const body = await request.json();
     const { email } = body;

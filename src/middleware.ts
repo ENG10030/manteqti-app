@@ -9,13 +9,18 @@ const RATE_LIMIT_MAX = 100;
 export function middleware(request: NextRequest) {
   const response = NextResponse.next();
 
+  const pathname = request.nextUrl.pathname;
+  // ⛔ SECURITY: مسار الصور بيرجّع CSP sandbox صارم من الـ route نفسه — ممنوع الـ middleware العام يغطيه
+  // (كان الـ CSP العام بيطلع unsafe-inline على محتوى مرفوع = يلغي حماية الـ sandbox)
+  const isImageServe = pathname.startsWith('/api/images/');
+
   // Headers أمنية
-  response.headers.set("X-Content-Type-Options", "nosniff");
-  response.headers.set("X-Frame-Options", "DENY");
+  if (!isImageServe) response.headers.set("X-Content-Type-Options", "nosniff");
+  if (!isImageServe) response.headers.set("X-Frame-Options", "DENY");
+  if (!isImageServe) response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("X-XSS-Protection", "1; mode=block");
-  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
-  response.headers.set("Content-Security-Policy", 
+  if (!isImageServe) response.headers.set("Content-Security-Policy",
     "default-src 'self'; " +
     // accounts.google.com مطلوب لزر الدخول بجوجل (سكريبت Google Identity Services + iframe الزر)
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com; " +

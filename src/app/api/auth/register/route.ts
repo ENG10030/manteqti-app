@@ -4,31 +4,17 @@ import bcrypt from "bcryptjs";
 import crypto from 'crypto';
 import { JWT_SECRET } from "@/lib/auth";
 import { sendOTPEmail } from "@/lib/email";
-
-// Rate limiting for registration (in-memory)
-const registerCounts = new Map<string, { count: number; lastRequest: number }>();
-const MAX_REGISTER_REQUESTS = 3; // max 3 registrations per 10 minutes per IP
-const REGISTER_WINDOW = 10 * 60 * 1000;
+import { checkRateLimit, recordFailedAttempt, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
   try {
-    // Rate limit by IP
-    const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-    const now = Date.now();
-    const regCount = registerCounts.get(clientIp);
-    if (regCount) {
-      if (now - regCount.lastRequest < REGISTER_WINDOW) {
-        if (regCount.count >= MAX_REGISTER_REQUESTS) {
-          return NextResponse.json({ error: "طلبات كثيرة. يرجى المحاولة بعد 10 دقائق" }, { status: 429 });
-        }
-        regCount.count += 1;
-        regCount.lastRequest = now;
-      } else {
-        registerCounts.set(clientIp, { count: 1, lastRequest: now });
-      }
-    } else {
-      registerCounts.set(clientIp, { count: 1, lastRequest: now });
+    // Rate limit by IP — DB-backed (3 تسجيلات / 10 دقائق لكل IP)
+    const clientIp = getClientIp(request);
+    const allowed = await checkRateLimit("register", "ip", clientIp, 3, 10 * 60);
+    if (!allowed) {
+      return NextResponse.json({ error: "طلبات كثيرة. يرجى المحاولة بعد 10 دقائق" }, { status: 429 });
     }
+    await recordFailedAttempt("register", "ip", clientIp, request, "register attempt");
 
     const body = await request.json();
     const { name, email, identifier, password, phone } = body;

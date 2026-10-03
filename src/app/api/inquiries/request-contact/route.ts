@@ -22,7 +22,15 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await request.json();
-    const { apartmentId, name, email, phone, message } = data;
+    const { apartmentId } = data;
+
+    // ⛔ SECURITY: تعقيم + حدود طول — كانت الحقول تتخزن خام من توكن أي مستخدم
+    const cleanText = (v: unknown, max: number): string =>
+      typeof v === 'string' ? v.replace(/<[^>]*>/g, '').trim().slice(0, max) : '';
+    const name = cleanText(data.name, 100);
+    const email = cleanText(data.email, 254);
+    const phone = cleanText(data.phone, 30);
+    const message = cleanText(data.message, 2000);
 
     if (!apartmentId || !name || !email || !phone) {
       return NextResponse.json({ error: 'جميع الحقول مطلوبة' }, { status: 400 });

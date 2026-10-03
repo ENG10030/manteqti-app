@@ -3,11 +3,7 @@ import { db } from '@/lib/db';
 import { sendOTPEmail } from '@/lib/email';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
-
-// Rate limiting for OTP requests (in-memory)
-const otpRequestCounts = new Map<string, { count: number; lastRequest: number }>();
-const MAX_OTP_REQUESTS = 3; // max 3 requests per 5 minutes
-const OTP_REQUEST_WINDOW = 5 * 60 * 1000;
+import { checkRateLimit, recordFailedAttempt } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,25 +17,14 @@ export async function POST(request: NextRequest) {
 
     const normalizedIdentifier = identifier.toLowerCase().trim();
 
-    // Rate limit OTP requests
-    const requestCount = otpRequestCounts.get(normalizedIdentifier);
-    if (requestCount) {
-      const now = Date.now();
-      if (now - requestCount.lastRequest < OTP_REQUEST_WINDOW) {
-        if (requestCount.count >= MAX_OTP_REQUESTS) {
-          return NextResponse.json({ 
-            error: 'طلبات كثيرة. يرجى المحاولة بعد 5 دقائق' 
-          }, { status: 429 });
-        }
-        requestCount.count += 1;
-        requestCount.lastRequest = now;
-      } else {
-        // Window expired, reset counter
-        otpRequestCounts.set(normalizedIdentifier, { count: 1, lastRequest: now });
-      }
-    } else {
-      otpRequestCounts.set(normalizedIdentifier, { count: 1, lastRequest: Date.now() });
+    // ⛔ SECURITY: طلبات الرمز محسوبة في DB — 3 طلبات / 5 دقائق لكل بريد
+    const allowed = await checkRateLimit("request-otp", "email", normalizedIdentifier, 3, 5 * 60);
+    if (!allowed) {
+      return NextResponse.json({ 
+        error: 'طلبات كثيرة. يرجى المحاولة بعد 5 دقائق' 
+      }, { status: 429 });
     }
+    await recordFailedAttempt("request-otp", "email", normalizedIdentifier, request, "otp request");
 
     // Find user by identifier or email
     const user = await db.user.findFirst({

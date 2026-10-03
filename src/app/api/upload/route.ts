@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireApprovedUser } from "@/lib/auth-middleware";
+import { checkRateLimit, recordFailedAttempt } from "@/lib/rate-limit";
 
 /* ============================================================
    POST /api/upload — رفع صور/فيديوهات الشقق
@@ -17,25 +18,18 @@ const MAX_IMAGE_BYTES = 3 * 1024 * 1024;   // 3MB بعد الضغط
 const MAX_VIDEO_BYTES = 3 * 1024 * 1024;   // 3MB (حد body الـ serverless)
 const MAX_DATA_FIELD = 5 * 1024 * 1024;    // حد أقصي لطول النص المستلم (base64 ≈ 1.37x)
 
-// حد معدل الرفع في الذاكرة — يمنع التخريب السريع (30 ملف / 10 دقائق لكل مستخدم)
-const uploadHits = new Map<string, number[]>();
-function isRateLimited(userId: string): boolean {
-  const now = Date.now();
-  const window = 10 * 60 * 1000;
-  const hits = (uploadHits.get(userId) || []).filter(t => now - t < window);
-  if (hits.length >= 30) { uploadHits.set(userId, hits); return true; }
-  hits.push(now);
-  uploadHits.set(userId, hits);
-  return false;
-}
+// ⛔ SECURITY: حد الرفع في قاعدة البيانات (يعمل صح على serverless — الذاكرة كانت بتتصفّر مع كل instance)
+// 30 ملف / 10 دقائق لكل مستخدم
 
 export async function POST(request: NextRequest) {
   try {
     const { auth, errorResponse } = await requireApprovedUser(request);
     if (errorResponse || !auth) return errorResponse!;
-    if (isRateLimited(auth.userId)) {
+    const allowed = await checkRateLimit("upload", "user", auth.userId, 30, 600);
+    if (!allowed) {
       return NextResponse.json({ error: "عدد كبير من الرفع — حاول بعد 10 دقائق" }, { status: 429 });
     }
+    await recordFailedAttempt("upload", "user", auth.userId, request, "upload attempt");
 
     const contentType = request.headers.get("content-type") || "";
     let data = "";
@@ -70,6 +64,11 @@ export async function POST(request: NextRequest) {
       }
       if (!/^[A-Za-z0-9+/=.\s]+$/.test(raw.slice(0, 128))) {
         return NextResponse.json({ error: "محتوى الملف غير صالح" }, { status: 400 });
+      }
+      // ⛔ SECURITY: mimeType من العميل لازم يتطابق مع القايمة البيضا — منع تخزين text/html وأشباهها
+      // (كانت ثغرة XSS مخزّنة: HTML بيتخزن وبيترجع للزوار بـ Content-Type صحيح)
+      if (!ALLOWED_IMAGE_TYPES.includes(body.mimeType) && !ALLOWED_VIDEO_TYPES.includes(body.mimeType)) {
+        return NextResponse.json({ error: "نوع الملف غير مدعوم — الصور: JPEG/PNG/WebP/GIF، الفيديو: MP4/WebM" }, { status: 415 });
       }
       mimeType = body.mimeType;
       data = raw.replace(/\s/g, "");
