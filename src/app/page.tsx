@@ -454,7 +454,7 @@ function App() {
   const [devPassword, setDevPassword] = useState('');
   const [showDevPassword, setShowDevPassword] = useState(false);
   const [devLoading, setDevLoading] = useState(false);
-  const [aptForm, setAptForm] = useState({ title: '', price: '', area: '', bedrooms: '1', bathrooms: '1', floor: '', apartmentSize: '', description: '', ownerPhone: '', ownerWhatsapp: '', mapLink: '', type: 'rent' as 'rent' | 'sale', listingType: 'regular' as 'regular' | 'featured' | 'vip', hasInstallments: false, remainingInstallments: '', installmentAmount: '', installmentFrequency: 'monthly', installmentsNotes: '' });
+  const [aptForm, setAptForm] = useState({ title: '', price: '', area: '', bedrooms: '1', bathrooms: '1', floor: '', apartmentSize: '', description: '', ownerPhone: '', ownerWhatsapp: '', mapLink: '', type: 'rent' as 'rent' | 'sale', listingType: 'regular' as 'regular' | 'featured', hasInstallments: false, remainingInstallments: '', installmentAmount: '', installmentFrequency: 'monthly', installmentsNotes: '' });
   const [aptSubmitting, setAptSubmitting] = useState(false);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
@@ -495,11 +495,8 @@ function App() {
     regularFee: number;
     featuredFee: number; 
     premiumFee: number; 
-    vipFee: number;
     saleDisplayFee: number;
-    rentDisplayFee: number;
     otherServicesFee: number;
-    highlightFee: number;
     priorityListingFee: number;
     verifiedListingFee: number;
     currency: string;
@@ -521,11 +518,8 @@ function App() {
     regularFee: 30,
     featuredFee: 100, 
     premiumFee: 200, 
-    vipFee: 300,
     saleDisplayFee: 100,
-    rentDisplayFee: 75,
     otherServicesFee: 50,
-    highlightFee: 150,
     priorityListingFee: 200,
     verifiedListingFee: 250,
     currency: 'ج.م',
@@ -1258,11 +1252,8 @@ function App() {
           regularFee: s.regularFee ?? 30,
           featuredFee: s.featuredFee ?? 100,
           premiumFee: s.premiumFee ?? 200,
-          vipFee: s.vipFee ?? 300,
           saleDisplayFee: s.saleDisplayFee ?? 100,
-          rentDisplayFee: s.rentDisplayFee ?? 75,
           otherServicesFee: s.otherServicesFee ?? 50,
-          highlightFee: s.highlightFee ?? 150,
           priorityListingFee: s.priorityListingFee ?? 200,
           verifiedListingFee: s.verifiedListingFee ?? 250,
           currency: s.currency ?? 'ج.م',
@@ -2400,11 +2391,15 @@ function App() {
     if (!confirmed) {
       if (!aptForm.title || !aptForm.price || !aptForm.area || !aptForm.description || !aptForm.ownerPhone || !aptForm.apartmentSize) { addToast('يرجى ملء جميع الحقول المطلوبة بما فيها المساحة', 'error'); return; }
       if (aptForm.hasInstallments && !aptForm.remainingInstallments && !aptForm.installmentAmount && !aptForm.installmentsNotes.trim()) { addToast('فعّلت الأقساط — اكتب عدد الأقساط أو قيمة القسط أو تفاصيل الدفع', 'error'); return; }
-      const listingLabels: Record<string, string> = { regular: 'عادي', featured: 'مميز ⭐', vip: 'VIP+ 👑' };
+      const listingLabels: Record<string, string> = { regular: 'عادي', featured: 'مميز ⭐' };
       const listingLabel = listingLabels[aptForm.listingType] || 'عادي';
-      const listingFee = aptForm.listingType === 'vip' ? settings.vipFee : aptForm.listingType === 'featured' ? settings.featuredFee : 0;
+      // v10.5: رسوم النشر حسب نوع العقار — إيجار = رسوم العقار للايجار / بيع = رسوم العقار للبيع (والمميز فوقهم)
+      const typeFeeLabel = aptForm.type === 'sale' ? 'بيع' : 'إيجار';
+      const typeDisplayFee = aptForm.type === 'sale' ? (settings.saleDisplayFee ?? 0) : (settings.regularFee ?? 0);
+      const listingFee = aptForm.listingType === 'featured' ? (settings.featuredFee ?? 0) : typeDisplayFee;
+      const feeLine = listingFee > 0 ? `\n\n💰 رسوم النشر (${typeFeeLabel}${aptForm.listingType === 'featured' ? ' + تمييز ⭐' : ''}): ${listingFee} ${settings.currency}` : '\n\n✨ النشر مجاني';
       const confirmMsg = isDeveloper
-        ? (aptForm.listingType !== 'regular' ? `هل أنت متأكد من إضافة هذه الشقة كـ"${listingLabel}"؟\n\n💰 رسوم النشر: ${listingFee} ${settings.currency}` : 'هل أنت متأكد من إضافة هذه الشقة؟')
+        ? `هل أنت متأكد من إضافة هذه الشقة كـ"${listingLabel}"؟${feeLine}`
         : 'سيتم إرسال الشقة للمراجعة';
       setConfirmDialog({ isOpen: true, title: isDeveloper ? 'إضافة شقة جديدة' : 'إرسال شقة للمراجعة', message: confirmMsg, confirmText: 'نعم، تأكيد', cancelText: 'إلغاء', onConfirm: () => handleAddApartment(true), type: 'info' }); return;
     }
@@ -2435,8 +2430,8 @@ function App() {
           installmentFrequency: aptForm.hasInstallments ? aptForm.installmentFrequency : null,
           installmentsNotes: aptForm.hasInstallments ? (aptForm.installmentsNotes.trim() || null) : null,
           createdBy: currentUser?.id, 
-          isFeatured: aptForm.listingType === 'featured' || aptForm.listingType === 'vip',
-          isVip: aptForm.listingType === 'vip',
+          isFeatured: aptForm.listingType === 'featured',
+          isVip: false,
           status: isDeveloper ? 'available' : 'pending' 
         };
       const res = await fetch('/api/apartments', { 
@@ -4339,27 +4334,24 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📏 مساحة الشقة (م²) <span className="text-red-500">*</span></label><input type="number" min="1" placeholder="مثال: 120" value={aptForm.apartmentSize} onChange={(e) => setAptForm({ ...aptForm, apartmentSize: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>النوع (إيجار / بيع)</label><select value={aptForm.type} onChange={(e) => setAptForm({ ...aptForm, type: e.target.value as 'rent' | 'sale' })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="rent">إيجار</option><option value="sale">بيع</option></select></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>مستوى النشر</label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <button type="button" onClick={() => setAptForm({ ...aptForm, listingType: 'regular' })} className={`p-3 rounded-xl border-2 text-center transition-all ${aptForm.listingType === 'regular' ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : darkMode ? 'border-slate-600 bg-slate-700' : 'border-slate-200 bg-white'}`}>
                       <Home className={`h-5 w-5 mx-auto mb-1 ${aptForm.listingType === 'regular' ? 'text-emerald-500' : darkMode ? 'text-slate-400' : 'text-slate-400'}`} />
                       <p className={`text-xs font-bold ${aptForm.listingType === 'regular' ? 'text-emerald-600 dark:text-emerald-400' : darkMode ? 'text-slate-300' : 'text-slate-600'}`}>عادي</p>
-                      <p className={`text-xs mt-0.5 ${(settings.regularFee || 30) === 0 ? 'text-emerald-500 font-bold' : (darkMode ? 'text-slate-500' : 'text-slate-400')}`}>{(settings.regularFee || 30) === 0 ? 'مجاني ✨' : `${settings.regularFee || 30} ${settings.currency}`}</p>
+                      {/* v10.5: الرسوم بتتغير مع النوع — إيجار = رسوم العقار للايجار / بيع = رسوم العقار للبيع */}
+                      <p title={aptForm.type === 'sale' ? 'رسوم العقار للبيع' : 'رسوم العقار للايجار'} className={`text-xs mt-0.5 ${(aptForm.type === 'sale' ? settings.saleDisplayFee : settings.regularFee) === 0 ? 'text-emerald-500 font-bold' : (darkMode ? 'text-slate-500' : 'text-slate-400')}`}>{(aptForm.type === 'sale' ? settings.saleDisplayFee : settings.regularFee) === 0 ? 'مجاني ✨' : `${aptForm.type === 'sale' ? settings.saleDisplayFee : settings.regularFee} ${settings.currency}`}</p>
                     </button>
-                    {/* v10.4: مميز/VIP مش بيتحصّل رسمهم عند النشر — مخفيين لغير المطور عشان الوعد الصادق */}
-                    {isDeveloper && (<>
+                    {/* v10.5: المميز بس اللي ليه رسم منفصل — VIP اتشال من النموذج */}
+                    {isDeveloper && (
                     <button type="button" onClick={() => setAptForm({ ...aptForm, listingType: 'featured' })} className={`p-3 rounded-xl border-2 text-center transition-all ${aptForm.listingType === 'featured' ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20' : darkMode ? 'border-slate-600 bg-slate-700' : 'border-slate-200 bg-white'}`}>
                       <Star className={`h-5 w-5 mx-auto mb-1 ${aptForm.listingType === 'featured' ? 'text-amber-500' : darkMode ? 'text-slate-400' : 'text-slate-400'}`} />
                       <p className={`text-xs font-bold ${aptForm.listingType === 'featured' ? 'text-amber-600 dark:text-amber-400' : darkMode ? 'text-slate-300' : 'text-slate-600'}`}>مميز</p>
-                      <p className={`text-xs mt-0.5 ${(settings.featuredFee || 100) === 0 ? 'text-emerald-500 font-bold' : (darkMode ? 'text-slate-500' : 'text-slate-400')}`}>{(settings.featuredFee || 100) === 0 ? 'مجاني ✨' : `${settings.featuredFee || 100} ${settings.currency}`}</p>
+                      <p className={`text-xs mt-0.5 ${settings.featuredFee === 0 ? 'text-emerald-500 font-bold' : (darkMode ? 'text-slate-500' : 'text-slate-400')}`}>{settings.featuredFee === 0 ? 'مجاني ✨' : `${settings.featuredFee} ${settings.currency}`}</p>
                     </button>
-                    <button type="button" onClick={() => setAptForm({ ...aptForm, listingType: 'vip' })} className={`p-3 rounded-xl border-2 text-center transition-all ${aptForm.listingType === 'vip' ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20' : darkMode ? 'border-slate-600 bg-slate-700' : 'border-slate-200 bg-white'}`}>
-                      <Diamond className={`h-5 w-5 mx-auto mb-1 ${aptForm.listingType === 'vip' ? 'text-purple-500' : darkMode ? 'text-slate-400' : 'text-slate-400'}`} />
-                      <p className={`text-xs font-bold ${aptForm.listingType === 'vip' ? 'text-purple-600 dark:text-purple-400' : darkMode ? 'text-slate-300' : 'text-slate-600'}`}>VIP+</p>
-                      <p className={`text-xs mt-0.5 ${(settings.vipFee || 300) === 0 ? 'text-emerald-500 font-bold' : (darkMode ? 'text-slate-500' : 'text-slate-400')}`}>{(settings.vipFee || 300) === 0 ? 'مجاني ✨' : `${settings.vipFee || 300} ${settings.currency}`}</p>
-                    </button>
-                    </>)}
+                    )}
                   </div>
-                  {!isDeveloper && <p className={`text-[11px] mt-2 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>💡 التمييز ⭐ و VIP+ بيتفعّلوا من الإدارة بعد تأكيد الدفع</p>}
+                  <p className={`text-[11px] mt-2 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>💡 رسوم النشر بتتغير حسب النوع: إيجار {settings.regularFee === 0 ? 'مجاني' : `${settings.regularFee} ${settings.currency}`} • بيع {settings.saleDisplayFee === 0 ? 'مجاني' : `${settings.saleDisplayFee} ${settings.currency}`}</p>
+                  {!isDeveloper && <p className={`text-[11px] mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>⭐ التمييز بيتفعّل من الإدارة بعد تأكيد الدفع</p>}
                 </div>
                 <div className="col-span-2">
                   <div className={`rounded-xl border p-4 space-y-4 ${aptForm.hasInstallments ? (darkMode ? 'border-amber-700/60 bg-amber-900/10' : 'border-amber-300 bg-amber-50/70') : (darkMode ? 'border-slate-600 bg-slate-700/40' : 'border-slate-200 bg-slate-50/80')}`}>
@@ -5581,7 +5573,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <input type="number" min="0" value={settings.contactFee} onChange={(e) => setSettings({ ...settings, contactFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                     <div>
-                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>🏠 رسوم العقار العادي</label>
+                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>🏠 رسوم العقار للايجار</label>
                       <input type="number" min="0" value={settings.regularFee} onChange={(e) => setSettings({ ...settings, regularFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                     <div>
@@ -5589,20 +5581,8 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                       <input type="number" min="0" value={settings.featuredFee} onChange={(e) => setSettings({ ...settings, featuredFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                     <div>
-                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>👑 رسوم VIP</label>
-                      <input type="number" min="0" value={settings.vipFee} onChange={(e) => setSettings({ ...settings, vipFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
-                    </div>
-                    <div>
-                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📋 رسوم عرض البيع</label>
+                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📋 رسوم العقار للبيع</label>
                       <input type="number" min="0" value={settings.saleDisplayFee} onChange={(e) => setSettings({ ...settings, saleDisplayFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
-                    </div>
-                    <div>
-                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>🔑 رسوم عرض الإيجار</label>
-                      <input type="number" min="0" value={settings.rentDisplayFee} onChange={(e) => setSettings({ ...settings, rentDisplayFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
-                    </div>
-                    <div>
-                      <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>✨ رسوم إبراز العقار</label>
-                      <input type="number" min="0" value={settings.highlightFee} onChange={(e) => setSettings({ ...settings, highlightFee: Math.max(0, parseInt(e.target.value) || 0) })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} />
                     </div>
                     <div>
                       <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>🔝 رسوم أولوية العرض</label>
@@ -5673,14 +5653,11 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                   </div>
                   <div className={`p-4 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
                     <h3 className={`font-bold mb-3 flex items-center gap-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}><Eye className="h-5 w-5 text-emerald-500" />معاينة الأسعار للمستخدمين</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
                       <div className={`p-2.5 rounded-lg ${settings.contactFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>💰 تواصل: {settings.contactFee === 0 ? 'مجاني ✨' : `${settings.contactFee} ${settings.currency}`}</div>
-                      <div className={`p-2.5 rounded-lg ${settings.regularFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>🏠 عادي: {settings.regularFee === 0 ? 'مجاني ✨' : `${settings.regularFee} ${settings.currency}`}</div>
-                      <div className={`p-2.5 rounded-lg ${settings.featuredFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>⭐ مميز: {settings.featuredFee === 0 ? 'مجاني ✨' : `${settings.featuredFee} ${settings.currency}`}</div>
-                      <div className={`p-2.5 rounded-lg ${settings.vipFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>👑 VIP: {settings.vipFee === 0 ? 'مجاني ✨' : `${settings.vipFee} ${settings.currency}`}</div>
+                      <div className={`p-2.5 rounded-lg ${settings.regularFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>🏠 إيجار: {settings.regularFee === 0 ? 'مجاني ✨' : `${settings.regularFee} ${settings.currency}`}</div>
                       <div className={`p-2.5 rounded-lg ${settings.saleDisplayFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>📋 بيع: {settings.saleDisplayFee === 0 ? 'مجاني ✨' : `${settings.saleDisplayFee} ${settings.currency}`}</div>
-                      <div className={`p-2.5 rounded-lg ${settings.rentDisplayFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>🔑 إيجار: {settings.rentDisplayFee === 0 ? 'مجاني ✨' : `${settings.rentDisplayFee} ${settings.currency}`}</div>
-                      <div className={`p-2.5 rounded-lg ${settings.highlightFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>✨ إبراز: {settings.highlightFee === 0 ? 'مجاني ✨' : `${settings.highlightFee} ${settings.currency}`}</div>
+                      <div className={`p-2.5 rounded-lg ${settings.featuredFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>⭐ مميز: {settings.featuredFee === 0 ? 'مجاني ✨' : `${settings.featuredFee} ${settings.currency}`}</div>
                       <div className={`p-2.5 rounded-lg ${settings.priorityListingFee === 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : (darkMode ? 'bg-slate-600 text-white' : 'bg-white text-slate-700')}`}>🔝 أولوية: {settings.priorityListingFee === 0 ? 'مجاني ✨' : `${settings.priorityListingFee} ${settings.currency}`}</div>
                     </div>
                     <p className={`text-xs mt-2 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>💡 الأسعار تتحدث للمستخدمين تلقائياً بدون تحديث الصفحة</p>

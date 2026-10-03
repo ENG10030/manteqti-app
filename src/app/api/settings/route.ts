@@ -59,10 +59,10 @@ export async function GET(request: Request) {
     if (!settings) {
       try {
         settings = await db.settings.create({
-          data: { contactFee: 50, regularFee: 30, featuredFee: 100, premiumFee: 200, vipFee: 300, saleDisplayFee: 100, rentDisplayFee: 75, otherServicesFee: 50, highlightFee: 150, priorityListingFee: 200, verifiedListingFee: 250, currency: "ج.م" }
+          data: { contactFee: 50, regularFee: 30, featuredFee: 100, premiumFee: 200, saleDisplayFee: 100, otherServicesFee: 50, priorityListingFee: 200, verifiedListingFee: 250, currency: "ج.م" }
         });
       } catch {
-        return NextResponse.json({ settings: { id: 'default', contactFee: 50, regularFee: 30, featuredFee: 100, premiumFee: 200, vipFee: 300, saleDisplayFee: 100, rentDisplayFee: 75, otherServicesFee: 50, highlightFee: 150, priorityListingFee: 200, verifiedListingFee: 250, currency: "ج.م", usdtTronAddress: null, paymentAutoConfirm: false, paymentSecurityPin: null, walletMinCharge: 10, walletMaxCharge: 50000, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
+        return NextResponse.json({ settings: { id: 'default', contactFee: 50, regularFee: 30, featuredFee: 100, premiumFee: 200, saleDisplayFee: 100, otherServicesFee: 50, priorityListingFee: 200, verifiedListingFee: 250, currency: "ج.م", usdtTronAddress: null, paymentAutoConfirm: false, paymentSecurityPin: null, walletMinCharge: 10, walletMaxCharge: 50000, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } });
       }
     }
 
@@ -112,11 +112,8 @@ export async function PUT(request: Request) {
       regularFee: toInt(body.regularFee),
       featuredFee: toInt(body.featuredFee),
       premiumFee: toInt(body.premiumFee),
-      vipFee: toInt(body.vipFee),
       saleDisplayFee: toInt(body.saleDisplayFee),
-      rentDisplayFee: toInt(body.rentDisplayFee),
       otherServicesFee: toInt(body.otherServicesFee),
-      highlightFee: toInt(body.highlightFee),
       priorityListingFee: toInt(body.priorityListingFee),
       verifiedListingFee: toInt(body.verifiedListingFee),
       currency: toCurrency(body.currency),

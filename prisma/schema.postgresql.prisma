@@ -108,11 +108,9 @@ model Settings {
   
   // رسوم منفصلة للعرض حسب النوع
   saleDisplayFee       Int      @default(100) // رسوم عرض عقارات للبيع
-  rentDisplayFee       Int      @default(75) // رسوم عرض عقارات الإيجار
   otherServicesFee     Int      @default(50) // رسوم خدمات أخرى
   
   // رسوم إضافية
-  highlightFee         Int      @default(150) // رسوم التمييز الخاص
   priorityListingFee   Int      @default(200) // رسوم الإدراج المميز
   verifiedListingFee   Int      @default(250) // رسوم التحقق من العقار
   
