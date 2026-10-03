@@ -200,6 +200,26 @@ export async function PUT(
     }
     body.mapLink = body.mapLink === undefined ? undefined : safeMapLink(body.mapLink);
 
+    // v10.6: حدود منطقية للغرف/الحمامات/الدور عند التعديل (الإدخال بقى يدوياً — والسيرفر بيرد برسالة عربية واضحة)
+    if (body.bedrooms !== undefined) {
+      const n = toNumUpdate(body.bedrooms);
+      if (n === undefined || !Number.isInteger(n) || n < 0 || n > 20) {
+        return NextResponse.json({ error: "عدد غرف النوم غير صالح (رقم صحيح من 0 لـ 20)" }, { status: 400 });
+      }
+    }
+    if (body.bathrooms !== undefined) {
+      const n = toNumUpdate(body.bathrooms);
+      if (n === undefined || !Number.isInteger(n) || n < 0 || n > 10) {
+        return NextResponse.json({ error: "عدد الحمامات غير صالح (رقم صحيح من 0 لـ 10)" }, { status: 400 });
+      }
+    }
+    if (body.floor !== undefined && body.floor !== null && body.floor !== "") {
+      const n = toNullableIntUpdate(body.floor);
+      if (n === null || n === undefined || n < 0 || n > 200) {
+        return NextResponse.json({ error: "الدور غير صالح (من 0 للأرضي لـ 200)" }, { status: 400 });
+      }
+    }
+
     // إدارة الأرشفة التلقائية (بعد 48 ساعة في الحالات النهائية)
     const FINAL_STATUSES = ['sold', 'rented', 'unavailable'];
     let statusChangedAtData: Date | null | undefined = undefined;

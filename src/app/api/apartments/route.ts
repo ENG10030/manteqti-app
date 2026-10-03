@@ -243,6 +243,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "السعر غير صالح" }, { status: 400 });
     }
 
+    // v10.6: إدخال يدوي للغرف/الحمامات/الدور — تحقق صارم بحدود منطقية (قبلاً الصفر كان بيتحول لـ 1 بصمت)
+    const parsedBedrooms = parseInt(String(bedrooms ?? ""), 10);
+    if (isNaN(parsedBedrooms) || parsedBedrooms < 0 || parsedBedrooms > 20) {
+      return NextResponse.json({ error: "عدد غرف النوم غير صالح (رقم صحيح من 0 لـ 20)" }, { status: 400 });
+    }
+    const parsedBathrooms = parseInt(String(bathrooms ?? ""), 10);
+    if (isNaN(parsedBathrooms) || parsedBathrooms < 0 || parsedBathrooms > 10) {
+      return NextResponse.json({ error: "عدد الحمامات غير صالح (رقم صحيح من 0 لـ 10)" }, { status: 400 });
+    }
+    let parsedFloor: number | null = null;
+    if (floor !== undefined && floor !== null && floor !== "") {
+      parsedFloor = parseInt(String(floor), 10);
+      if (isNaN(parsedFloor) || parsedFloor < 0 || parsedFloor > 200) {
+        return NextResponse.json({ error: "الدور غير صالح (من 0 للأرضي لـ 200)" }, { status: 400 });
+      }
+    }
+
     // Sanitize text inputs to prevent XSS in stored data
     const sanitize = (s: string) => s.replace(/<[^>]*>/g, '').trim().slice(0, 500);
     const sanitizedTitle = sanitize(String(title));
@@ -254,9 +271,9 @@ export async function POST(request: Request) {
       description: sanitizedDescription,
       price: parsedPrice,
       area: sanitizedArea,
-      bedrooms: parseInt(bedrooms) || 1,
-      bathrooms: parseInt(bathrooms) || 1,
-      floor: floor ? parseInt(floor) : null,
+      bedrooms: parsedBedrooms,
+      bathrooms: parsedBathrooms,
+      floor: parsedFloor,
       apartmentSize: apartmentSize ? parseInt(apartmentSize) : null,
       // نظام الأقساط — تعقيم موحّد من lib/installments (hasInstallments=false يصفّر الكل)
       ...sanitizeInstallments(body),
