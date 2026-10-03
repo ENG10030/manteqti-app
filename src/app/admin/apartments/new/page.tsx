@@ -21,6 +21,7 @@ export default function NewApartmentPage() {
     area: '',
     bedrooms: '',
     bathrooms: '',
+    floor: '',
     type: 'rent',
     status: 'available',
     ownerPhone: '',
@@ -44,6 +45,8 @@ export default function NewApartmentPage() {
           area: form.area,
           bedrooms: parseInt(form.bedrooms),
           bathrooms: parseInt(form.bathrooms),
+          // v10.7: الدور نص حر — "أرضي"، "الأساسي"، "الدور السادس" أو أي رقم
+          floor: form.floor.trim() ? form.floor.trim().slice(0, 30) : null,
           type: form.type,
           status: form.status,
           ownerPhone: form.ownerPhone,
@@ -184,6 +187,19 @@ export default function NewApartmentPage() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              {/* v10.7: الدور نص حر — يقبل "أرضي" أو "الدور السادس" أو أي رقم */}
+              <div>
+                <Label htmlFor="floor">الدور (اختياري)</Label>
+                <Input
+                  id="floor"
+                  value={form.floor}
+                  onChange={(e) => setForm({ ...form, floor: e.target.value.slice(0, 30) })}
+                  maxLength={30}
+                  placeholder="أرضي، أساسي، الدور السادس، 5..."
+                />
+                <p className="text-xs text-muted-foreground mt-1">اكتب الدور بحرية — أرضي، أساسي، الدور السادس، أو رقم فقط</p>
               </div>
             </div>
 

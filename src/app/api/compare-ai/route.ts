@@ -15,7 +15,7 @@ interface ApartmentData {
   area: number;
   bedrooms: number;
   bathrooms: number;
-  floor: number;
+  floor: string;
   location: string;
   city: string;
   furnishing: string;
@@ -66,7 +66,9 @@ function generateMockAnalysis(apartments: ApartmentData[]) {
     if (apt.amenities.length < 4) {
       points.push("مميزات محدودة مقارنة بالشقق الأخرى");
     }
-    if (apt.floor >= 8) {
+    // v10.7: الدور نص حر — بنتعامل بس مع القيم الرقمية الواضحة (أرقام قديمة أو رقم مكتوب)
+    const floorNum = parseInt(String(apt.floor), 10);
+    if (!isNaN(floorNum) && floorNum >= 8) {
       points.push("دور مرتفع قد يكون مشكلة في حالة انقطاع الكهرباء");
     }
     if (apt.rating < 4.5) {

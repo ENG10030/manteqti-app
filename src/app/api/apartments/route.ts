@@ -252,11 +252,16 @@ export async function POST(request: Request) {
     if (isNaN(parsedBathrooms) || parsedBathrooms < 0 || parsedBathrooms > 10) {
       return NextResponse.json({ error: "عدد الحمامات غير صالح (رقم صحيح من 0 لـ 10)" }, { status: 400 });
     }
-    let parsedFloor: number | null = null;
-    if (floor !== undefined && floor !== null && floor !== "") {
-      parsedFloor = parseInt(String(floor), 10);
-      if (isNaN(parsedFloor) || parsedFloor < 0 || parsedFloor > 200) {
-        return NextResponse.json({ error: "الدور غير صالح (من 0 للأرضي لـ 200)" }, { status: 400 });
+    // v10.7: الدور نص حر — "أرضي"، "الأساسي"، "الدور السادس" أو أي رقم (حد 30 حرف + تعقيم)
+    let parsedFloor: string | null = null;
+    if (floor !== undefined && floor !== null && String(floor).trim() !== "") {
+      const floorText = String(floor).replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim().slice(0, 30);
+      if (floorText === "") {
+        parsedFloor = null;
+      } else if (!/^[0-9\u0600-\u06FFa-zA-Z\s\/\-_.+]+$/.test(floorText)) {
+        return NextResponse.json({ error: "الدور لازم يكون حروف أو أرقام فقط (مثال: أرضي، الدور السادس، 5)" }, { status: 400 });
+      } else {
+        parsedFloor = floorText;
       }
     }
 

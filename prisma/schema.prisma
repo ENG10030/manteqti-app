@@ -74,7 +74,8 @@ model Apartment {
   area             String
   bedrooms         Int
   bathrooms        Int
-  floor            Int?
+  // v10.7: الدور نص حر — يقبل "أرضي"، "الأساسي"، "الدور السادس" أو أي رقم
+  floor            String?
   apartmentSize    Int?
   // نظام الأقساط — لو العقار لسه عليه أقساط (مثلاً من شركة/كومباوند)
   // price هنا = المبلغ المطلوب كاش (غير الأقساط) — والأقساط تُعرض في الإعلان

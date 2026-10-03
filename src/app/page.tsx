@@ -82,7 +82,7 @@ const INSTALLMENT_FREQ_LABELS: Record<string, string> = { monthly: 'شهري', q
 
 // Interfaces
 interface Apartment {
-  id: string; title: string; price: number; area: string; bedrooms: number; bathrooms: number; floor?: number | null; apartmentSize?: number | null;
+  id: string; title: string; price: number; area: string; bedrooms: number; bathrooms: number; floor?: string | null; apartmentSize?: number | null;
   description: string; ownerPhone: string; ownerWhatsapp?: string | null; mapLink: string; imageUrl?: string; images?: string[];
   videoUrl?: string; videos?: string[]; amenities?: string[]; isFeatured?: boolean; isVip?: boolean;
   type: 'rent' | 'sale'; status: string; paymentRef?: string; createdBy?: string; views?: number; createdAt: string; statusChangedAt?: string | null; archivedAt?: string | null;
@@ -210,11 +210,24 @@ function buildPlusOptions(values: number[], max = 20): number[] {
   return [...new Set(values.filter(v => Number.isInteger(v) && v >= 1 && v <= max))].sort((a, b) => a - b);
 }
 
-// v10.6: عرض الدور بشكل صحيح — 0 معناها "أرضي" (كان بيختفي من العرض لأن 0 falsy)
-function floorDisplay(floor: number | null | undefined): string {
+// v10.7: الدور نص حر — بيتعرض زي ما اتكتب ("أرضي"، "الأساسي"، "الدور السادس")
+// والأرقام القديمة/المدخلة كرقم بتتحول تلقائياً: "0" → أرضي، "5" → الدور 5
+function floorDisplay(floor: string | number | null | undefined): string {
   if (floor === null || floor === undefined) return '';
-  return floor === 0 ? 'أرضي' : `الدور ${floor}`;
+  const s = String(floor).trim();
+  if (s === '') return '';
+  if (/^\d+$/.test(s)) return s === '0' ? 'أرضي' : `الدور ${parseInt(s, 10)}`;
+  return s;
 }
+
+// v10.7: توحيد قيمة الدور — النص المُقَلَّم أو null للفاضي (بيغطي بيانات قديمة رقمية كمان)
+function floorValue(v: string | number | null | undefined): string | null {
+  const s = v === null || v === undefined ? '' : String(v).trim();
+  return s === '' ? null : s;
+}
+
+// v10.7: اقتراحات سريعة للدور — الإدخال حر والمستخدم يكتب أي شيء أو يختار من القائمة
+const FLOOR_SUGGESTIONS = ['أرضي', 'أساسي', 'الدور الأول', 'الدور الثاني', 'الدور الثالث', 'الدور الرابع', 'الدور الخامس', 'الدور السادس', 'الدور السابع', 'الدور الثامن', 'الدور التاسع', 'الدور العاشر', 'دور علوي', 'مكرر'];
 
 // v10.6: تسميات عربية للإدخال اليدوي للغرف/الحمامات
 function bedroomsWord(n: number): string {
@@ -346,7 +359,7 @@ const ApartmentCard = memo(function ApartmentCard({ apartment, index, darkMode, 
               <Bath className="h-4 w-4 text-violet-500" />
               <span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{apartment.bathrooms || '-'} حمام</span>
             </div>
-            {(apartment.floor === 0 || apartment.floor) && <div className="flex items-center gap-2"><Layers className="h-4 w-4 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{floorDisplay(apartment.floor)}</span></div>}
+            {floorDisplay(apartment.floor) && <div className="flex items-center gap-2"><Layers className="h-4 w-4 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{floorDisplay(apartment.floor)}</span></div>}
             <div className="flex items-center gap-2">
               <Home className="h-4 w-4 text-violet-500" />
               <span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{apartment.type === 'rent' ? 'إيجار' : 'بيع'}</span>
@@ -2420,6 +2433,8 @@ function App() {
   };
 
   const handleAddApartment = async (confirmed: boolean = false) => {
+    // v10.7: الدور نص حر — مُقَلَّم وموحد المسافات (مُعرَّف على مستوى الدالة لأن المسارين بيستخدموه)
+    const floorClean = floorValue(aptForm.floor);
     if (!currentUser && !isDeveloper) {
       // التحقق من البيانات أولاً
       if (!aptForm.title || !aptForm.price || !aptForm.area || !aptForm.description || !aptForm.ownerPhone) {
@@ -2444,13 +2459,11 @@ function App() {
     }
     if (!confirmed) {
       if (!aptForm.title || !aptForm.price || !aptForm.area || !aptForm.description || !aptForm.ownerPhone || !aptForm.apartmentSize) { addToast('يرجى ملء جميع الحقول المطلوبة بما فيها المساحة', 'error'); return; }
-      // v10.6: تحقق الإدخال اليدوي — الغرف/الحمامات/الدور أرقام ضمن حدود منطقية (ونفس الحدود مطبقة على السيرفر)
+      // v10.6: تحقق الإدخال اليدوي — الغرف/الحمامات أرقام ضمن حدود منطقية (والحدود مطبقة على السيرفر) — v10.7: الدور نص حر
       const bedNum = parseInt(aptForm.bedrooms, 10);
       const bathNum = parseInt(aptForm.bathrooms, 10);
-      const floorNum = aptForm.floor === '' ? null : parseInt(aptForm.floor, 10);
       if (isNaN(bedNum) || bedNum < 0 || bedNum > 20) { addToast('عدد الغرف لازم يكون رقم صحيح من 0 لـ 20', 'error'); return; }
       if (isNaN(bathNum) || bathNum < 0 || bathNum > 10) { addToast('عدد الحمامات لازم يكون رقم صحيح من 0 لـ 10', 'error'); return; }
-      if (floorNum !== null && (isNaN(floorNum) || floorNum < 0 || floorNum > 200)) { addToast('الدور غير صالح — اكتب 0 للأرضي', 'error'); return; }
       if (aptForm.hasInstallments && !aptForm.remainingInstallments && !aptForm.installmentAmount && !aptForm.installmentsNotes.trim()) { addToast('فعّلت الأقساط — اكتب عدد الأقساط أو قيمة القسط أو تفاصيل الدفع', 'error'); return; }
       const listingLabels: Record<string, string> = { regular: 'عادي', featured: 'مميز ⭐' };
       const listingLabel = listingLabels[aptForm.listingType] || 'عادي';
@@ -2474,7 +2487,7 @@ function App() {
           area: aptForm.area,
           bedrooms: parseInt(aptForm.bedrooms), 
           bathrooms: parseInt(aptForm.bathrooms), 
-          floor: aptForm.floor ? parseInt(aptForm.floor) : null,
+          floor: floorClean,
           apartmentSize: aptForm.apartmentSize ? parseInt(aptForm.apartmentSize) : null,
           ownerPhone: aptForm.ownerPhone,
           ownerWhatsapp: aptForm.ownerWhatsapp.trim() || null,
@@ -2615,7 +2628,7 @@ function App() {
         area: editApartment.area,
         bedrooms: editApartment.bedrooms,
         bathrooms: editApartment.bathrooms,
-        floor: editApartment.floor ?? null,
+        floor: floorValue(editApartment.floor),
         apartmentSize: editApartment.apartmentSize ?? null,
         ownerPhone: editApartment.ownerPhone,
         ownerWhatsapp: editApartment.ownerWhatsapp || null,
@@ -2971,7 +2984,8 @@ function App() {
     // v10.6: قيم آمنة للوصف — الفاضي يفترض 1 والصفر (استوديو) بيتحترم
     const bedForAI = aptForm.bedrooms === '' ? 1 : (parseInt(aptForm.bedrooms, 10) || 0);
     const bathForAI = aptForm.bathrooms === '' ? 1 : (parseInt(aptForm.bathrooms, 10) || 0);
-    const floorForAI = aptForm.floor === '' ? null : parseInt(aptForm.floor, 10);
+    // v10.7: الدور نص حر — بيتنقل للوصف زي ما اتكتب
+    const floorForAI = floorValue(aptForm.floor);
     setAiDescLoading(true);
     try {
       const res = await fetch('/api/generate-description', {
@@ -2992,7 +3006,7 @@ function App() {
       } else {
         // Fallback description
         const fallbackDesc = `${aptForm.title} - ${aptForm.type === 'rent' ? 'للإيجار' : 'للبيع'} في ${aptForm.area}.
-${bedForAI} غرف نوم، ${bathForAI} حمام${floorForAI !== null ? `، ${floorDisplay(floorForAI)}` : ''}${aptForm.apartmentSize ? `، مساحة ${aptForm.apartmentSize} م²` : ''}.
+${bedForAI} غرف نوم، ${bathForAI} حمام${floorForAI ? `، ${floorDisplay(floorForAI)}` : ''}${aptForm.apartmentSize ? `، مساحة ${aptForm.apartmentSize} م²` : ''}.
 ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م` : `السعر ${aptForm.price} ج.م`}.${installmentsDescSuffix()}`;
         setAptForm({ ...aptForm, description: fallbackDesc });
         addToast('تم إنشاء وصف افتراضي', 'success');
@@ -3000,7 +3014,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
     } catch {
       // Fallback on error
       const fallbackDesc = `${aptForm.title} - ${aptForm.type === 'rent' ? 'للإيجار' : 'للبيع'} في ${aptForm.area}.
-${bedForAI} غرف نوم، ${bathForAI} حمام${floorForAI !== null ? `، ${floorDisplay(floorForAI)}` : ''}${aptForm.apartmentSize ? `، مساحة ${aptForm.apartmentSize} م²` : ''}.
+${bedForAI} غرف نوم، ${bathForAI} حمام${floorForAI ? `، ${floorDisplay(floorForAI)}` : ''}${aptForm.apartmentSize ? `، مساحة ${aptForm.apartmentSize} م²` : ''}.
 ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م` : `السعر ${aptForm.price} ج.م`}.${installmentsDescSuffix()}`;
       setAptForm({ ...aptForm, description: fallbackDesc });
       addToast('تم إنشاء وصف افتراضي', 'info');
@@ -3096,7 +3110,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
             area: a.apartmentSize || 100,
             bedrooms: a.bedrooms,
             bathrooms: a.bathrooms,
-            floor: a.floor || 1,
+            floor: floorValue(a.floor) ?? '-',
             location: a.area,
             city: a.area,
             furnishing: 'غير مفروشة',
@@ -3640,7 +3654,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                         { label: '🛏 الغرف', key: 'bedrooms', render: (a: any) => <span>{a.bedrooms || '-'}</span> },
                         { label: '🛁 الحمامات', key: 'bathrooms', render: (a: any) => <span>{a.bathrooms || '-'}</span> },
                         { label: '📐 المساحة', key: 'apartmentSize', render: (a: any) => <span>{a.apartmentSize ? `${a.apartmentSize} م²` : '-'}</span> },
-                        { label: '🏢 الدور', key: 'floor', render: (a: any) => <span>{a.floor === 0 ? 'أرضي' : (a.floor || '-')}</span> },
+                        { label: '🏢 الدور', key: 'floor', render: (a: any) => <span>{floorDisplay(a.floor) || '-'}</span> },
                         { label: '🏷 النوع', key: 'type', render: (a: any) => <span className={a.type === 'rent' ? 'text-emerald-500' : 'text-blue-500'}>{a.type === 'rent' ? 'إيجار' : 'بيع'}</span> },
                         { label: '📊 الحالة', key: 'status', render: (a: any) => <span>{statusConfig[a.status]?.label || a.status}</span> },
                         { label: '⭐ VIP', key: 'isVip', render: (a: any) => <span>{a.isVip ? '✅' : '❌'}</span> },
@@ -4395,7 +4409,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>المنطقة *</label><input type="text" list="area-suggestions" value={aptForm.area} onChange={(e) => setAptForm({ ...aptForm, area: e.target.value })} placeholder="اكتب أو اختر المنطقة" className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /><datalist id="area-suggestions">{egyptianAreas.map(area => <option key={area} value={area} />)}</datalist></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>غرف النوم</label><NumberStepper value={aptForm.bedrooms} onChange={(v) => setAptForm({ ...aptForm, bedrooms: v })} min={0} max={20} fallback={1} ariaLabel="عدد غرف النوم" darkMode={darkMode} hint={aptForm.bedrooms === '' ? 'اكتب أي رقم يدوياً أو استخدم الأسهم' : bedroomsWord(parseInt(aptForm.bedrooms, 10))} /></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحمامات</label><NumberStepper value={aptForm.bathrooms} onChange={(v) => setAptForm({ ...aptForm, bathrooms: v })} min={0} max={10} fallback={1} ariaLabel="عدد الحمامات" darkMode={darkMode} hint={aptForm.bathrooms === '' ? 'اكتب أي رقم يدوياً أو استخدم الأسهم' : bathroomsWord(parseInt(aptForm.bathrooms, 10))} /></div>
-                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الدور</label><NumberStepper value={aptForm.floor} onChange={(v) => setAptForm({ ...aptForm, floor: v })} min={0} max={200} fallback={0} placeholder="بدون" ariaLabel="الدور" darkMode={darkMode} hint={aptForm.floor === '' ? 'اختياري — اكتب 0 للأرضي أو أي رقم' : floorDisplay(parseInt(aptForm.floor, 10))} /></div>
+                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الدور</label><input type="text" list="floor-suggestions" value={aptForm.floor} onChange={(e) => setAptForm({ ...aptForm, floor: e.target.value.slice(0, 30) })} maxLength={30} placeholder="أرضي، أساسي، الدور 5..." aria-label="الدور" className={`w-full h-[46px] px-3 text-sm rounded-xl border outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500 ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /><datalist id="floor-suggestions">{FLOOR_SUGGESTIONS.map(f => <option key={f} value={f} />)}</datalist><p className={`text-[11px] mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{floorValue(aptForm.floor) === null ? 'اختياري — اكتبه حر: أرضي، أساسي، الدور السادس، 5...' : floorDisplay(aptForm.floor)}</p></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📏 مساحة الشقة (م²) <span className="text-red-500">*</span></label><input type="number" min="1" placeholder="مثال: 120" value={aptForm.apartmentSize} onChange={(e) => setAptForm({ ...aptForm, apartmentSize: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>النوع (إيجار / بيع)</label><select value={aptForm.type} onChange={(e) => setAptForm({ ...aptForm, type: e.target.value as 'rent' | 'sale' })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`}><option value="rent">إيجار</option><option value="sale">بيع</option></select></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>مستوى النشر</label>
@@ -4501,7 +4515,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div className="flex items-center gap-1"><Layers className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.apartmentSize ? `${selectedApartment.apartmentSize} م²` : 'غير محدد'}</span></div>
                 <div className="flex items-center gap-1"><Bed className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.bedrooms} غرف</span></div>
                 <div className="flex items-center gap-1"><Bath className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{selectedApartment.bathrooms} حمام</span></div>
-                {(selectedApartment.floor === 0 || selectedApartment.floor) && <div className="flex items-center gap-1"><Home className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{floorDisplay(selectedApartment.floor)}</span></div>}
+                {floorDisplay(selectedApartment.floor) && <div className="flex items-center gap-1"><Home className="h-5 w-5 text-violet-500" /><span className={darkMode ? 'text-slate-300' : 'text-slate-600'}>{floorDisplay(selectedApartment.floor)}</span></div>}
               </div>
               <p className="text-3xl font-bold bg-gradient-to-l from-violet-600 to-purple-700 bg-clip-text text-transparent mb-4">{selectedApartment.price.toLocaleString()} ج.م{selectedApartment.type === 'rent' && <span className="text-sm text-slate-500"> /شهر</span>}{selectedApartment.hasInstallments && <span className="text-base text-amber-500"> + أقساط</span>}</p>
               <p className={`mb-6 ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{selectedApartment.description}</p>
@@ -4629,7 +4643,7 @@ ${aptForm.type === 'rent' ? `الإيجار الشهري ${aptForm.price} ج.م`
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>المنطقة</label><input type="text" list="area-suggestions-edit" value={editApartment.area} onChange={(e) => setEditApartment({ ...editApartment, area: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /><datalist id="area-suggestions-edit">{egyptianAreas.map(area => <option key={area} value={area} />)}</datalist></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>غرف النوم</label><NumberStepper value={String(editApartment.bedrooms ?? '')} onChange={(v) => setEditApartment({ ...editApartment, bedrooms: v === '' ? 0 : parseInt(v, 10) })} min={0} max={20} fallback={1} ariaLabel="عدد غرف النوم" darkMode={darkMode} hint={bedroomsWord(editApartment.bedrooms ?? 0)} /></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الحمامات</label><NumberStepper value={String(editApartment.bathrooms ?? '')} onChange={(v) => setEditApartment({ ...editApartment, bathrooms: v === '' ? 0 : parseInt(v, 10) })} min={0} max={10} fallback={1} ariaLabel="عدد الحمامات" darkMode={darkMode} hint={bathroomsWord(editApartment.bathrooms ?? 0)} /></div>
-                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الدور</label><NumberStepper value={editApartment.floor === null || editApartment.floor === undefined ? '' : String(editApartment.floor)} onChange={(v) => setEditApartment({ ...editApartment, floor: v === '' ? null : parseInt(v, 10) })} min={0} max={200} fallback={0} placeholder="بدون" ariaLabel="الدور" darkMode={darkMode} hint={editApartment.floor === null || editApartment.floor === undefined ? 'اختياري — اكتب 0 للأرضي (سيبه فاضي للمسح)' : floorDisplay(editApartment.floor)} /></div>
+                <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الدور</label><input type="text" list="floor-suggestions-edit" value={editApartment.floor ?? ''} onChange={(e) => setEditApartment({ ...editApartment, floor: e.target.value.slice(0, 30) })} maxLength={30} placeholder="أرضي، أساسي، الدور 5..." aria-label="الدور" className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /><datalist id="floor-suggestions-edit">{FLOOR_SUGGESTIONS.map(f => <option key={f} value={f} />)}</datalist><p className={`text-[11px] mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{floorValue(editApartment.floor) === null ? 'اختياري — اكتبه حر: أرضي، أساسي، الدور السادس، 5... (سيبه فاضي للمسح)' : floorDisplay(editApartment.floor)}</p></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>📏 مساحة الشقة (م²) <span className="text-red-500">*</span></label><input type="number" min="1" placeholder="مثال: 120" value={editApartment.apartmentSize || ''} onChange={(e) => setEditApartment({ ...editApartment, apartmentSize: e.target.value ? parseInt(e.target.value) : undefined })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} required /></div>
                 <div><label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>الهاتف</label><input type="tel" value={editApartment.ownerPhone} onChange={(e) => setEditApartment({ ...editApartment, ownerPhone: e.target.value })} className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /></div>
                 <div><label className={`block text-sm font-medium mb-2 flex items-center gap-1.5 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}><WhatsAppIcon className="h-4 w-4 text-emerald-500" />رقم واتساب (اختياري)</label><input type="tel" dir="ltr" value={editApartment.ownerWhatsapp || ''} onChange={(e) => setEditApartment({ ...editApartment, ownerWhatsapp: e.target.value })} placeholder="01xxxxxxxxx" className={`w-full px-4 py-3 rounded-xl border ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-200'}`} /><p className={`text-xs mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>يظهر مع بيانات التواصل — والعميل يفتح محادثة واتساب مباشرة</p></div>

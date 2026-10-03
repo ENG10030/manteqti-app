@@ -38,12 +38,21 @@ function toNumUpdate(v: unknown): number | undefined {
   return isNaN(n) ? undefined : n;
 }
 
-// لحقول Int القابلة لـ null (floor/apartmentSize) — فارغ أو غير صالح → null (مسح القيمة)
+// لحقول Int القابلة لـ null (apartmentSize) — فارغ أو غير صالح → null (مسح القيمة)
 function toNullableIntUpdate(v: unknown): number | null | undefined {
   if (v === undefined) return undefined;
   if (v === null || v === '') return null;
   const n = typeof v === 'number' ? Math.trunc(v) : parseInt(String(v), 10);
   return isNaN(n) ? null : n;
+}
+
+// v10.7: للدور النص الحر — "أرضي"، "الأساسي"، "الدور السادس" أو أي رقم — فارغ → null (مسح القيمة)
+// بيقبل بيانات قديمة رقمية كمان (number → نص) وبيطبق تعقيم وحد 30 حرف
+function toFloorUpdate(v: unknown): string | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  const s = String(v).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 30);
+  return s || null;
 }
 
 // لحقول نصية قابلة لـ null (ownerWhatsapp) — فارغ → null (مسح الرقم)
@@ -213,10 +222,10 @@ export async function PUT(
         return NextResponse.json({ error: "عدد الحمامات غير صالح (رقم صحيح من 0 لـ 10)" }, { status: 400 });
       }
     }
-    if (body.floor !== undefined && body.floor !== null && body.floor !== "") {
-      const n = toNullableIntUpdate(body.floor);
-      if (n === null || n === undefined || n < 0 || n > 200) {
-        return NextResponse.json({ error: "الدور غير صالح (من 0 للأرضي لـ 200)" }, { status: 400 });
+    if (body.floor !== undefined && body.floor !== null && String(body.floor).trim() !== "") {
+      const f = toFloorUpdate(body.floor);
+      if (f && !/^[0-9\u0600-\u06FFa-zA-Z\s\/\-_.+]+$/.test(f)) {
+        return NextResponse.json({ error: "الدور لازم يكون حروف أو أرقام فقط (مثال: أرضي، الدور السادس، 5)" }, { status: 400 });
       }
     }
 
@@ -254,7 +263,7 @@ export async function PUT(
       area: body.area !== undefined ? sanitizeText(body.area, 120) : undefined,
       bedrooms: toNumUpdate(body.bedrooms),
       bathrooms: toNumUpdate(body.bathrooms),
-      floor: toNullableIntUpdate(body.floor),
+      floor: toFloorUpdate(body.floor),
       apartmentSize: toNullableIntUpdate(body.apartmentSize),
       type: body.type,
       images: safeMediaList(body.images),
